@@ -120,6 +120,102 @@ paths:
       summary: Buy tokens
       responses:
         "201": {description: Payment started}
+  /admin/fleets:
+    get:
+      tags: [admin, fleet]
+      summary: List private fleets
+      description: >
+        Les sociétés qui possèdent des véhicules conduits par d'autres. Au
+        socle et non dans une verticale : une même société possède des motos
+        qui livrent et des voitures qui font des courses.
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [active, suspended]}}
+        - {name: q, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Fleets}
+    post:
+      tags: [admin, fleet]
+      summary: Register a fleet
+      description: >
+        `commission_bp` ABSENT signifie « suit le taux de la plateforme » ;
+        zéro signifie une gratuité négociée. Les deux ne se confondent pas.
+      responses:
+        "201": {description: Created}
+        "409": {description: A fleet already carries this name}
+  /admin/fleets/{id}:
+    get:
+      tags: [admin, fleet]
+      summary: One fleet
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Fleet}
+        "404": {description: Not found}
+    patch:
+      tags: [admin, fleet]
+      summary: Update a fleet
+      description: >
+        Chaque champ est facultatif et seul ce qui est envoyé change.
+        Suspendre une flotte ne suspend PAS ses conducteurs : ce sont deux
+        décisions distinctes.
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Fleet}
+        "404": {description: Not found}
+  /admin/staff:
+    get:
+      tags: [admin, staff]
+      summary: List Dira staff
+      description: >
+        Un membre du staff EST un compte `admin`, avec une fonction et un
+        PÉRIMÈTRE. `scopes` vide signifie TOUTES les verticales — `unrestricted`
+        le dit explicitement pour qu'aucune console n'ait à le déduire.
+      parameters:
+        - {name: function, in: query, schema: {type: string}}
+        - {name: scope, in: query, schema: {type: string, enum: [core, food, vtc]}}
+        - {name: status, in: query, schema: {type: string, enum: [active, suspended]}}
+        - {name: limit, in: query, schema: {type: integer}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Staff}
+    post:
+      tags: [admin, staff]
+      summary: Attach a staff record to an admin account
+      description: >
+        Le compte doit déjà porter le rôle `admin`. Attacher une fiche à un
+        client lui donnerait un titre sans lui donner l'accès.
+      responses:
+        "201": {description: Created}
+        "409": {description: This account already has a staff record}
+        "422": {description: Validation failed}
+  /admin/staff/vocabulary:
+    get:
+      tags: [admin, staff]
+      summary: Known functions and scopes
+      description: >
+        Pour que la console propose exactement ce que le serveur accepte.
+        Deux listes recopiées divergeraient au premier ajout.
+      responses:
+        "200": {description: Vocabulary}
+  /admin/staff/{id}:
+    patch:
+      tags: [admin, staff]
+      summary: Update a staff record
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Staff member}
+        "404": {description: Not found}
+    delete:
+      tags: [admin, staff]
+      summary: Remove a staff record
+      description: >
+        Retire la FICHE, pas le COMPTE : les actions passées restent
+        attribuées dans le journal d'audit.
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: Removed}
+        "404": {description: Not found}
   /admin/wallets/{ownerID}:
     get:
       tags: [wallet]
