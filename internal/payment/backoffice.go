@@ -2,10 +2,12 @@ package payment
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
@@ -80,4 +82,36 @@ func (r *Repository) List(ctx context.Context, status, purpose, cursor string, l
 		})
 	}
 	return out, next, nil
+}
+
+// RefundOrderPayment marks the succeeded payment of an order as refunded and
+// returns its id.
+//
+// ⚠️ Ne rend l'argent NULLE PART : cette écriture dit que la plateforme
+// considère la commande remboursée. L'exécution chez l'opérateur mobile reste
+// à faire, et le nier ici ferait croire au client que c'est parti.
+//
+// Le filtre exige `status: "succeeded"` : rembourser un paiement en attente ou
+// échoué n'a pas de sens, et l'index sur (purpose, ref_id) rend l'écriture
+// atomique — deux résolutions de litige simultanées ne rembourseront pas deux
+// fois.
+func (r *Repository) RefundOrderPayment(ctx context.Context, orderID string) (string, error) {
+	oid, err := primitive.ObjectIDFromHex(orderID)
+	if err != nil {
+		return "", apperr.Validation("invalid order id").WithCause(err)
+	}
+	var doc struct {
+		ID primitive.ObjectID `bson:"_id"`
+	}
+	err = r.col.FindOneAndUpdate(ctx,
+		bson.M{"purpose": PurposeOrder, "ref_id": oid, "status": StatusSucceeded},
+		bson.M{"$set": bson.M{"status": StatusRefunded, "updated_at": time.Now().UTC()}},
+	).Decode(&doc)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return "", errPaymentNotFound
+		}
+		return "", apperr.Internal(err)
+	}
+	return doc.ID.Hex(), nil
 }

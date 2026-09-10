@@ -87,6 +87,15 @@ type BackOffice interface {
 	ListWallets(ctx context.Context, walletType, ownerID, cursor string, limit int) ([]token.WalletRow, string, error)
 	ListLedger(ctx context.Context, walletID, cursor string, limit int) ([]token.LedgerRow, string, error)
 	ListPayments(ctx context.Context, status, purpose, cursor string, limit int) ([]payment.PaymentRow, string, error)
+
+	// RefundOrderPayment marque REMBOURSÉ le paiement abouti d'une commande.
+	//
+	// ⚠️ Écriture, dans une interface de lecture — assumée. C'est la verticale
+	// qui juge qu'un litige mérite un remboursement ; le socle ne sait pas ce
+	// qu'est une commande contestée. Et cette écriture ne rend l'argent nulle
+	// part : elle dit ce que la plateforme considère, pas ce que l'opérateur
+	// mobile a fait.
+	RefundOrderPayment(ctx context.Context, orderID string) (paymentID string, err error)
 }
 
 // Notifier sends one templated message to one person.
@@ -133,6 +142,7 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/backoffice/wallets", h.listWallets)
 		g.Post("/internal/backoffice/token-transactions", h.listLedger)
 		g.Post("/internal/backoffice/payments", h.listPayments)
+		g.Post("/internal/backoffice/refund-order-payment", h.refundOrderPayment)
 	})
 }
 
@@ -439,4 +449,21 @@ func (h *Handler) accountGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, row)
+}
+
+// POST /internal/backoffice/refund-order-payment
+func (h *Handler) refundOrderPayment(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		OrderID string `json:"order_id" validate:"required,len=24,hexadecimal"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	id, err := h.backoffice.RefundOrderPayment(r.Context(), req.OrderID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"payment_id": id})
 }

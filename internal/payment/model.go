@@ -28,6 +28,14 @@ const (
 	StatusPending   = "pending"
 	StatusSucceeded = "succeeded"
 	StatusFailed    = "failed"
+	// StatusRefunded est posé par la RÉSOLUTION D'UN LITIGE, dans la
+	// verticale : c'est elle qui juge qu'une commande doit être remboursée.
+	//
+	// ⚠️ Ce statut décrit le registre de la plateforme, PAS le prestataire.
+	// Rendre l'argent chez l'opérateur mobile reste un geste manuel ; marquer
+	// ici sans le faire là-bas laisserait un client remboursé sur l'écran et
+	// pas sur son téléphone.
+	StatusRefunded = "refunded"
 )
 
 // DefaultCurrency is the platform currency (smallest unit, integer amounts).

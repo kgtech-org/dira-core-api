@@ -73,6 +73,7 @@ wallet, open an account, notify someone in their name. No person ever calls them
 | `POST /internal/notifications/send` | send one templated message |
 | `POST /internal/payments/initiate` | start a payment on a client's behalf (WhatsApp) |
 | `POST /internal/backoffice/{wallets,token-transactions,payments}` | read the money, **raw** — ids, not names |
+| `POST /internal/backoffice/refund-order-payment` | mark an order's payment refunded — the vertical judges the dispute |
 | `POST /internal/ratings` | deposit scores a vertical has already validated |
 
 The back-office listings return **identifiers, not names**: core does not know what a point of

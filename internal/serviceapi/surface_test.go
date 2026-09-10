@@ -33,6 +33,7 @@ var declaredSurface = []string{
 	"/internal/accounts/names",
 	"/internal/accounts/rows",
 	"/internal/backoffice/payments",
+	"/internal/backoffice/refund-order-payment",
 	"/internal/backoffice/token-transactions",
 	"/internal/backoffice/wallets",
 	"/internal/notifications/send",

@@ -35,3 +35,7 @@ func (b backOffice) ListLedger(ctx context.Context, walletID, cursor string, lim
 func (b backOffice) ListPayments(ctx context.Context, status, purpose, cursor string, limit int) ([]payment.PaymentRow, string, error) {
 	return b.payments.List(ctx, status, purpose, cursor, limit)
 }
+
+func (b backOffice) RefundOrderPayment(ctx context.Context, orderID string) (string, error) {
+	return b.payments.RefundOrderPayment(ctx, orderID)
+}
