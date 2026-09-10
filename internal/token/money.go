@@ -2,6 +2,8 @@ package token
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -19,11 +21,17 @@ func (s *Service) CreditEarnings(ctx context.Context, ownerID string, amountXOF 
 	if amountXOF <= 0 {
 		return apperr.Validation("amount must be positive")
 	}
-	return s.moveMoney(ctx, ownerID, "balance_xof", amountXOF, KindPurchase, reason, orderID, ref)
+	return s.moveMoney(ctx, ownerID, "balance_xof", amountXOF, KindPurchase, reason, orderID,
+		earningsKey(ownerID, orderID, reason), ref)
 }
 
 // moveMoney applies one money movement and writes its ledger entry, together.
-func (s *Service) moveMoney(ctx context.Context, ownerID, field string, amount int, kind, reason, orderID string, ref map[string]any) error {
+//
+// `key` vide = AUCUNE garde. Réservé aux mouvements qui n'ont pas de clé
+// naturelle — un geste commercial, une recharge confirmée par un prestataire
+// qui porte déjà sa propre unicité. Tout mouvement rattaché à une commande en
+// a une, et doit la passer.
+func (s *Service) moveMoney(ctx context.Context, ownerID, field string, amount int, kind, reason, orderID, key string, ref map[string]any) error {
 	wallet, err := s.findWallet(ctx, ownerID)
 	if err != nil {
 		return err
@@ -37,6 +45,11 @@ func (s *Service) moveMoney(ctx context.Context, ownerID, field string, amount i
 		orderOID = &oid
 	}
 	err = s.repo.WithTransaction(ctx, func(txCtx context.Context) error {
+		if key != "" {
+			if err := s.repo.ClaimOperation(txCtx, key); err != nil {
+				return err
+			}
+		}
 		if err := s.repo.CreditField(txCtx, wallet.ID, field, amount); err != nil {
 			return apperr.Internal(err)
 		}
@@ -55,6 +68,11 @@ func (s *Service) moveMoney(ctx context.Context, ownerID, field string, amount i
 		}
 		return nil
 	})
+	if errors.Is(err, errOperationApplied) {
+		slog.InfoContext(ctx, "token: money movement replayed, not applied twice",
+			"key", key, "owner_id", ownerID, "reason", reason)
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -81,7 +99,10 @@ func (s *Service) TopUp(ctx context.Context, userID string, amountXOF int, ref m
 	if amountXOF <= 0 {
 		return apperr.Validation("amount must be positive")
 	}
-	return s.moveMoney(ctx, userID, "balance_xof", amountXOF, KindPurchase, ReasonWalletTopup, "", ref)
+	// La recharge porte déjà son unicité : le module de paiement n'appelle ceci
+	// qu'une fois par paiement abouti, et l'index unique sur `provider_ref`
+	// l'empêche d'aboutir deux fois.
+	return s.moveMoney(ctx, userID, "balance_xof", amountXOF, KindPurchase, ReasonWalletTopup, "", "", ref)
 }
 
 // CreditPromo offre un crédit promotionnel — geste commercial, compensation,
@@ -90,7 +111,9 @@ func (s *Service) CreditPromo(ctx context.Context, userID string, amountXOF int,
 	if amountXOF <= 0 {
 		return apperr.Validation("amount must be positive")
 	}
-	return s.moveMoney(ctx, userID, "promo_xof", amountXOF, KindPurchase, ReasonPromoCredit, "", ref)
+	// Un geste commercial n'a pas de clé naturelle : il n'est rattaché à rien,
+	// et deux crédits identiques peuvent être deux gestes voulus.
+	return s.moveMoney(ctx, userID, "promo_xof", amountXOF, KindPurchase, ReasonPromoCredit, "", "", ref)
 }
 
 // PayOrder débite le portefeuille d'un client du montant d'une commande.
@@ -112,6 +135,12 @@ func (s *Service) PayOrder(ctx context.Context, userID string, amountXOF int, or
 	}
 	var fromPromo, fromCash int
 	err = s.repo.WithTransaction(ctx, func(txCtx context.Context) error {
+		// ⚠️ RÉSERVER AVANT DE DÉBITER, dans la même transaction. Une commande
+		// se paie une fois, et son identifiant est la clé : un réessai après
+		// une réponse perdue retombe ici et ne débite pas une seconde fois.
+		if err := s.repo.ClaimOperation(txCtx, payOrderKey(orderID)); err != nil {
+			return err
+		}
 		fromPromo, fromCash, err = s.repo.SpendMoney(txCtx, wallet.ID, amountXOF)
 		if err != nil {
 			return err
@@ -141,6 +170,14 @@ func (s *Service) PayOrder(ctx context.Context, userID string, amountXOF int, or
 		}
 		return nil
 	})
+	if errors.Is(err, errOperationApplied) {
+		// DÉJÀ PAYÉE : un succès, pas une erreur. L'appelant voulait que
+		// l'argent bouge ; il a bougé. Lui rendre une erreur le pousserait à
+		// annuler une commande parfaitement payée.
+		slog.InfoContext(ctx, "token: order payment replayed, not applied twice",
+			"order_id", orderID, "user_id", userID)
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -160,5 +197,6 @@ func (s *Service) RefundOrder(ctx context.Context, userID string, amountXOF int,
 	if amountXOF <= 0 {
 		return apperr.Validation("amount must be positive")
 	}
-	return s.moveMoney(ctx, userID, "balance_xof", amountXOF, KindPurchase, ReasonOrderRefund, orderID, nil)
+	return s.moveMoney(ctx, userID, "balance_xof", amountXOF, KindPurchase, ReasonOrderRefund, orderID,
+		refundOrderKey(orderID), nil)
 }

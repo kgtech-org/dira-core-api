@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -38,6 +39,10 @@ type Repo interface {
 	SpendMoney(ctx context.Context, walletID primitive.ObjectID, amount int) (fromPromo, fromCash int, err error)
 	ListTransactions(ctx context.Context, walletID primitive.ObjectID, limit int, cursor string) ([]Transaction, string, error)
 	WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error
+
+	// ClaimOperation réserve un mouvement d'argent, ou dit qu'il a déjà eu
+	// lieu. Appelée DANS la transaction qui l'applique — voir idempotency.go.
+	ClaimOperation(ctx context.Context, key string) error
 }
 
 // PurchaseInitiator starts a mobile-money payment for a token purchase.
@@ -139,6 +144,15 @@ func (s *Service) Consume(ctx context.Context, ownerID string, amount int, reaso
 	}
 
 	err = s.repo.WithTransaction(ctx, func(txCtx context.Context) error {
+		// Une dépense rattachée à une COMMANDE se fait une fois : un livreur
+		// accepte une course une fois, un marchand propulse un plat une fois.
+		// Sans commande, aucune clé naturelle — deux dépenses identiques
+		// peuvent être deux gestes voulus.
+		if orderID != "" {
+			if err := s.repo.ClaimOperation(txCtx, consumeKey(ownerID, orderID, reason)); err != nil {
+				return err
+			}
+		}
 		ok, err := s.repo.ConsumeAtomic(txCtx, wallet.ID, amount)
 		if err != nil {
 			return apperr.Internal(err)
@@ -160,6 +174,13 @@ func (s *Service) Consume(ctx context.Context, ownerID string, amount int, reaso
 		}
 		return nil
 	})
+	if errors.Is(err, errOperationApplied) {
+		// DÉJÀ DÉPENSÉ : un succès. Rendre `insufficient_tokens` sur un
+		// réessai ferait refuser une course déjà payée.
+		slog.InfoContext(ctx, "token: consume replayed, not applied twice",
+			"owner_id", ownerID, "order_id", orderID, "reason", reason)
+		return nil
+	}
 	if err != nil {
 		return err
 	}

@@ -23,6 +23,7 @@ type Repository struct {
 	mongo        *db.Mongo
 	wallets      *mongo.Collection
 	transactions *mongo.Collection
+	operations   *mongo.Collection
 }
 
 func NewRepository(m *db.Mongo) *Repository {
@@ -30,6 +31,7 @@ func NewRepository(m *db.Mongo) *Repository {
 		mongo:        m,
 		wallets:      m.Collection(walletsCollection),
 		transactions: m.Collection(transactionsCollection),
+		operations:   m.Collection(operationsCollection),
 	}
 }
 

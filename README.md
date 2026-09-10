@@ -99,10 +99,17 @@ store names are added there.
 > payments — but routing a mobile-money order payment here before that callback exists would
 > leave the order paid and never confirmed.
 
-> ⚠️ **`PayOrder` has no idempotency key.** It is now an HTTP call: a lost *response* — the
-> debit applied, the answer never delivered — leaves the client charged and the order not
-> created. A retry debits twice. The key belongs on the request, and the wallet must refuse
-> to apply the same one twice.
+> **Money movements are idempotent** — the concern that stood here is closed. `PayOrder`,
+> `RefundOrder`, `CreditEarnings` and an order-bound `Consume` reserve their operation inside
+> the transaction that applies it, and a replay returns success without moving anything twice.
+>
+> The key is **derived from the operation, not supplied by the caller**: an order is paid
+> once, so its id *is* the key. Asking a vertical for a key would have put the guarantee in
+> the hands of whoever has the most reasons to forget it — and a forgotten key is invisible
+> until a client is charged twice.
+>
+> ⚠️ A movement with **no natural key** — a commercial gesture, a free-form credit — is
+> deliberately **not** guarded: two identical credits may be two intended gestures.
 
 > ⚠️ **`internal/rating` is SPLIT on purpose.** Storage, uniqueness and averages are here,
 > because the courses will rate their drivers with the same collection. What stays in the

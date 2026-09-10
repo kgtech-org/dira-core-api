@@ -24,13 +24,28 @@ type fakeRepo struct {
 	wallets      map[primitive.ObjectID]*Wallet // by wallet id
 	byOwner      map[primitive.ObjectID]primitive.ObjectID
 	transactions []Transaction
+	operations   map[string]bool
 }
 
 func newFakeRepo() *fakeRepo {
 	return &fakeRepo{
-		wallets: make(map[primitive.ObjectID]*Wallet),
-		byOwner: make(map[primitive.ObjectID]primitive.ObjectID),
+		wallets:    make(map[primitive.ObjectID]*Wallet),
+		byOwner:    make(map[primitive.ObjectID]primitive.ObjectID),
+		operations: make(map[string]bool),
 	}
+}
+
+// ClaimOperation REPRODUIT l'index unique : la seconde réservation de la même
+// clé échoue. Un faux qui accepterait tout ferait passer au vert la garde
+// d'idempotence sans qu'elle garantisse quoi que ce soit.
+func (f *fakeRepo) ClaimOperation(_ context.Context, key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.operations[key] {
+		return errOperationApplied
+	}
+	f.operations[key] = true
+	return nil
 }
 
 func (f *fakeRepo) CreateWallet(_ context.Context, w *Wallet) error {
@@ -441,4 +456,127 @@ func TestBuyOption(t *testing.T) {
 
 	_, err = svc.BuyOption(context.Background(), userID, storeID.Hex(), "nope")
 	assertCode(t, err, "option_not_found")
+}
+
+// --- idempotence des mouvements d'argent ---
+//
+// Ces tests existent à cause de l'extraction : `PayOrder` était un appel de
+// fonction, c'est devenu un appel HTTP. Une réponse perdue — le débit
+// appliqué, la réponse jamais arrivée — laisse l'appelant sans nouvelle. S'il
+// réessaie, il débite deux fois. Le réseau ne dit pas ce qui s'est passé ;
+// c'est au socle de rendre le réessai inoffensif.
+
+func seedMoneyWallet(t *testing.T, repo *fakeRepo, cash, promo int) string {
+	t.Helper()
+	ownerID := primitive.NewObjectID()
+	w := &Wallet{
+		OwnerID: ownerID, Type: WalletTypeClient,
+		BalanceXOF: cash, PromoXOF: promo, UpdatedAt: time.Now().UTC(),
+	}
+	require.NoError(t, repo.CreateWallet(context.Background(), w))
+	return ownerID.Hex()
+}
+
+func TestPayOrderReplayDoesNotDebitTwice(t *testing.T) {
+	repo := newFakeRepo()
+	svc, _, _, _ := newTestService(repo)
+	owner := seedMoneyWallet(t, repo, 10_000, 0)
+	orderID := primitive.NewObjectID().Hex()
+
+	require.NoError(t, svc.PayOrder(context.Background(), owner, 3_000, orderID))
+	// Le réessai doit RÉUSSIR — l'appelant voulait que l'argent bouge, il a
+	// bougé — sans rien débiter de plus.
+	require.NoError(t, svc.PayOrder(context.Background(), owner, 3_000, orderID))
+
+	oid, err := primitive.ObjectIDFromHex(owner)
+	require.NoError(t, err)
+	repo.mu.Lock()
+	balance := repo.wallets[repo.byOwner[oid]].BalanceXOF
+	repo.mu.Unlock()
+	assert.Equal(t, 7_000, balance, "le second appel ne doit rien débiter")
+	assert.Equal(t, 1, repo.transactionCount(), "une seule écriture au grand livre")
+}
+
+// Le piège que la seule unicité (portefeuille, commande, motif) n'attrapait
+// pas : le premier paiement épuise le promotionnel, le réessai puise dans
+// l'argent réel et n'entre en collision avec RIEN. La garde porte donc sur
+// l'OPÉRATION, pas sur la ligne du grand livre.
+func TestPayOrderReplayAfterPromoExhaustedDoesNotDebitCash(t *testing.T) {
+	repo := newFakeRepo()
+	svc, _, _, _ := newTestService(repo)
+	owner := seedMoneyWallet(t, repo, 10_000, 3_000)
+	orderID := primitive.NewObjectID().Hex()
+
+	require.NoError(t, svc.PayOrder(context.Background(), owner, 3_000, orderID))
+	require.NoError(t, svc.PayOrder(context.Background(), owner, 3_000, orderID))
+
+	oid, err := primitive.ObjectIDFromHex(owner)
+	require.NoError(t, err)
+	repo.mu.Lock()
+	w := repo.wallets[repo.byOwner[oid]]
+	cash, promo := w.BalanceXOF, w.PromoXOF
+	repo.mu.Unlock()
+	assert.Equal(t, 0, promo, "le promotionnel a payé la commande")
+	assert.Equal(t, 10_000, cash, "l'argent réel ne doit pas payer une seconde fois")
+}
+
+func TestPayOrderStillDebitsDifferentOrders(t *testing.T) {
+	repo := newFakeRepo()
+	svc, _, _, _ := newTestService(repo)
+	owner := seedMoneyWallet(t, repo, 10_000, 0)
+
+	require.NoError(t, svc.PayOrder(context.Background(), owner, 3_000, primitive.NewObjectID().Hex()))
+	require.NoError(t, svc.PayOrder(context.Background(), owner, 2_000, primitive.NewObjectID().Hex()))
+
+	oid, err := primitive.ObjectIDFromHex(owner)
+	require.NoError(t, err)
+	repo.mu.Lock()
+	balance := repo.wallets[repo.byOwner[oid]].BalanceXOF
+	repo.mu.Unlock()
+	// La garde ne doit pas confondre « déjà fait » et « ressemble à ».
+	assert.Equal(t, 5_000, balance)
+}
+
+func TestRefundOrderReplayDoesNotCreditTwice(t *testing.T) {
+	repo := newFakeRepo()
+	svc, _, _, _ := newTestService(repo)
+	owner := seedMoneyWallet(t, repo, 1_000, 0)
+	orderID := primitive.NewObjectID().Hex()
+
+	require.NoError(t, svc.RefundOrder(context.Background(), owner, 3_000, orderID))
+	require.NoError(t, svc.RefundOrder(context.Background(), owner, 3_000, orderID))
+
+	oid, err := primitive.ObjectIDFromHex(owner)
+	require.NoError(t, err)
+	repo.mu.Lock()
+	balance := repo.wallets[repo.byOwner[oid]].BalanceXOF
+	repo.mu.Unlock()
+	// Un remboursement rejoué serait de l'argent offert : plus grave encore
+	// qu'un débit doublé, parce que personne ne vient s'en plaindre.
+	assert.Equal(t, 4_000, balance)
+}
+
+func TestConsumeReplayForTheSameOrderDoesNotDebitTwice(t *testing.T) {
+	repo := newFakeRepo()
+	svc, _, _, _ := newTestService(repo)
+	ownerID := seedWallet(t, repo, WalletTypeDriver, 5)
+	orderID := primitive.NewObjectID().Hex()
+
+	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, ReasonOrderAccept, orderID, nil))
+	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, ReasonOrderAccept, orderID, nil))
+
+	assert.Equal(t, 4, repo.balanceOf(ownerID), "un livreur accepte une course une fois")
+}
+
+func TestConsumeWithoutOrderIsNotGuarded(t *testing.T) {
+	repo := newFakeRepo()
+	svc, _, _, _ := newTestService(repo)
+	ownerID := seedWallet(t, repo, WalletTypeDriver, 5)
+
+	// Sans commande, aucune clé naturelle : deux dépenses identiques peuvent
+	// être deux gestes voulus, et les confondre bloquerait la seconde.
+	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, "manual", "", nil))
+	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, "manual", "", nil))
+
+	assert.Equal(t, 3, repo.balanceOf(ownerID))
 }

@@ -53,6 +53,15 @@ var applicationIndexes = []db.Index{
 	{Collection: "token_transactions", Keys: db.K("wallet_id", 1)},
 	{Collection: "token_transactions", Keys: db.K("created_at", 1)},
 	{Collection: "token_transactions", Keys: db.K("order_id", 1), Sparse: true},
+	// ⚠️ C'EST CET INDEX qui rend un mouvement d'argent rejouable sans danger.
+	// La clé est le `_id` du marqueur — unique par construction — et la
+	// réservation se fait DANS la transaction qui débite. Sans lui, une réponse
+	// perdue et un réessai débitent deux fois le même client.
+	//
+	// TTL de 30 jours : ces marqueurs ne servent que le temps où un réessai est
+	// plausible. Les garder indéfiniment ferait grossir une collection que
+	// personne ne lit.
+	{Collection: "wallet_operations", Keys: db.K("at", 1), TTLSeconds: db.TTL(30 * 24 * 3600)},
 
 	// --- paiements ---
 	{Collection: "payments", Keys: db.K("provider_ref", 1), Unique: true},
