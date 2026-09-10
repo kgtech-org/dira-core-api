@@ -98,10 +98,12 @@ func run(logger *slog.Logger) error {
 	// sont pas montées. Le découpage — le grand livre au socle, la propulsion
 	// à la livraison — reste à faire ; le laisser dans cet état sans le dire
 	// ferait croire que le module a trouvé sa place.
-	paymentSvc := payment.NewService(payment.NewRepository(mongo),
+	paymentRepo := payment.NewRepository(mongo)
+	paymentSvc := payment.NewService(paymentRepo,
 		map[string]payment.PaymentProvider{"mock": payment.NewMockProvider(cfg.MockPaymentSecret)}, nil)
 
-	tokenSvc := token.NewService(token.NewRepository(mongo), nil, paymentSvc, nil, nil,
+	tokenRepo := token.NewRepository(mongo)
+	tokenSvc := token.NewService(tokenRepo, nil, paymentSvc, nil, nil,
 		token.DefaultTokenPriceXOF, token.DefaultBoostCost, nil)
 	userSvc := user.NewService(user.NewRepository(mongo), tokens, tokenSvc)
 
@@ -179,7 +181,8 @@ func run(logger *slog.Logger) error {
 		// d'une verticale — débiter un portefeuille, ouvrir un compte — et
 		// n'ont aucun sens pour une personne. Elles sont gardées par le secret
 		// partagé, et rassemblées en un seul endroit pour être auditables.
-		serviceapi.NewHandler(userSvc, tokenSvc, notifySvc, paymentSvc).
+		serviceapi.NewHandler(userSvc, tokenSvc, notifySvc, paymentSvc,
+			backOffice{tokens: tokenRepo, payments: paymentRepo}).
 			Mount(r, middleware.Service(cfg.ServiceToken))
 	})
 

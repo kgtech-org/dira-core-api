@@ -17,6 +17,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/kgtech-org/dira-core-api/internal/payment"
+	"github.com/kgtech-org/dira-core-api/internal/token"
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
 )
 
@@ -59,6 +61,23 @@ type Payments interface {
 	InitiateFor(ctx context.Context, clientID, purpose, refID string, amountXOF int) (paymentURL string, err error)
 }
 
+// BackOffice is what a vertical's ADMINISTRATION reads about money.
+//
+// ⚠️ LECTURE SEULE, et volontairement BRUTE : ces lignes portent des
+// identifiants, pas des noms. Le socle ne sait pas ce qu'est un point de vente
+// ni une commande de repas ; c'est la verticale qui possède ces objets et les
+// nomme, dans sa propre vue d'administration.
+//
+// Les types viennent des modules plutôt que d'être redéclarés ici. Un
+// adaptateur recopié champ à champ finit toujours par en oublier un — et un
+// champ oublié dans une vue financière est un montant qui n'apparaît nulle
+// part, sans que rien n'échoue.
+type BackOffice interface {
+	ListWallets(ctx context.Context, walletType, cursor string, limit int) ([]token.WalletRow, string, error)
+	ListLedger(ctx context.Context, walletID, cursor string, limit int) ([]token.LedgerRow, string, error)
+	ListPayments(ctx context.Context, status, purpose, cursor string, limit int) ([]payment.PaymentRow, string, error)
+}
+
 // Notifier sends one templated message to one person.
 type Notifier interface {
 	Notify(ctx context.Context, userID, key string, vars map[string]string, data map[string]string)
@@ -66,14 +85,15 @@ type Notifier interface {
 
 // Handler exposes the service-to-service routes.
 type Handler struct {
-	accounts Accounts
-	wallets  Wallets
-	notifier Notifier
-	payments Payments
+	accounts   Accounts
+	wallets    Wallets
+	notifier   Notifier
+	payments   Payments
+	backoffice BackOffice
 }
 
-func NewHandler(a Accounts, w Wallets, n Notifier, p Payments) *Handler {
-	return &Handler{accounts: a, wallets: w, notifier: n, payments: p}
+func NewHandler(a Accounts, w Wallets, n Notifier, p Payments, b BackOffice) *Handler {
+	return &Handler{accounts: a, wallets: w, notifier: n, payments: p, backoffice: b}
 }
 
 // Mount registers the routes under a middleware that checks the service token.
@@ -96,6 +116,10 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 
 		g.Post("/internal/notifications/send", h.notify)
 		g.Post("/internal/payments/initiate", h.initiatePayment)
+
+		g.Post("/internal/backoffice/wallets", h.listWallets)
+		g.Post("/internal/backoffice/token-transactions", h.listLedger)
+		g.Post("/internal/backoffice/payments", h.listPayments)
 	})
 }
 
@@ -306,4 +330,64 @@ func (h *Handler) initiatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusCreated, map[string]string{"payment_url": url})
+}
+
+// --- back-office ---
+
+// pageRequest is the paging shape shared by the three back-office listings.
+type pageRequest struct {
+	Cursor string `json:"cursor"`
+	Limit  int    `json:"limit"`
+}
+
+func (h *Handler) listWallets(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		pageRequest
+		Type string `json:"type"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	items, next, err := h.backoffice.ListWallets(r.Context(), req.Type, req.Cursor, req.Limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.List(w, items, next)
+}
+
+func (h *Handler) listLedger(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		pageRequest
+		WalletID string `json:"wallet_id"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	items, next, err := h.backoffice.ListLedger(r.Context(), req.WalletID, req.Cursor, req.Limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.List(w, items, next)
+}
+
+func (h *Handler) listPayments(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		pageRequest
+		Status  string `json:"status"`
+		Purpose string `json:"purpose"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	items, next, err := h.backoffice.ListPayments(r.Context(), req.Status, req.Purpose, req.Cursor, req.Limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.List(w, items, next)
 }
