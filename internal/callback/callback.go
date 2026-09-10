@@ -54,8 +54,14 @@ func (c *Client) Enabled() bool { return c != nil && c.baseURL != "" }
 var ErrNotConfigured = errors.New("callback: vertical not configured")
 
 // OrderPaid tells the vertical that one of its orders is paid.
+//
+// ⚠️ Le chemin n'a PAS le préfixe `/food`. Ce préfixe est posé par la
+// passerelle, qui le retire avant de proxifier : chaque service continue de
+// servir `/api/v1/...` chez lui. Un appel de service va DIRECTEMENT au
+// service — passer par la passerelle publique ajouterait un saut et ferait
+// dépendre un rappel interne de la santé de l'étage public.
 func (c *Client) OrderPaid(ctx context.Context, orderID, paymentID string) error {
-	return c.post(ctx, "/api/v1/food/internal/payments/order-paid", map[string]string{
+	return c.post(ctx, "/api/v1/internal/payments/order-paid", map[string]string{
 		"order_id": orderID, "payment_id": paymentID,
 	})
 }
