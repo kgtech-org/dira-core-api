@@ -33,12 +33,21 @@ func TestRequireScopeBlocksOutOfScopeStaff(t *testing.T) {
 
 	vtcOnly, err := m.GenerateAccess("u1", auth.RoleAdmin, auth.ScopeVTC)
 	require.NoError(t, err)
-	unrestricted, err := m.GenerateAccess("u2", auth.RoleAdmin)
+	noScope, err := m.GenerateAccess("u2", auth.RoleAdmin)
+	require.NoError(t, err)
+	// ⚠️ Un CLIENT n'a pas de portée et ne doit pas en avoir. Ce cas est le
+	// plus important des trois : la livraison pose ce garde à l'ENTRÉE du
+	// service, pour ne pas dépendre d'une liste de vingt et une routes. S'il
+	// mordait sur les non-administrateurs, il fermerait la porte à tous ses
+	// clients — une panne totale, et pas une restriction.
+	client, err := m.GenerateAccess("u3", auth.RoleClient)
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, call(guarded(auth.ScopeVTC), vtcOnly))
 	assert.Equal(t, http.StatusForbidden, call(guarded(auth.ScopeFood), vtcOnly),
 		"un chargé des courses ne doit pas administrer la livraison")
-	assert.Equal(t, http.StatusOK, call(guarded(auth.ScopeFood), unrestricted),
-		"un jeton sans portée garde l'accès qu'il avait")
+	assert.Equal(t, http.StatusForbidden, call(guarded(auth.ScopeFood), noScope),
+		"un administrateur sans fiche de staff n'administre rien")
+	assert.Equal(t, http.StatusOK, call(guarded(auth.ScopeFood), client),
+		"la portée est une notion de STAFF : elle ne borne pas un client")
 }

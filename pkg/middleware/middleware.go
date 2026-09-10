@@ -187,12 +187,25 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 // `middleware.RequireScope(auth.ScopeFood)`. Le socle ne peut pas le faire
 // pour elles — il ne voit pas leurs routes.
 //
-// Une portée absente autorise tout : voir `auth.Claims.Scopes`.
+// ⚠️ NE CONCERNE QUE LES ADMINISTRATEURS. Un client, un livreur ou un marchand
+// n'a pas de portée et ne doit pas en avoir : c'est son RÔLE qui borne ce
+// qu'il atteint. Sans cette distinction, poser ce garde à l'entrée d'un
+// service — ce que fait la livraison, pour ne pas dépendre d'une liste de
+// vingt et une routes — aurait fermé la porte à tous ses clients.
+//
+// Un administrateur, lui, doit porter la portée : une liste vide n'accorde
+// rien. Un compte `admin` sans fiche de staff n'administre donc rien, et
+// c'est voulu — le provisionnement crée la fiche avec le compte.
 func RequireScope(scope string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if _, ok := auth.RoleFromContext(r.Context()); !ok {
+			role, ok := auth.RoleFromContext(r.Context())
+			if !ok {
 				httpx.Error(w, r, apperr.Unauthorized("missing_token", "missing bearer token"))
+				return
+			}
+			if role != auth.RoleAdmin {
+				next.ServeHTTP(w, r) // la portée est une notion de STAFF
 				return
 			}
 			if !auth.AllowsFromContext(r.Context(), scope) {

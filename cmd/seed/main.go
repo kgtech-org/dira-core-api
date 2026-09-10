@@ -29,6 +29,7 @@ import (
 
 	"github.com/kgtech-org/dira-core-api/internal/config"
 	"github.com/kgtech-org/dira-core-api/internal/indexes"
+	"github.com/kgtech-org/dira-core-api/internal/staff"
 	"github.com/kgtech-org/dira-core-api/internal/user"
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
 	"github.com/kgtech-org/dira-core-api/pkg/db"
@@ -107,9 +108,26 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("seed: ensure admin: %w", err)
 	}
 
+	// ⚠️ LA FICHE DE STAFF EST INDISPENSABLE, pas décorative.
+	//
+	// Une portée vide n'accorde rien : sans fiche, ce compte se connecterait
+	// et se verrait refuser CHAQUE route d'administration, sans qu'aucun
+	// message n'explique pourquoi. Un provisionnement qui produit un
+	// administrateur incapable d'administrer est un provisionnement raté.
+	//
+	// Toutes les portées : c'est le compte de démarrage, celui par lequel on
+	// crée les autres. Les restreindre reviendrait à livrer une plateforme
+	// dont personne ne peut ouvrir une partie.
+	staffSvc := staff.NewService(staff.NewRepository(mongo), staff.FromAccounts{Reader: seedAccounts{svc: svc}})
+	member, err := staffSvc.EnsureMember(ctx, id, staff.FunctionAdmin, "Administrateur de la plateforme", auth.AllScopes)
+	if err != nil {
+		return fmt.Errorf("seed: ensure staff record: %w", err)
+	}
+
 	logger.Info("seed: admin ready",
 		"user_id", id, "phone", adminPhone, "email", adminEmail,
 		"password_source", "SEED_ADMIN_PASSWORD",
+		"staff_id", member.ID, "scopes", member.Scopes,
 		"db", cfg.MongoDB)
 	logger.Info("seed: done — les verticales sèment leur propre jeu de démonstration")
 	return nil
@@ -121,4 +139,36 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// seedAccounts adapte le service des comptes à ce que le staff lit.
+//
+// Le même adaptateur qu'au démarrage de l'API : la traduction vit au câblage
+// pour que `internal/staff` reste testable sans annuaire.
+type seedAccounts struct{ svc *user.Service }
+
+func (a seedAccounts) AccountByID(ctx context.Context, id string) (*staff.AccountRow, error) {
+	row, err := a.svc.AccountByID(ctx, id)
+	if err != nil || row == nil {
+		return nil, err
+	}
+	return &staff.AccountRow{
+		ID: row.ID, Role: row.Role, Name: row.Name,
+		Phone: row.Phone, Email: row.Email, Status: row.Status,
+	}, nil
+}
+
+func (a seedAccounts) AccountsByIDs(ctx context.Context, ids []string) ([]staff.AccountRow, error) {
+	rows, err := a.svc.AccountsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]staff.AccountRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, staff.AccountRow{
+			ID: r.ID, Role: r.Role, Name: r.Name,
+			Phone: r.Phone, Email: r.Email, Status: r.Status,
+		})
+	}
+	return out, nil
 }

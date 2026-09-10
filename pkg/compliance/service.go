@@ -90,11 +90,43 @@ type Fleet interface {
 	// sans noms reste actionnable par ses identifiants ; une file qui ne
 	// s'affiche pas ne l'est pas du tout.
 	AccountOf(ctx context.Context, driverID string) (userID string, err error)
-	// VehiclesOf liste les véhicules d'un chauffeur.
+	// VehiclesOf liste les véhicules d'un chauffeur, avec ce qu'il faut pour
+	// savoir quels papiers ils exigent.
 	//
 	// Ils décident de ce qui MANQUE : on ne réclame pas une assurance à
 	// quelqu'un qui n'a déclaré aucun véhicule.
-	VehiclesOf(ctx context.Context, driverID string) (vehicleIDs []string, err error)
+	VehiclesOf(ctx context.Context, driverID string) ([]VehicleRef, error)
+}
+
+// VehicleRef est un véhicule vu par la conformité : un identifiant, et le
+// seul fait qui décide de ses papiers.
+//
+// ⚠️ MOTORISÉ, et pas le « type » de la verticale. Ce paquet sert deux métiers
+// dont les vocabulaires diffèrent — « moto », « velo », « pieton » d'un côté,
+// des classes tarifaires de l'autre. Lui faire connaître les deux listes
+// l'aurait obligé à changer chaque fois qu'une verticale ajoute un type, et
+// c'est bien le CARACTÈRE MOTORISÉ, pas le nom, qui décide qu'un véhicule a
+// une carte grise.
+type VehicleRef struct {
+	ID string
+	// Motorised : un vélo et un livreur à pied n'ont ni carte grise, ni
+	// assurance, ni contrôle technique.
+	//
+	// ⚠️ Sans cette distinction, la plateforme réclamait une carte grise à
+	// un livreur À PIED — et il restait « non conforme » pour toujours, sur un
+	// écran qui ne lui proposait aucun moyen de régulariser.
+	Motorised bool
+}
+
+// KindsFor rend les pièces attendues d'un véhicule.
+//
+// Un véhicule non motorisé n'en attend AUCUNE : c'est une liste vide, pas une
+// dispense — la différence compte, parce qu'une dispense se retire.
+func KindsFor(v VehicleRef) []string {
+	if !v.Motorised {
+		return nil
+	}
+	return VehicleKinds
 }
 
 // Auditor enregistre les gestes sensibles. Facultatif.
@@ -255,16 +287,16 @@ func (s *Service) complianceOf(ctx context.Context, driverID string) (*Complianc
 			out.Compliant = false
 		}
 	}
-	for _, raw := range vehicles {
-		vid, err := primitive.ObjectIDFromHex(raw)
+	for _, v := range vehicles {
+		vid, err := primitive.ObjectIDFromHex(v.ID)
 		if err != nil {
 			continue
 		}
-		for _, kind := range VehicleKinds {
+		for _, kind := range KindsFor(v) {
 			if !covered[docKey(kind, &vid)] {
 				// Le véhicule est nommé : « assurance manquante » sur un parc
 				// de deux motos ne dit pas laquelle rouler.
-				out.Missing = append(out.Missing, kind+":"+raw)
+				out.Missing = append(out.Missing, kind+":"+v.ID)
 				out.Compliant = false
 			}
 		}

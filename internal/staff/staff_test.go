@@ -10,31 +10,52 @@ import (
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
 )
 
-// ⚠️ VIDE = TOUTES, et la même règle vaut dans le jeton. Deux conventions
-// inverses — vide=tout ici, vide=rien là-bas — auraient produit un membre
-// affiché « accès complet » et refusé partout, sans que rien ne l'explique.
-func TestNoScopeMeansEveryScope(t *testing.T) {
+// ⚠️ VIDE = AUCUNE, littéralement — ici comme dans le jeton.
+//
+// C'est la lecture naturelle d'une liste de permissions, et c'est elle qui
+// rend tout le reste simple : suspendre quelqu'un consiste à vider sa liste,
+// sans valeur sentinelle et sans cas particulier.
+//
+// La convention inverse a existé ici pour ne casser aucun jeton en vol. Elle
+// coûtait trois mécanismes de compensation : une portée « suspended »
+// qu'aucune route ne demandait, une méthode traduisant « vide » en « toutes »,
+// et une phrase d'avertissement dans l'interface pour que des cases à cocher
+// vides ne se lisent pas comme « aucun accès ».
+func TestEmptyScopesGrantNothing(t *testing.T) {
 	m := &Member{}
-	assert.True(t, m.Unrestricted())
-	assert.ElementsMatch(t, Scopes, m.EffectiveScopes())
-
-	// Et la même personne, vue par le jeton, passe partout.
-	assert.True(t, auth.Claims{Scopes: m.Scopes}.Allows(auth.ScopeFood))
-	assert.True(t, auth.Claims{Scopes: m.Scopes}.Allows(auth.ScopeVTC))
+	assert.False(t, m.CoversEverything())
+	for _, sc := range Scopes {
+		assert.False(t, auth.Claims{Scopes: m.Scopes}.Allows(sc), "une liste vide n'accorde pas %q", sc)
+	}
 }
 
-// ⚠️ LES TROIS PORTÉES SE RÉDUISENT À AUCUNE. Sans cette réduction, ajouter
-// une quatrième verticale demain laisserait ces gens DEHORS : ils porteraient
-// « toutes » les portées d'hier, pas celles d'aujourd'hui — et la panne
-// arriverait des mois après la décision qui l'a causée.
-func TestAllScopesCollapseToUnrestricted(t *testing.T) {
+// Une fiche ACTIVE doit porter au moins une portée. Une fiche qui n'accorde
+// rien n'est pas une fiche : c'est une ligne qui fait croire à une
+// habilitation.
+func TestAtLeastOneScopeIsRequired(t *testing.T) {
+	_, err := normaliseScopes(nil)
+	require.Error(t, err)
+	assert.Equal(t, "validation_failed", apperr.From(err).Code)
+
+	_, err = normaliseScopes([]string{"  ", ""})
+	require.Error(t, err, "des chaînes vides ne font pas une portée")
+}
+
+// ⚠️ COUVRIR TOUT S'ÉCRIT EN TROIS PORTÉES, et se stocke ainsi.
+//
+// Aucune réduction vers une valeur « toutes » : elle aurait fait deux façons
+// d'exprimer la même chose, et le jour où une quatrième verticale apparaît,
+// cette valeur aurait continué de désigner les trois d'hier — sans que rien ne
+// le signale. Écrire la liste, c'est écrire une date.
+func TestFullCoverageIsStoredAsThreeScopes(t *testing.T) {
 	out, err := normaliseScopes([]string{auth.ScopeCore, auth.ScopeFood, auth.ScopeVTC})
 	require.NoError(t, err)
-	assert.Nil(t, out, "les trois portées se stockent comme aucune restriction")
+	assert.Len(t, out, 3, "les trois portées se stockent telles quelles")
 
-	partial, err := normaliseScopes([]string{auth.ScopeVTC})
-	require.NoError(t, err)
-	assert.Equal(t, []string{auth.ScopeVTC}, partial)
+	full := &Member{Scopes: out}
+	assert.True(t, full.CoversEverything())
+	partial := &Member{Scopes: []string{auth.ScopeVTC}}
+	assert.False(t, partial.CoversEverything())
 }
 
 // Les doublons et la casse ne créent pas de périmètres différents.
@@ -52,41 +73,56 @@ func TestUnknownScopeIsRefused(t *testing.T) {
 	assert.Equal(t, "validation_failed", apperr.From(err).Code)
 }
 
-// ⚠️ LE PIÈGE. Une fiche SUSPENDUE ne doit pas rendre une liste vide : vide
-// veut dire « aucune restriction », et une suspension aurait donc transformé
-// la personne en administrateur tout-puissant — exactement l'inverse de
-// l'intention, et sans que rien ne le signale.
-func TestSuspendedMemberDoesNotBecomeUnrestricted(t *testing.T) {
-	suspended := &Member{Status: StatusSuspended, Scopes: []string{auth.ScopeVTC}}
-	// ⚠️ On appelle la VRAIE règle, pas des claims fabriqués : un test écrit
-	// sur des valeurs saisies à la main aurait continué de passer si cette
-	// décision changeait.
-	got := scopesFor(suspended)
-	require.NotEmpty(t, got, "une liste vide voudrait dire « aucune restriction »")
-	claims := auth.Claims{Scopes: got}
-	assert.False(t, claims.Allows(auth.ScopeVTC), "une fiche suspendue n'ouvre plus rien")
-	assert.False(t, claims.Allows(auth.ScopeFood))
-	assert.False(t, claims.Allows(auth.ScopeCore))
-
-	// Et le membre lui-même reste lisible : la console doit pouvoir montrer
-	// le périmètre qu'il AVAIT, sinon on ne sait pas quoi rétablir.
-	assert.Equal(t, []string{auth.ScopeVTC}, suspended.EffectiveScopes())
-
-	// Les deux autres cas de la même règle, sur la même fonction.
-	assert.Nil(t, scopesFor(nil), "pas de fiche de staff : aucune restriction")
+// ⚠️ Les TROIS cas de `scopesFor` rendent une liste vide, qui n'accorde rien.
+//
+// C'est ce que la convention littérale achète : suspendre quelqu'un, retirer
+// sa fiche, ou ne jamais lui en donner produisent le même résultat sûr, sans
+// valeur magique à retenir.
+func TestScopesForCoversTheThreeCases(t *testing.T) {
+	assert.Nil(t, scopesFor(nil), "pas de fiche : n'administre rien")
+	assert.Nil(t, scopesFor(&Member{Status: StatusSuspended, Scopes: []string{auth.ScopeVTC}}),
+		"fiche suspendue : habilitations retirées")
 	assert.Equal(t, []string{auth.ScopeVTC},
 		scopesFor(&Member{Status: StatusActive, Scopes: []string{auth.ScopeVTC}}))
+
+	// Et une fiche suspendue reste LISIBLE : la console doit pouvoir montrer
+	// le périmètre qu'elle rendra, sinon on ne sait pas quoi rétablir.
+	suspended := &Member{Status: StatusSuspended, Scopes: []string{auth.ScopeVTC}}
+	assert.Equal(t, []string{auth.ScopeVTC}, suspended.Scopes)
 }
 
-// La réponse dit EXPLICITEMENT « aucune restriction » plutôt que de laisser la
-// console déduire d'une liste pleine : les deux se ressemblent à l'écran et ne
-// se modifient pas pareil.
-func TestResponseStatesUnrestrictedExplicitly(t *testing.T) {
-	full := toResponse(&Member{})
-	assert.True(t, full.Unrestricted)
-	assert.ElementsMatch(t, Scopes, full.Scopes)
+// La réponse porte la liste ET le résumé calculé. `scopes` reste la seule
+// vérité — c'est lui qu'on modifie.
+func TestResponseCarriesScopesAndSummary(t *testing.T) {
+	full := toResponse(&Member{Scopes: []string{auth.ScopeCore, auth.ScopeFood, auth.ScopeVTC}})
+	assert.True(t, full.CoversEverything)
+	assert.Len(t, full.Scopes, 3)
 
 	scoped := toResponse(&Member{Scopes: []string{auth.ScopeFood}})
-	assert.False(t, scoped.Unrestricted)
+	assert.False(t, scoped.CoversEverything)
 	assert.Equal(t, []string{auth.ScopeFood}, scoped.Scopes)
+}
+
+// ⚠️ LIRE L'ÉQUIPE ET LA MODIFIER NE SONT PAS LE MÊME GESTE.
+//
+// Sans cette distinction, un chargé de support pouvait s'attribuer toutes les
+// portées : le périmètre ne bornait alors plus personne, puisque tout le monde
+// pouvait se le retirer. Une habilitation qu'on peut s'accorder soi-même n'en
+// est pas une.
+func TestOnlyDirectionMayChangeTheTeam(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		member *Member
+		allow  bool
+	}{
+		{"direction active", &Member{Function: FunctionAdmin, Status: StatusActive}, true},
+		{"support", &Member{Function: FunctionSupport, Status: StatusActive}, false},
+		{"exploitation", &Member{Function: FunctionOps, Status: StatusActive}, false},
+		{"direction SUSPENDUE", &Member{Function: FunctionAdmin, Status: StatusSuspended}, false},
+		{"aucune fiche", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.allow, mayChangeTeam(tc.member))
+		})
+	}
 }

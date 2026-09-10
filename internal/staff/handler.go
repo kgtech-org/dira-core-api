@@ -92,9 +92,8 @@ func (h *Handler) vocabulary(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"functions": Functions,
 		"scopes":    Scopes,
-		// ⚠️ Dit EXPLICITEMENT ce que « aucune portée » signifie. Sans cette
-		// ligne, une console qui affiche une liste de cases à cocher toutes
-		// vides laisse croire que la personne n'a accès à rien.
-		"empty_scopes_means": "all",
+		// ⚠️ Dit EXPLICITEMENT ce que « aucune portée » signifie, pour qu'une
+		// console n'ait pas à le supposer. La réponse est littérale : rien.
+		"empty_scopes_means": "nothing",
 	})
 }

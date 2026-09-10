@@ -169,8 +169,9 @@ paths:
       summary: List Dira staff
       description: >
         Un membre du staff EST un compte `admin`, avec une fonction et un
-        PÉRIMÈTRE. `scopes` vide signifie TOUTES les verticales — `unrestricted`
-        le dit explicitement pour qu'aucune console n'ait à le déduire.
+        PÉRIMÈTRE. ⚠️ `scopes` VIDE N'ACCORDE RIEN : couvrir toute la
+        plateforme s'écrit en énumérant les trois portées. `covers_everything`
+        est un résumé calculé, `scopes` reste la seule vérité.
       parameters:
         - {name: function, in: query, schema: {type: string}}
         - {name: scope, in: query, schema: {type: string, enum: [core, food, vtc]}}
@@ -183,8 +184,10 @@ paths:
       tags: [admin, staff]
       summary: Attach a staff record to an admin account
       description: >
-        Le compte doit déjà porter le rôle `admin`. Attacher une fiche à un
-        client lui donnerait un titre sans lui donner l'accès.
+        Le compte doit déjà porter le rôle `admin`, et au moins une portée est
+        exigée : une fiche qui n'accorde rien fait croire à une habilitation.
+        ⚠️ Réservé aux membres dont la FONCTION est `admin` — une habilitation
+        qu'on peut s'accorder soi-même n'en est pas une.
       responses:
         "201": {description: Created}
         "409": {description: This account already has a staff record}
@@ -196,6 +199,7 @@ paths:
       description: >
         Pour que la console propose exactement ce que le serveur accepte.
         Deux listes recopiées divergeraient au premier ajout.
+        `empty_scopes_means` vaut `nothing`.
       responses:
         "200": {description: Vocabulary}
   /admin/staff/{id}:

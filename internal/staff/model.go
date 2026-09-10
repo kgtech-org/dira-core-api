@@ -16,6 +16,7 @@
 package staff
 
 import (
+	"slices"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -66,11 +67,16 @@ type Member struct {
 	Function string             `bson:"function"`
 	// Scopes : les verticales que cette personne administre.
 	//
-	// ⚠️ VIDE = TOUTES, comme dans le jeton. La règle est la même des deux
-	// côtés à dessein : deux conventions inverses — vide=tout ici, vide=rien
-	// là-bas — auraient produit un membre affiché « accès complet » et refusé
-	// partout, sans que rien ne l'explique.
-	Scopes []string `bson:"scopes,omitempty"`
+	// ⚠️ TOUJOURS EXPLICITE, et jamais vide sur une fiche active. Couvrir
+	// toute la plateforme s'écrit en énumérant les trois portées, pas en
+	// laissant la liste vide : une liste vide n'accorde rien, ici comme dans
+	// le jeton, et c'est ce qui permet de suspendre quelqu'un en la vidant.
+	//
+	// Il n'existe pas de valeur « all » : elle aurait fait deux façons
+	// d'exprimer la même chose, et le jour où une quatrième verticale
+	// apparaît, « all » aurait continué de désigner les trois d'hier — sans
+	// que rien ne le signale.
+	Scopes []string `bson:"scopes"`
 	// Title est l'intitulé humain, celui de la fiche de paie. Libre : « Chargé
 	// de support niveau 2 » n'entre dans aucune énumération, et forcer un
 	// choix aurait rangé tout le monde sous « autre ».
@@ -81,21 +87,19 @@ type Member struct {
 	UpdatedAt time.Time          `bson:"updated_at"`
 }
 
-// EffectiveScopes rend les portées à appliquer, en traduisant « vide » en
-// « toutes ».
+// CoversEverything dit si ce membre couvre TOUTES les verticales.
 //
-// ⚠️ Une méthode plutôt qu'une convention rappelée en commentaire : le jeton,
-// la console et la fiche lisent tous ce champ, et l'un des trois aurait fini
-// par oublier la règle.
-func (m *Member) EffectiveScopes() []string {
-	if len(m.Scopes) == 0 {
-		return append([]string(nil), Scopes...)
+// ⚠️ Calculé, jamais stocké. Un drapeau « accès complet » à côté de la liste
+// aurait été une seconde vérité sur la même chose : le jour où une verticale
+// s'ajoute, le drapeau resterait vrai pour des gens qui ne la couvrent pas.
+func (m *Member) CoversEverything() bool {
+	for _, want := range Scopes {
+		if !slices.Contains(m.Scopes, want) {
+			return false
+		}
 	}
-	return append([]string(nil), m.Scopes...)
+	return len(Scopes) > 0
 }
-
-// Unrestricted dit si ce membre couvre toute la plateforme.
-func (m *Member) Unrestricted() bool { return len(m.Scopes) == 0 }
 
 var (
 	errNotFound     = apperr.NotFound("staff_not_found", "staff member not found")
@@ -103,4 +107,7 @@ var (
 	errBadFunction  = apperr.Validation("unknown staff function")
 	errBadScope     = apperr.Validation("unknown scope: expected core, food or vtc")
 	errNotAdmin     = apperr.Validation("a staff member must be an account with the admin role")
+	errNoScope      = apperr.Validation("at least one scope is required: an empty scope list grants nothing")
+	errNotDirection = apperr.Forbidden("staff_direction_required",
+		"only a staff member with the admin function may change the team")
 )
