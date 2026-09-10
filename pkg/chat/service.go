@@ -17,7 +17,10 @@ var (
 	// errNoDriver : tant que personne n'a pris la course, il n'y a personne à
 	// qui écrire. Un message parti dans le vide serait pire qu'un refus — le
 	// client attendrait une réponse.
-	errNoDriver = apperr.Conflict("no_driver_yet", "no driver has taken this order yet")
+	// ⚠️ Le message ne dit ni « commande » ni « course » : ce paquet sert les
+	// deux, et un texte qui nommerait l'un afficherait « aucun livreur n'a pris
+	// cette commande » à un passager qui attend une voiture.
+	errNoDriver = apperr.Conflict("no_driver_yet", "nobody has taken this yet")
 	errClosed   = apperr.Conflict("conversation_closed", "this conversation is closed")
 	errEmpty    = apperr.Validation("message body is required")
 )
@@ -128,7 +131,7 @@ func (s *Service) List(ctx context.Context, userID, role, refID, after string, l
 		if unread, err = s.repo.CountUnread(ctx, oid, party); err != nil {
 			// Au mieux : un compteur perdu ne doit pas emporter la
 			// conversation elle-même.
-			slog.WarnContext(ctx, "chat: unread count unavailable", "order_id", refID, "error", err)
+			slog.WarnContext(ctx, "chat: unread count unavailable", "ref_id", refID, "error", err)
 			unread = 0
 		}
 	}
@@ -239,7 +242,7 @@ func (s *Service) MarkRead(ctx context.Context, userID, role, refID string) (int
 func (s *Service) access(ctx context.Context, userID, role, refID string) (primitive.ObjectID, *Conversation, string, error) {
 	oid, err := primitive.ObjectIDFromHex(refID)
 	if err != nil {
-		return primitive.NilObjectID, nil, "", apperr.NotFound("order_not_found", "order not found").WithCause(err)
+		return primitive.NilObjectID, nil, "", apperr.NotFound("not_found", "not found").WithCause(err)
 	}
 	conv, err := s.parties.ConversationOf(ctx, refID)
 	if err != nil {
