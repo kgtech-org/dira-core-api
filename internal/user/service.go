@@ -547,7 +547,7 @@ func (s *Service) UserNames(ctx context.Context, ids []string) (map[string]strin
 // différence d'`EnsureMerchantAccount`, qui refuse un compte non marchand.
 // C'est voulu : le provisionnement rejoue le même jeu de données, et échouer
 // parce qu'un compte existe déjà en ferait un outil à usage unique.
-func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, password string) (string, error) {
+func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, email, password string) (string, error) {
 	// ⚠️ `admin` est admis ICI, et nulle part ailleurs. C'est un pouvoir plus
 	// large que le reste de la surface de service, gardé par le même secret :
 	// un service qui peut créer un administrateur peut tout.
@@ -565,8 +565,12 @@ func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, password
 	}
 	// `register`, pas `Register` : l'inscription publique refuse `admin`, et
 	// c'est exactement ce qu'on veut qu'elle continue de faire.
+	// ⚠️ L'E-MAIL COMPTE. La console d'administration se connecte PAR E-MAIL :
+	// un administrateur provisionné sans adresse est un administrateur qui ne
+	// peut pas ouvrir la console — et le message qu'il lit, « numéro de
+	// téléphone ou mot de passe invalide », ne lui dit rien de ce qui manque.
 	resp, err := s.register(ctx, RegisterRequest{
-		Phone: phone, Name: name, Password: password,
+		Phone: phone, Name: name, Email: email, Password: password,
 	}, role)
 	if err != nil {
 		return "", err

@@ -39,7 +39,7 @@ type Accounts interface {
 	// C'est un pouvoir plus large que les autres routes de ce paquet, et il
 	// est gardé par le même secret : un service qui peut créer un
 	// administrateur peut tout.
-	EnsureAccount(ctx context.Context, role, phone, name, password string) (string, error)
+	EnsureAccount(ctx context.Context, role, phone, name, email, password string) (string, error)
 	IDByPhone(ctx context.Context, phone string) (string, error)
 
 	// AccountsByIDs et AccountByID servent les LISTES d'une verticale : une
@@ -206,16 +206,20 @@ func (h *Handler) ensureMerchant(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ensureAccount(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Role     string `json:"role" validate:"required,oneof=client driver merchant admin"`
-		Phone    string `json:"phone" validate:"required,e164"`
-		Name     string `json:"name" validate:"required,min=1,max=120"`
+		Role  string `json:"role" validate:"required,oneof=client driver merchant admin"`
+		Phone string `json:"phone" validate:"required,e164"`
+		Name  string `json:"name" validate:"required,min=1,max=120"`
+		// ⚠️ L'e-mail n'est pas décoratif : la console d'administration se
+		// connecte PAR E-MAIL. Un administrateur provisionné sans adresse ne
+		// peut pas l'ouvrir, et le refus qu'il lit ne dit pas pourquoi.
+		Email    string `json:"email" validate:"omitempty,email"`
 		Password string `json:"password" validate:"required,min=8,max=128"`
 	}
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	id, err := h.accounts.EnsureAccount(r.Context(), req.Role, req.Phone, req.Name, req.Password)
+	id, err := h.accounts.EnsureAccount(r.Context(), req.Role, req.Phone, req.Name, req.Email, req.Password)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

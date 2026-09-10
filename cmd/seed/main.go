@@ -100,7 +100,9 @@ func run(logger *slog.Logger) error {
 	// crée donc pas de doublon, et ne réécrit PAS le mot de passe — un seed
 	// relancé ne doit pas rendre un administrateur inaccessible à celui qui
 	// l'utilisait.
-	id, err := svc.EnsureAccount(ctx, auth.RoleAdmin, adminPhone, "Dira Ops", adminPassword)
+	// L'E-MAIL est passé : la console se connecte par e-mail, et un
+	// administrateur sans adresse ne peut pas l'ouvrir.
+	id, err := svc.EnsureAccount(ctx, auth.RoleAdmin, adminPhone, "Dira Ops", adminEmail, adminPassword)
 	if err != nil {
 		return fmt.Errorf("seed: ensure admin: %w", err)
 	}

@@ -665,7 +665,7 @@ func TestEnsureAccountCanProvisionAnAdmin(t *testing.T) {
 	svc, _, _ := newUserTestService()
 
 	id, err := svc.EnsureAccount(context.Background(), auth.RoleAdmin,
-		"+22890009999", "Ops", "s3cret-password")
+		"+22890009999", "Ops", "", "s3cret-password")
 	require.NoError(t, err)
 	require.NotEmpty(t, id)
 
@@ -692,10 +692,33 @@ func TestEnsureAccountIsIdempotent(t *testing.T) {
 	svc, _, _ := newUserTestService()
 
 	first, err := svc.EnsureAccount(context.Background(), auth.RoleAdmin,
-		"+22890009998", "Ops", "s3cret-password")
+		"+22890009998", "Ops", "", "s3cret-password")
 	require.NoError(t, err)
 	second, err := svc.EnsureAccount(context.Background(), auth.RoleAdmin,
-		"+22890009998", "Ops", "s3cret-password")
+		"+22890009998", "Ops", "", "s3cret-password")
 	require.NoError(t, err)
 	assert.Equal(t, first, second)
+}
+
+// ⚠️ Ce test existe parce que l'administrateur provisionné n'avait PAS
+// d'e-mail, et que la console se connecte PAR E-MAIL. Le compte existait, le
+// mot de passe était bon, et la connexion répondait « numéro de téléphone ou
+// mot de passe invalide » — un message qui ne dit rien de ce qui manque.
+func TestEnsureAccountCarriesTheEmail(t *testing.T) {
+	svc, _, _ := newUserTestService()
+
+	id, err := svc.EnsureAccount(context.Background(), auth.RoleAdmin,
+		"+22890000100", "Dira Ops", "ops@dira.llc", "s3cret-password")
+	require.NoError(t, err)
+
+	row, err := svc.AccountByID(context.Background(), id)
+	require.NoError(t, err)
+	assert.Equal(t, "ops@dira.llc", row.Email)
+
+	// Et il se connecte PAR CETTE ADRESSE, qui est ce que fait la console.
+	resp, err := svc.Login(context.Background(), LoginRequest{
+		Email: "ops@dira.llc", Password: "s3cret-password",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, id, resp.User.ID)
 }
