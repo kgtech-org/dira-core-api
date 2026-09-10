@@ -12,6 +12,12 @@ import (
 const (
 	usersCollection         = "users"
 	refreshTokensCollection = "refresh_tokens"
+
+	// Exportées pour le PROVISIONNEMENT (`cmd/seed`), qui doit pouvoir les
+	// vider — et pour lui seul. Les nommer ailleurs ferait un second écrivain
+	// sur les comptes.
+	CollectionUsers         = usersCollection
+	CollectionRefreshTokens = refreshTokensCollection
 )
 
 // Account statuses.

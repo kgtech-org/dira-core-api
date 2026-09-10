@@ -143,10 +143,30 @@ cp .env.example .env   # adjust values
 go run ./cmd/api       # HTTP API on :8082 (default)
 ```
 
-`docker/Dockerfile` builds the production image — **one binary**, no worker (the
-core does nothing deferred) and no seed (provisioning a demo set belongs to the
-vertical that knows what it is demonstrating, and it opens its accounts through
-the service surface). No ffmpeg either: the core processes no video.
+```sh
+SEED_ADMIN_PASSWORD=<choose-one> go run ./cmd/seed   # the admin, and nothing else
+```
+
+`docker/Dockerfile` builds the production image — **two binaries**, `api` and
+`seed`. No worker (the core does nothing deferred), and no ffmpeg (it processes
+no video).
+
+> ⚠️ **`seed` provisions the ADMIN, and nothing else.** The core does not know
+> what a restaurant or a trip is; each vertical seeds its own demo set and asks
+> the core to open the accounts it needs through
+> `/internal/accounts/ensure`. This binary exists for one real case: **a core
+> deployed alone has nobody to sign in with**. Without it you would have to seed
+> an entire vertical to obtain an administrator, or write into the database by
+> hand.
+>
+> It writes **directly** into the core's database, and that is the only place
+> where doing so is legitimate — it is its own. A vertical goes through the
+> service surface: two writers on one table means the second always ignores
+> something the first guarantees.
+>
+> ⚠️ `--reset` **drops every account of the platform** — users, sessions,
+> addresses. Orders and rides in the verticals would survive and point at
+> accounts that no longer exist. Refused outright in production.
 
 | Route | Content |
 |---|---|

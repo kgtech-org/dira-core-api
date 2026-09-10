@@ -1,9 +1,12 @@
 # Image de PRODUCTION de dira-core-api — LE SOCLE de la plateforme.
 #
-# Un seul binaire : `api`. Pas de worker — le socle ne fait rien en différé ;
-# pas de seed — le provisionnement d'un jeu de démo appartient à la verticale
-# qui sait ce qu'elle démontre, et il ouvre ses comptes par la surface de
-# service.
+# Deux binaires : `api` et `seed`. Pas de worker — le socle ne fait rien en
+# différé.
+#
+# ⚠️ `seed` n'amorce QUE l'administrateur. Le jeu de démonstration appartient à
+# la verticale qui sait ce qu'elle démontre, et elle ouvre ses comptes par la
+# surface de service. Ce binaire existe pour un cas précis : un socle déployé
+# SEUL n'a personne pour s'y connecter.
 #
 # Pas de ffmpeg non plus : le socle ne traite ni vidéo ni vignette. L'image de
 # la livraison le porte parce que son worker compresse des shorts ; l'installer
@@ -16,13 +19,17 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/api ./cmd/api && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/seed ./cmd/seed
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata && adduser -D -u 10001 app
 WORKDIR /app
 
 COPY --from=build /out/api /app/api
+# Provisionnement one-shot de l'administrateur : lancé explicitement, jamais au
+# démarrage. ⚠️ `--reset` VIDE les comptes de TOUTE la plateforme.
+COPY --from=build /out/seed /app/seed
 # LOCALES_PATH=locales (chemin relatif au WORKDIR) — voir docker-compose.
 # Les gabarits de notification sont traduits ici : c'est le socle qui envoie,
 # pour les deux verticales.
