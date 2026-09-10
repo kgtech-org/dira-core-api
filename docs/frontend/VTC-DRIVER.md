@@ -27,11 +27,11 @@ Conventions communes : voir [`FOOD-CLIENT.md` §1](FOOD-CLIENT.md).
 ## 2. Le profil chauffeur
 
 ```
-GET  /drivers/me                    → crée le profil au premier appel
-POST /drivers/me/online             { "online": true | false }
-GET  /drivers/me/vehicles
-POST /drivers/me/vehicles           { class_key, brand, model, license_plate, color, seats, photo_url }
-POST /drivers/me/active-vehicle     { "vehicle_id": "…" }
+GET   /drivers/me                   → crée le profil au premier appel
+PATCH /drivers/me/online            { "online": true | false }
+GET   /drivers/me/vehicles
+POST  /drivers/me/vehicles          { class_key, brand, model, license_plate, color, seats, photo_url }
+PATCH /drivers/me/active-vehicle    { "vehicle_id": "…" }
 ```
 
 ```json

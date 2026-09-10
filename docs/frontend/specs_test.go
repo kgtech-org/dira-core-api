@@ -40,8 +40,12 @@ var sharedSegments = map[string]bool{
 }
 
 var (
-	routeCall    = regexp.MustCompile(`(?:^|[.\s])(?:Get|Post|Put|Patch|Delete)\("(/[^"]*)"`)
-	specCitation = regexp.MustCompile(`\b(?:GET|POST|PUT|PATCH|DELETE)\s+` + "`?" + `(/[a-zA-Z0-9/{}_.:-]*)`)
+	// ⚠️ Le VERBE est capturé, pas seulement le chemin. Sans lui, un `PATCH`
+	// annoncé `POST` passerait — et c'est exactement l'erreur qui s'était
+	// glissée dans `VTC-DRIVER.md` sur trois routes, découverte le jour où le
+	// test des courses a commencé à comparer les verbes.
+	routeCall    = regexp.MustCompile(`(?:^|[.\s])(Get|Post|Put|Patch|Delete)\("(/[^"]*)"`)
+	specCitation = regexp.MustCompile(`\b(GET|POST|PUT|PATCH|DELETE)\s+` + "`?" + `(/[a-zA-Z0-9/{}_.:-]*)`)
 	anyParam     = regexp.MustCompile(`\{[^}]*\}|:[a-zA-Z_][a-zA-Z0-9_]*`)
 )
 
@@ -53,6 +57,14 @@ var (
 // normalisation, le test signalerait des routes parfaitement servies, et on
 // apprend vite à ignorer un test qui crie à tort.
 func normaliseParams(p string) string { return anyParam.ReplaceAllString(p, "{}") }
+
+// pathOf retire le verbe d'une entrée « VERBE /chemin ».
+func pathOf(route string) string {
+	if i := strings.IndexByte(route, ' '); i >= 0 {
+		return route[i+1:]
+	}
+	return route
+}
 
 func firstSegment(p string) string {
 	parts := strings.Split(strings.TrimPrefix(p, "/"), "/")
@@ -76,7 +88,7 @@ func mountedRoutes(t *testing.T) map[string]bool {
 				return err
 			}
 			for _, m := range routeCall.FindAllStringSubmatch(string(body), -1) {
-				out[normaliseParams(m[1])] = true
+				out[strings.ToUpper(m[1])+" "+normaliseParams(m[2])] = true
 			}
 			return nil
 		}))
@@ -100,7 +112,7 @@ func TestSpecsCiteRoutesThisServiceServes(t *testing.T) {
 
 	owned := map[string]bool{}
 	for route := range mounted {
-		if seg := firstSegment(route); seg != "" && !sharedSegments[seg] && seg != "internal" && seg != "webhooks" {
+		if seg := firstSegment(pathOf(route)); seg != "" && !sharedSegments[seg] && seg != "internal" && seg != "webhooks" {
 			owned[seg] = true
 		}
 	}
@@ -113,16 +125,18 @@ func TestSpecsCiteRoutesThisServiceServes(t *testing.T) {
 	checked := 0
 	for name, body := range specs {
 		for _, m := range specCitation.FindAllStringSubmatch(body, -1) {
-			cited := normaliseParams(strings.TrimRight(m[1], ".,;`"))
-			if strings.HasPrefix(cited, "/api/v1") {
+			path := normaliseParams(strings.TrimRight(m[2], ".,;`"))
+			if strings.HasPrefix(path, "/api/v1") {
 				continue // exemple d'URL complète, pas une citation de route
 			}
-			if !owned[firstSegment(cited)] {
+			if !owned[firstSegment(path)] {
 				continue // à une verticale, ou au suivi
 			}
+			cited := m[1] + " " + path
 			checked++
 			assert.True(t, mounted[cited],
-				"%s cite %s, que le SOCLE ne sert pas — une équipe mobile appellera une route absente",
+				"%s cite %s, que le SOCLE ne sert pas — une équipe mobile appellera une route absente "+
+					"(vérifiez le VERBE autant que le chemin)",
 				name, cited)
 		}
 	}
