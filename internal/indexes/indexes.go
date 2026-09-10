@@ -85,6 +85,32 @@ var applicationIndexes = []db.Index{
 	{Collection: "ratings", Keys: db.K("order_id", 1, "target_type", 1, "target_id", 1), Unique: true},
 	// La liste des avis d'une cible, du plus récent au plus ancien.
 	{Collection: "ratings", Keys: db.K("target_type", 1, "target_id", 1, "_id", -1)},
+
+	// --- flottes privées ---
+	//
+	// ⚠️ Le NOM est UNIQUE, et c'est ce qui empêche deux exploitants traitant
+	// le même contrat d'enregistrer deux fois la même société. Un contrôle
+	// applicatif « ce nom existe-t-il ? » laisse passer les deux écritures
+	// concurrentes, et la base porte alors deux flottes que rien ne distingue.
+	{Collection: "fleets", Keys: db.K("name", 1), Unique: true},
+	// La liste de l'administration, filtrée par état.
+	{Collection: "fleets", Keys: db.K("status", 1, "_id", -1)},
+	// « Quelle flotte gère ce compte ? » — la question que pose la connexion
+	// d'un gérant. PARTIEL : une flotte enregistrée sur contrat papier n'a pas
+	// encore de gérant, et indexer ces absences coûterait sans rien répondre.
+	{Collection: "fleets", Keys: db.K("owner_user_id", 1),
+		PartialFilter: bson.D{{Key: "owner_user_id", Value: bson.D{{Key: "$exists", Value: true}}}}},
+
+	// --- staff ---
+	//
+	// ⚠️ UNE fiche par compte. Deux fiches contradictoires décideraient des
+	// droits d'une personne selon celle qu'on lit en premier — et un contrôle
+	// applicatif « a-t-il déjà une fiche ? » laisse passer deux créations
+	// concurrentes.
+	{Collection: "staff_members", Keys: db.K("user_id", 1), Unique: true},
+	// La liste de l'administration, filtrée par fonction ou par état.
+	{Collection: "staff_members", Keys: db.K("function", 1, "_id", -1)},
+	{Collection: "staff_members", Keys: db.K("status", 1, "_id", -1)},
 }
 
 // Ensure pose les index du socle. Idempotent : Mongo ignore un index déjà

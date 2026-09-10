@@ -36,6 +36,11 @@ var declaredSurface = []string{
 	"/internal/backoffice/refund-order-payment",
 	"/internal/backoffice/token-transactions",
 	"/internal/backoffice/wallets",
+	// Les NOMS des flottes privées — et rien d'autre. Une verticale affiche
+	// « Flotte Sodigaz » à côté d'une plaque ; lui ouvrir la fiche entière lui
+	// confierait un contrat et une commission qu'elle n'a aucune raison de
+	// porter, et qu'elle finirait par recopier chez elle.
+	"/internal/fleets/names",
 	"/internal/notifications/send",
 	"/internal/payments/initiate",
 	"/internal/ratings",

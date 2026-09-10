@@ -146,7 +146,7 @@ func Auth(m *auth.Manager) func(http.Handler) http.Handler {
 				httpx.Error(w, r, auth.ErrInvalidToken)
 				return
 			}
-			ctx := auth.WithUser(r.Context(), claims.UserID, claims.Role)
+			ctx := auth.WithClaims(r.Context(), claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -167,6 +167,37 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 			}
 			if _, ok := allowed[role]; !ok {
 				httpx.Error(w, r, apperr.Forbidden("forbidden", "role not allowed"))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireScope refuse un administrateur dont la portée ne couvre pas cette
+// verticale.
+//
+// ⚠️ C'est ce qui fait la différence entre des habilitations et une
+// décoration. Un « périmètre » affiché sur une fiche de staff mais qu'aucune
+// route ne vérifie donne à l'exploitation la certitude d'avoir restreint
+// quelqu'un qui ne l'est pas — pire que de n'avoir rien restreint, parce que
+// personne ne surveille plus.
+//
+// À poser DANS chaque verticale, sur ses routes d'administration :
+// `middleware.RequireScope(auth.ScopeFood)`. Le socle ne peut pas le faire
+// pour elles — il ne voit pas leurs routes.
+//
+// Une portée absente autorise tout : voir `auth.Claims.Scopes`.
+func RequireScope(scope string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := auth.RoleFromContext(r.Context()); !ok {
+				httpx.Error(w, r, apperr.Unauthorized("missing_token", "missing bearer token"))
+				return
+			}
+			if !auth.AllowsFromContext(r.Context(), scope) {
+				httpx.Error(w, r, apperr.Forbidden("out_of_scope",
+					"your staff scope does not cover this part of the platform"))
 				return
 			}
 			next.ServeHTTP(w, r)

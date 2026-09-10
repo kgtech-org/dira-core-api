@@ -27,14 +27,17 @@ import (
 	"github.com/kgtech-org/dira-core-api/api"
 	"github.com/kgtech-org/dira-core-api/internal/callback"
 	"github.com/kgtech-org/dira-core-api/internal/config"
+	"github.com/kgtech-org/dira-core-api/internal/fleet"
 	"github.com/kgtech-org/dira-core-api/internal/indexes"
 	"github.com/kgtech-org/dira-core-api/internal/notify"
 	"github.com/kgtech-org/dira-core-api/internal/payment"
 	"github.com/kgtech-org/dira-core-api/internal/rating"
 	"github.com/kgtech-org/dira-core-api/internal/serviceapi"
+	"github.com/kgtech-org/dira-core-api/internal/staff"
 	"github.com/kgtech-org/dira-core-api/internal/token"
 	"github.com/kgtech-org/dira-core-api/internal/user"
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
+	"github.com/kgtech-org/dira-core-api/pkg/audit"
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
 	"github.com/kgtech-org/dira-core-api/pkg/db"
 	"github.com/kgtech-org/dira-core-api/pkg/docs"
@@ -187,6 +190,29 @@ func run(logger *slog.Logger) error {
 
 	docs.Mount(router, "Dira Core API — Documentation", api.OpenAPISpec)
 
+	// ⚠️ LE SOCLE N'AUDITAIT RIEN. Plusieurs de ses modules déclaraient une
+	// interface `Auditor` — `token`, `rating` — et aucun enregistreur n'était
+	// branché : les gestes sensibles du service qui tient l'argent et les
+	// comptes ne laissaient aucune trace. Une interface prévue et jamais
+	// câblée se lit, à la relecture, comme une garantie qui existe.
+	auditRec := audit.NewRecorder(mongo.DB)
+
+	fleetSvc := fleet.NewService(fleet.NewRepository(mongo))
+	fleetSvc.SetAuditor(auditRec)
+
+	// LE STAFF : les employés de Dira, leur fonction et leur PÉRIMÈTRE.
+	//
+	// ⚠️ Le périmètre n'est pas décoratif : il est inscrit dans le jeton à la
+	// connexion et vérifié par `middleware.RequireScope` dans chaque
+	// verticale. Un « périmètre » affiché sur une fiche mais qu'aucune route
+	// ne contrôle donnerait à l'exploitation la certitude d'avoir restreint
+	// quelqu'un qui ne l'est pas.
+	staffSvc := staff.NewService(staff.NewRepository(mongo), staff.FromAccounts{Reader: userAccounts{svc: userSvc}})
+	staffSvc.SetAuditor(auditRec)
+	// ⚠️ Réglé APRÈS construction, pour casser le cycle : le staff a besoin
+	// des comptes, et les comptes ont besoin des portées.
+	userSvc.SetStaffScopes(staffSvc)
+
 	router.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 			httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -215,6 +241,19 @@ func run(logger *slog.Logger) error {
 		// socle ne sait pas si une commande est livrée — la verticale valide,
 		// puis dépose.
 		rating.NewHandler(ratingSvc).Mount(r, middleware.Service(cfg.ServiceToken))
+		// LES FLOTTES PRIVÉES — les sociétés qui possèdent des véhicules
+		// conduits par d'autres. Au socle parce qu'une même société possède
+		// des motos qui livrent ET des voitures qui font des courses : la
+		// loger dans une verticale aurait obligé l'autre à lire la base de sa
+		// voisine pour afficher un nom de propriétaire.
+		//
+		// Les VÉHICULES, eux, restent dans leur verticale : une moto de
+		// livraison et une berline VTC n'ont ni les mêmes champs ni les mêmes
+		// lecteurs.
+		staff.NewHandler(staffSvc).Mount(r, authMW)
+		fleetHandler := fleet.NewHandler(fleetSvc)
+		fleetHandler.Mount(r, authMW)
+		fleetHandler.MountService(r, middleware.Service(cfg.ServiceToken))
 		// ⚠️ LA SURFACE DE SERVICE DU SOCLE. Ces routes portent les pouvoirs
 		// d'une verticale — débiter un portefeuille, ouvrir un compte — et
 		// n'ont aucun sens pour une personne. Elles sont gardées par le secret
@@ -291,4 +330,38 @@ func (p fcmPusher) Push(ctx context.Context, msgs []notify.PushMessage) ([]notif
 		})
 	}
 	return results, nil
+}
+
+// userAccounts adapte le service des comptes à ce que le module de staff lit.
+//
+// ⚠️ La traduction vit ICI, au câblage, et pas dans l'un des deux modules :
+// c'est ce qui permet à `internal/staff` de tester ses règles de portée sans
+// annuaire, et à `internal/user` d'ignorer qu'un staff existe.
+type userAccounts struct{ svc *user.Service }
+
+func (a userAccounts) AccountByID(ctx context.Context, id string) (*staff.AccountRow, error) {
+	row, err := a.svc.AccountByID(ctx, id)
+	if err != nil || row == nil {
+		return nil, err
+	}
+	out := staffRow(*row)
+	return &out, nil
+}
+
+func (a userAccounts) AccountsByIDs(ctx context.Context, ids []string) ([]staff.AccountRow, error) {
+	rows, err := a.svc.AccountsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]staff.AccountRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, staffRow(r))
+	}
+	return out, nil
+}
+
+func staffRow(r user.AccountRow) staff.AccountRow {
+	return staff.AccountRow{
+		ID: r.ID, Role: r.Role, Name: r.Name, Phone: r.Phone, Email: r.Email, Status: r.Status,
+	}
 }

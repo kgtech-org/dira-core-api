@@ -67,7 +67,28 @@ type Service struct {
 	repo    Repo
 	tokens  *auth.Manager
 	wallets WalletCreator
+	// staff rend les PORTÉES d'un administrateur, inscrites dans son jeton.
+	//
+	// FACULTATIF, et il doit le rester : le socle doit pouvoir démarrer et
+	// délivrer des jetons sans que le module de staff soit branché. Un
+	// annuaire d'employés qui empêche les clients de se connecter serait une
+	// dépendance absurde.
+	staff StaffScopes
 }
+
+// StaffScopes est ce que ce service demande au module de staff.
+//
+// Déclarée côté consommateur : `internal/user` n'a pas à connaître le type
+// `Member`, il a besoin d'une liste de portées.
+type StaffScopes interface {
+	ScopesOf(ctx context.Context, userID string) ([]string, error)
+}
+
+// SetStaffScopes branche l'annuaire des habilitations.
+//
+// Un réglage séparé du constructeur pour casser le cycle : le module de staff
+// a besoin des comptes, et les comptes ont besoin des portées.
+func (s *Service) SetStaffScopes(sc StaffScopes) { s.staff = sc }
 
 // NewService builds the user service. tokens issues/verifies JWTs; wallets is
 // the token module adapter used to create driver wallets at registration.
@@ -422,11 +443,33 @@ func (s *Service) findUser(ctx context.Context, userID string) (*User, error) {
 // granularity), colliding on the unique token_hash index and defeating
 // single-use rotation.
 func (s *Service) issueTokens(ctx context.Context, u *User) (TokenPairResponse, error) {
-	access, err := s.tokens.GenerateAccess(u.ID.Hex(), u.Role)
+	// ⚠️ LA PORTÉE DU STAFF EST INSCRITE DANS LE JETON, à l'émission. Elle
+	// voyage avec lui parce que chaque verticale le vérifie LOCALEMENT :
+	// la faire lire au socle à chaque requête referait de lui le point de
+	// panne unique que la vérification locale existe pour éviter.
+	//
+	// Conséquence assumée, la même que pour la suspension d'un compte :
+	// retirer un périmètre ne coupe pas les sessions en cours. Le
+	// rafraîchissement est refusé, donc la porte se referme à l'expiration de
+	// l'accès — quinze minutes.
+	//
+	// AU MIEUX : si la lecture échoue, on émet sans portée plutôt que de
+	// refuser la connexion. Un annuaire de staff en panne ne doit pas
+	// empêcher les clients de se connecter.
+	var scopes []string
+	if s.staff != nil {
+		if got, err := s.staff.ScopesOf(ctx, u.ID.Hex()); err == nil {
+			scopes = got
+		} else {
+			slog.WarnContext(ctx, "user: staff scopes unavailable, issuing an unrestricted token",
+				"user_id", u.ID.Hex(), "error", err)
+		}
+	}
+	access, err := s.tokens.GenerateAccess(u.ID.Hex(), u.Role, scopes...)
 	if err != nil {
 		return TokenPairResponse{}, apperr.Internal(err)
 	}
-	refreshJWT, err := s.tokens.GenerateRefresh(u.ID.Hex(), u.Role)
+	refreshJWT, err := s.tokens.GenerateRefresh(u.ID.Hex(), u.Role, scopes...)
 	if err != nil {
 		return TokenPairResponse{}, apperr.Internal(err)
 	}
