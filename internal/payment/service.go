@@ -371,3 +371,22 @@ func (s *Service) ConfirmSandboxPayment(ctx context.Context, paymentID string) e
 
 // SetPreferences branche l'opérateur habituel des clients (câblage).
 func (s *Service) SetPreferences(p PaymentPreferences) { s.preferences = p }
+
+// InitiateFor starts a payment ON BEHALF OF a client, at a vertical's request.
+//
+// ⚠️ Sert au canal WhatsApp : une commande passée hors de l'application n'a pas
+// de session, et personne pour appuyer sur « payer ». La verticale déclenche,
+// le client reçoit un lien.
+//
+// Rend l'URL SEULE et non la réponse entière : l'appelant n'a besoin que de
+// cela, et lui rendre l'objet complet ferait traverser au réseau des champs
+// qu'aucune verticale n'a à connaître.
+func (s *Service) InitiateFor(ctx context.Context, clientID, purpose, refID string, amountXOF int) (string, error) {
+	resp, err := s.Initiate(ctx, clientID, InitiatePaymentRequest{
+		Purpose: purpose, RefID: refID, Amount: amountXOF,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.PaymentURL, nil
+}

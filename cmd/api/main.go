@@ -179,7 +179,7 @@ func run(logger *slog.Logger) error {
 		// d'une verticale — débiter un portefeuille, ouvrir un compte — et
 		// n'ont aucun sens pour une personne. Elles sont gardées par le secret
 		// partagé, et rassemblées en un seul endroit pour être auditables.
-		serviceapi.NewHandler(userSvc, tokenSvc, notifySvc).
+		serviceapi.NewHandler(userSvc, tokenSvc, notifySvc, paymentSvc).
 			Mount(r, middleware.Service(cfg.ServiceToken))
 	})
 

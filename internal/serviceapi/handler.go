@@ -50,6 +50,15 @@ type Wallets interface {
 	CreditEarnings(ctx context.Context, ownerID string, amountXOF int, reason, orderID string, ref map[string]any) error
 }
 
+// Payments starts a mobile-money payment ON BEHALF OF a person.
+//
+// ⚠️ Sert au canal WhatsApp : une commande passée hors de l'application n'a
+// pas de session, et personne pour appuyer sur « payer ». C'est la verticale
+// qui déclenche, au nom du client.
+type Payments interface {
+	InitiateFor(ctx context.Context, clientID, purpose, refID string, amountXOF int) (paymentURL string, err error)
+}
+
 // Notifier sends one templated message to one person.
 type Notifier interface {
 	Notify(ctx context.Context, userID, key string, vars map[string]string, data map[string]string)
@@ -60,10 +69,11 @@ type Handler struct {
 	accounts Accounts
 	wallets  Wallets
 	notifier Notifier
+	payments Payments
 }
 
-func NewHandler(a Accounts, w Wallets, n Notifier) *Handler {
-	return &Handler{accounts: a, wallets: w, notifier: n}
+func NewHandler(a Accounts, w Wallets, n Notifier, p Payments) *Handler {
+	return &Handler{accounts: a, wallets: w, notifier: n, payments: p}
 }
 
 // Mount registers the routes under a middleware that checks the service token.
@@ -85,6 +95,7 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/wallets/credit-earnings", h.creditEarnings)
 
 		g.Post("/internal/notifications/send", h.notify)
+		g.Post("/internal/payments/initiate", h.initiatePayment)
 	})
 }
 
@@ -274,4 +285,25 @@ func (h *Handler) notify(w http.ResponseWriter, r *http.Request) {
 	// La verticale n'a donc rien à attendre non plus.
 	h.notifier.Notify(r.Context(), req.UserID, req.Key, req.Vars, req.Data)
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// --- paiements ---
+
+func (h *Handler) initiatePayment(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ClientID string `json:"client_id" validate:"required,len=24,hexadecimal"`
+		Purpose  string `json:"purpose" validate:"required,max=30"`
+		RefID    string `json:"ref_id" validate:"required,len=24,hexadecimal"`
+		Amount   int    `json:"amount" validate:"required,gt=0"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	url, err := h.payments.InitiateFor(r.Context(), req.ClientID, req.Purpose, req.RefID, req.Amount)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, map[string]string{"payment_url": url})
 }
