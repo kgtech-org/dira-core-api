@@ -19,7 +19,27 @@ const (
 	// TypeTranscodeVideo re-encodes an uploaded short into a streamable MP4
 	// and, when missing, extracts its thumbnail.
 	TypeTranscodeVideo = "feed:transcode_video"
+	// TypeRefPaid annonce à une VERTICALE qu'un paiement a abouti.
+	//
+	// ⚠️ La seule tâche du SOCLE, et elle existe pour découpler : le webhook
+	// du prestataire dépendait de la disponibilité de la verticale. Pendant un
+	// redéploiement de la livraison, le paiement d'un client échouait et
+	// c'était au prestataire de réessayer — on faisait porter à l'acheteur la
+	// latence de nos mises en production.
+	TypeRefPaid = "core:ref_paid"
 )
+
+// RefPaidPayload porte de quoi rappeler la bonne verticale.
+//
+// `Purpose` route : le socle ne sait ni ce qu'est une commande, ni ce qu'est
+// une course. `PaymentID` accompagne parce que la verticale en a besoin pour
+// sa trace d'audit — c'est le seul moyen de remonter au prestataire depuis
+// une commande contestée.
+type RefPaidPayload struct {
+	Purpose   string `json:"purpose"`
+	RefID     string `json:"ref_id"`
+	PaymentID string `json:"payment_id"`
+}
 
 type GenerateDishVideoPayload struct {
 	VideoID     string   `json:"video_id"`

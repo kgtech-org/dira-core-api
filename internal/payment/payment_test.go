@@ -401,3 +401,60 @@ func TestWebhookFailsWhenNoVerticalCanBeToldButPaymentIsRecorded(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, StatusSucceeded, stored.Status)
 }
+
+// ⚠️ LE TEST QUI REND RÉCUPÉRABLE UN ÉCHEC DE MISE EN FILE.
+//
+// Le rappel de la verticale part désormais en file. Si la mise en file
+// échoue, le paiement est POURTANT déjà marqué « abouti » : le prestataire
+// réessaie, tombe sur la branche « doublon », et sans ce point d'accroche
+// personne ne serait jamais prévenu — la commande resterait payée et jamais
+// confirmée, exactement le trou que la file était censée fermer.
+func TestDuplicateWebhookRequeuesTheVerticalCallback(t *testing.T) {
+	svc, _, _, mock := newTestService(t)
+	orderID := primitive.NewObjectID().Hex()
+	svc.OnRefPaid = func(context.Context, string, string, string) error { return nil }
+
+	var replayed []string
+	svc.OnRefPaidDuplicate = func(_ context.Context, purpose, refID, paymentID string) error {
+		assert.Equal(t, PurposeOrder, purpose)
+		assert.NotEmpty(t, paymentID)
+		replayed = append(replayed, refID)
+		return nil
+	}
+
+	resp, err := svc.Initiate(context.Background(), primitive.NewObjectID().Hex(), InitiatePaymentRequest{
+		Purpose: PurposeOrder, Amount: 3000, RefID: orderID,
+	})
+	require.NoError(t, err)
+
+	payload, sig := signedEvent(t, mock, resp.Payment.ProviderRef, StatusSucceeded)
+	require.NoError(t, svc.HandleWebhook(context.Background(), "mock", payload, sig))
+	assert.Empty(t, replayed, "le premier passage n'est pas un doublon")
+
+	// Le MÊME webhook, une seconde fois : c'est ce que fait un prestataire
+	// quand il n'a pas reçu notre accusé.
+	require.NoError(t, svc.HandleWebhook(context.Background(), "mock", payload, sig))
+	assert.Equal(t, []string{orderID}, replayed, "le doublon doit ré-enfiler le rappel")
+}
+
+// ⚠️ Et un échec de ré-enfilement ne fait PAS échouer le webhook : on est sur
+// la branche « doublon », le prestataire a déjà eu sa réponse la première
+// fois. Le faire réessayer indéfiniment pour un paiement bien enregistré
+// transformerait une reprise en tempête.
+func TestDuplicateReplayFailureDoesNotFailTheWebhook(t *testing.T) {
+	svc, _, _, mock := newTestService(t)
+	svc.OnRefPaid = func(context.Context, string, string, string) error { return nil }
+	svc.OnRefPaidDuplicate = func(context.Context, string, string, string) error {
+		return errors.New("redis indisponible")
+	}
+
+	resp, err := svc.Initiate(context.Background(), primitive.NewObjectID().Hex(), InitiatePaymentRequest{
+		Purpose: PurposeOrder, Amount: 1500, RefID: primitive.NewObjectID().Hex(),
+	})
+	require.NoError(t, err)
+
+	payload, sig := signedEvent(t, mock, resp.Payment.ProviderRef, StatusSucceeded)
+	require.NoError(t, svc.HandleWebhook(context.Background(), "mock", payload, sig))
+	require.NoError(t, svc.HandleWebhook(context.Background(), "mock", payload, sig),
+		"un doublon dont le ré-enfilement échoue reste un 200")
+}
