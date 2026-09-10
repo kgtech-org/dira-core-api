@@ -96,6 +96,10 @@ type fakeFleet struct {
 	byUser   map[string]string   // compte -> chauffeur
 	vehicles map[string][]string // chauffeur -> véhicules
 	owner    map[string]string   // véhicule -> chauffeur
+	accounts map[string]string   // chauffeur -> compte
+	// accountErr simule un annuaire injoignable, pour vérifier que la file
+	// s'affiche quand même.
+	accountErr error
 }
 
 func newFleet() *fakeFleet {
@@ -103,11 +107,19 @@ func newFleet() *fakeFleet {
 		byUser:   map[string]string{},
 		vehicles: map[string][]string{},
 		owner:    map[string]string{},
+		accounts: map[string]string{},
 	}
 }
 
 func (f *fakeFleet) DriverOf(_ context.Context, userID string) (string, error) {
 	return f.byUser[userID], nil
+}
+
+func (f *fakeFleet) AccountOf(_ context.Context, driverID string) (string, error) {
+	if f.accountErr != nil {
+		return "", f.accountErr
+	}
+	return f.accounts[driverID], nil
 }
 
 func (f *fakeFleet) DriverExists(_ context.Context, driverID string) (bool, error) {
@@ -157,5 +169,6 @@ func (f *fixture) newDriver(t *testing.T, _ int) (userID, vehicleID string) {
 	userID = primitive.NewObjectID().Hex()
 	driverID := primitive.NewObjectID().Hex()
 	f.fleet.byUser[userID] = driverID
+	f.fleet.accounts[driverID] = userID
 	return userID, f.fleet.addVehicle(driverID)
 }
