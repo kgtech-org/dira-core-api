@@ -28,6 +28,15 @@ type Config struct {
 	// vaut moins que pas de porte : n'importe qui pourrait débiter le
 	// portefeuille de n'importe qui.
 	ServiceToken string
+
+	// FoodBaseURL est l'adresse de la VERTICALE livraison, pour les rappels
+	// que le socle lui doit — un paiement de commande abouti, notamment.
+	//
+	// ⚠️ VIDE = rappel IMPOSSIBLE, et le webhook du prestataire reçoit une
+	// erreur plutôt qu'un accusé de réception. C'est voulu : répondre « reçu »
+	// sans avoir prévenu la livraison laisserait une commande payée et jamais
+	// confirmée, et le prestataire ne réessaierait pas.
+	FoodBaseURL string
 }
 
 // Load reads the environment, applies defaults and validates.
@@ -42,6 +51,7 @@ func Load() (*Config, error) {
 		FCMServiceAccountFile: core.Env("FCM_SERVICE_ACCOUNT_FILE", ""),
 		MockPaymentSecret:     core.Env("MOCK_PAYMENT_SECRET", "mock-secret"),
 		ServiceToken:          core.Env("CORE_SERVICE_TOKEN", ""),
+		FoodBaseURL:           core.Env("FOOD_BASE_URL", ""),
 	}
 
 	switch cfg.Env {

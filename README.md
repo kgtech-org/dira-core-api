@@ -93,11 +93,16 @@ store names are added there.
 - **Step C — done.** `dira-food-api` no longer carries those modules: it reaches them through
   `internal/corebridge`, and its own copies are deleted.
 
-> ⚠️ **`OnOrderPaid` is nil, and it is the last real service-to-service gap.** Confirming the
-> payment of an *order* means telling the **vertical**, which alone knows what an order is.
-> The module logs it loudly rather than losing it. Nothing breaks while food takes its own
-> payments — but routing a mobile-money order payment here before that callback exists would
-> leave the order paid and never confirmed.
+> **`OnOrderPaid` now calls the vertical back** — `internal/callback`, the one place where the
+> core talks *to* a vertical rather than being asked. It is deliberately thin and one-way:
+> the core states a fact, once, and asks nothing back. A dependency where each side queries
+> the other would deadlock at startup and stop the core from being deployable alone.
+>
+> ⚠️ The error **propagates to the webhook**. Acknowledging a provider without having told
+> delivery would leave an order paid and never confirmed — and the provider, having received
+> an acknowledgement, would not retry. A failure here makes it retry, which is what we want.
+> With `FOOD_BASE_URL` unset, the service logs an ERROR at startup and every order payment
+> webhook fails loudly.
 
 > **Money movements are idempotent** — the concern that stood here is closed. `PayOrder`,
 > `RefundOrder`, `CreditEarnings` and an order-bound `Consume` reserve their operation inside

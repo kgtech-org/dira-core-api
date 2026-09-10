@@ -24,6 +24,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kgtech-org/dira-core-api/api"
+	"github.com/kgtech-org/dira-core-api/internal/callback"
 	"github.com/kgtech-org/dira-core-api/internal/config"
 	"github.com/kgtech-org/dira-core-api/internal/indexes"
 	"github.com/kgtech-org/dira-core-api/internal/notify"
@@ -123,15 +124,21 @@ func run(logger *slog.Logger) error {
 		return tokenSvc.Credit(ctx, walletOwnerID, tokens, "topup")
 	}
 
-	// ⚠️ `OnOrderPaid` reste NIL, et c'est le premier vrai manque de service à
-	// service : confirmer le paiement d'une commande demande de prévenir la
-	// LIVRAISON, qui seule sait ce qu'est une commande.
+	// `OnOrderPaid` PRÉVIENT LA LIVRAISON. Le socle ne sait pas ce qu'est une
+	// commande : il sait qu'un `ref_id` de type « order » vient d'être payé,
+	// et c'est la verticale qui en tire les conséquences.
 	//
-	// Le module le journalise à voix haute plutôt que de l'oublier. Ce crochet
-	// deviendra un rappel HTTP vers la verticale à l'étape C ; tant que
-	// dira-food-api encaisse lui-même, rien n'est cassé — mais router les
-	// paiements ici avant d'avoir posé ce rappel laisserait des commandes
-	// payées et jamais confirmées.
+	// ⚠️ L'erreur REMONTE jusqu'au webhook. Répondre « reçu » au prestataire
+	// sans avoir prévenu la livraison laisserait une commande payée et jamais
+	// confirmée — et le prestataire, ayant reçu un accusé, ne réessaierait
+	// pas. Un échec ici lui fait retenter ; c'est le comportement voulu.
+	food := callback.New(cfg.FoodBaseURL, cfg.ServiceToken)
+	if !food.Enabled() {
+		logger.Error("FOOD_BASE_URL not set: an order payment cannot be confirmed to the delivery vertical")
+	}
+	paymentSvc.OnOrderPaid = func(ctx context.Context, orderID, paymentID string) error {
+		return food.OrderPaid(ctx, orderID, paymentID)
+	}
 
 	ratingSvc := rating.NewService(rating.NewRepository(mongo), nil)
 

@@ -49,7 +49,7 @@ type Service struct {
 	// Wiring sets it to mark the order paid AND create the delivery
 	// (order.MarkPaid + delivery.CreateForOrder). Nil-safe: skipped with a
 	// warning when unset.
-	OnOrderPaid func(ctx context.Context, orderID string) error
+	OnOrderPaid func(ctx context.Context, orderID, paymentID string) error
 	// OnTokensPurchased is invoked exactly once when a token purchase
 	// succeeds. Wiring sets it to credit the wallet (token.Credit). Nil-safe:
 	// skipped with a warning when unset.
@@ -233,7 +233,10 @@ func (s *Service) confirmSucceeded(ctx context.Context, p *Payment) error {
 			slog.WarnContext(ctx, "payment: OnOrderPaid hook not configured, skipping", "payment_id", p.ID.Hex(), "order_id", p.RefID.Hex())
 			return nil
 		}
-		if err := s.OnOrderPaid(ctx, p.RefID.Hex()); err != nil {
+		// L'identifiant du PAIEMENT part avec : la verticale en a besoin pour
+		// sa trace d'audit, et il est le seul moyen de remonter au
+		// prestataire depuis une commande contestée.
+		if err := s.OnOrderPaid(ctx, p.RefID.Hex(), p.ID.Hex()); err != nil {
 			return apperr.Internal(err)
 		}
 	case PurposeWalletTopup:

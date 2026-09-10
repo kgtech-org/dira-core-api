@@ -180,7 +180,7 @@ func TestHandleWebhook_SucceededOrder(t *testing.T) {
 	orderID := primitive.NewObjectID().Hex()
 
 	var paidOrders []string
-	svc.OnOrderPaid = func(ctx context.Context, id string) error {
+	svc.OnOrderPaid = func(ctx context.Context, id, _ string) error {
 		paidOrders = append(paidOrders, id)
 		return nil
 	}
@@ -206,7 +206,7 @@ func TestHandleWebhook_DoubleDeliveryIsIdempotent(t *testing.T) {
 	svc, _, rec, mock := newTestService(t)
 
 	hookCalls := 0
-	svc.OnOrderPaid = func(ctx context.Context, id string) error {
+	svc.OnOrderPaid = func(ctx context.Context, id, _ string) error {
 		hookCalls++
 		return nil
 	}
@@ -255,7 +255,7 @@ func TestHandleWebhook_Failed(t *testing.T) {
 	svc, repo, rec, mock := newTestService(t)
 
 	hookCalled := false
-	svc.OnOrderPaid = func(ctx context.Context, id string) error {
+	svc.OnOrderPaid = func(ctx context.Context, id, _ string) error {
 		hookCalled = true
 		return nil
 	}
