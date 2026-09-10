@@ -30,6 +30,13 @@ type Accounts interface {
 	ContactOf(ctx context.Context, userID string) (name, phone string, err error)
 	UserNames(ctx context.Context, ids []string) (map[string]string, error)
 	EnsureMerchantAccount(ctx context.Context, phone, name, password string) (string, error)
+	// EnsureAccount ouvre un compte de N'IMPORTE QUEL rôle.
+	//
+	// ⚠️ Sert au PROVISIONNEMENT — le jeu de démonstration d'une verticale.
+	// C'est un pouvoir plus large que les autres routes de ce paquet, et il
+	// est gardé par le même secret : un service qui peut créer un
+	// administrateur peut tout.
+	EnsureAccount(ctx context.Context, role, phone, name, password string) (string, error)
 	IDByPhone(ctx context.Context, phone string) (string, error)
 }
 
@@ -67,6 +74,7 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/accounts/contact", h.contact)
 		g.Post("/internal/accounts/names", h.names)
 		g.Post("/internal/accounts/ensure-merchant", h.ensureMerchant)
+		g.Post("/internal/accounts/ensure", h.ensureAccount)
 		g.Post("/internal/accounts/by-phone", h.byPhone)
 
 		g.Post("/internal/wallets/create", h.createWallet)
@@ -128,6 +136,25 @@ func (h *Handler) ensureMerchant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, err := h.accounts.EnsureMerchantAccount(r.Context(), req.Phone, req.Name, req.Password)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]string{"user_id": id})
+}
+
+func (h *Handler) ensureAccount(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Role     string `json:"role" validate:"required,oneof=client driver merchant admin"`
+		Phone    string `json:"phone" validate:"required,e164"`
+		Name     string `json:"name" validate:"required,min=1,max=120"`
+		Password string `json:"password" validate:"required,min=8,max=128"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	id, err := h.accounts.EnsureAccount(r.Context(), req.Role, req.Phone, req.Name, req.Password)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

@@ -514,3 +514,29 @@ func (s *Service) UserNames(ctx context.Context, ids []string) (map[string]strin
 	}
 	return s.repo.FindNamesByIDs(ctx, oids)
 }
+
+// EnsureAccount ouvre un compte de n'importe quel rôle, ou rend l'existant.
+//
+// ⚠️ Sert au PROVISIONNEMENT : le jeu de démonstration d'une verticale, qui ne
+// peut plus créer de compte lui-même depuis que l'identité vit ici.
+//
+// Un téléphone déjà pris rend le compte EXISTANT sans vérifier son rôle — à la
+// différence d'`EnsureMerchantAccount`, qui refuse un compte non marchand.
+// C'est voulu : le provisionnement rejoue le même jeu de données, et échouer
+// parce qu'un compte existe déjà en ferait un outil à usage unique.
+func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, password string) (string, error) {
+	existing, err := s.repo.FindByPhone(ctx, phone)
+	if err != nil {
+		return "", apperr.Internal(err)
+	}
+	if existing != nil {
+		return existing.ID.Hex(), nil
+	}
+	resp, err := s.Register(ctx, RegisterRequest{
+		Phone: phone, Name: name, Password: password, Role: role,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.User.ID, nil
+}
