@@ -102,6 +102,43 @@ store names are added there.
 > scans the sources and fails on any `/internal/...` route that is not declared. A surface you
 > can read in one place is a surface you can audit — but only if nothing can be added quietly.
 
+## The frontend contracts live here
+
+`docs/frontend/` holds the **five role specs** the mobile teams read — and they
+live in the core, not in a vertical, because they describe **three services**.
+
+| Document | Vertical | Role |
+|---|---|---|
+| `FOOD-CLIENT.md` | delivery | client |
+| `FOOD-MERCHANT.md` | delivery | merchant |
+| `FOOD-DELIVERY.md` | delivery | courier |
+| `VTC-CLIENT.md` | rides | client |
+| `VTC-DRIVER.md` | rides | driver |
+
+> ⚠️ **The file name carries the VERTICAL, deliberately.** "Courier" and
+> "driver" both translate to *driver*: a `DRIVER.md` sitting next to a ride
+> spec let two teams wire the wrong base URL — `/api/v1/food` instead of
+> `/api/v1/vtc` — with nothing in the documents to contradict them. The error
+> would only have shown up as a 404, to people with no access to this code.
+
+Every spec spans core **and** a vertical: signing in and paying are core, the
+rest is not. Keeping them in `dira-food-api` meant the ride contracts lived in
+a repository that does not serve a single ride route.
+
+> ⚠️ **`docs/frontend` is also a Go PACKAGE**, and that is the point. No single
+> repository can verify these documents alone — each knows only its own routes.
+> Being importable lets every vertical check **its own half** from its own
+> repository, with no copy and no network call.
+>
+> Without it, moving these documents here would have dropped the verification
+> from **133** cited routes to **39** — a guarantee quietly emptied, which is
+> worse than one that never existed: people go on believing it protects them.
+>
+> `docs/frontend/specs_test.go` covers the core's share (39 citations), plus
+> two guarantees that belong nowhere else: **all five specs are present**, and
+> they **share one version** — "a frontend quoting v2.1.0 names a precise
+> contract" only holds if nobody can forget to bump one.
+
 ## Status
 
 - **Step A — done.** The shared library is extracted; `dira-food-api` builds on it.
