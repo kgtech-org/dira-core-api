@@ -722,3 +722,40 @@ func TestEnsureAccountCarriesTheEmail(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, id, resp.User.ID)
 }
+
+// Un compte provisionné AVANT que l'adresse ne soit transmise ne peut pas
+// ouvrir la console. Le seed doit pouvoir réparer ce qu'il a créé — sans quoi
+// il faut vider les comptes de toute la plateforme pour corriger un champ.
+func TestEnsureAccountBackfillsAMissingEmail(t *testing.T) {
+	svc, _, _ := newUserTestService()
+	ctx := context.Background()
+
+	id, err := svc.EnsureAccount(ctx, auth.RoleAdmin, "+22890000100", "Dira Ops", "", "s3cret-password")
+	require.NoError(t, err)
+
+	again, err := svc.EnsureAccount(ctx, auth.RoleAdmin, "+22890000100", "Dira Ops", "ops@dira.llc", "s3cret-password")
+	require.NoError(t, err)
+	assert.Equal(t, id, again, "le même compte, pas un second")
+
+	row, err := svc.AccountByID(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, "ops@dira.llc", row.Email)
+}
+
+// ⚠️ Combler n'est pas RÉÉCRIRE. Écraser une adresse existante couperait
+// l'accès de quelqu'un qui s'en sert — et un seed relancé le ferait sans
+// prévenir.
+func TestEnsureAccountNeverOverwritesAnExistingEmail(t *testing.T) {
+	svc, _, _ := newUserTestService()
+	ctx := context.Background()
+
+	id, err := svc.EnsureAccount(ctx, auth.RoleAdmin, "+22890000100", "Dira Ops", "first@dira.llc", "s3cret-password")
+	require.NoError(t, err)
+
+	_, err = svc.EnsureAccount(ctx, auth.RoleAdmin, "+22890000100", "Dira Ops", "second@dira.llc", "s3cret-password")
+	require.NoError(t, err)
+
+	row, err := svc.AccountByID(ctx, id)
+	require.NoError(t, err)
+	assert.Equal(t, "first@dira.llc", row.Email, "l'adresse en place ne bouge pas")
+}

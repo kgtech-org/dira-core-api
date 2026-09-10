@@ -561,6 +561,22 @@ func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, email, p
 		return "", apperr.Internal(err)
 	}
 	if existing != nil {
+		// ⚠️ Un e-mail MANQUANT est COMBLÉ, jamais remplacé.
+		//
+		// Combler n'est pas réécrire : un compte provisionné avant que
+		// l'adresse ne soit transmise ne peut pas ouvrir la console, et un
+		// seed incapable de réparer ce qu'il a créé est un seed qu'on ne peut
+		// pas relancer. Écraser une adresse existante, en revanche, couperait
+		// l'accès de quelqu'un qui s'en sert.
+		if email != "" && existing.Email == "" {
+			existing.Email = strings.ToLower(email)
+			existing.UpdatedAt = time.Now().UTC()
+			if err := s.repo.UpdateUser(ctx, existing); err != nil {
+				return "", apperr.Internal(err)
+			}
+			slog.InfoContext(ctx, "user: email backfilled on an existing account",
+				"user_id", existing.ID.Hex(), "email", existing.Email)
+		}
 		return existing.ID.Hex(), nil
 	}
 	// `register`, pas `Register` : l'inscription publique refuse `admin`, et
