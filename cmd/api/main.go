@@ -179,6 +179,20 @@ func run(logger *slog.Logger) error {
 		})
 		user.NewHandler(userSvc).Mount(r, authMW)
 		notify.NewHandler(notifySvc).Mount(r, authMW)
+		// LE PORTEFEUILLE : `/wallet` pour la personne, `/admin/wallets/...`
+		// pour l'exploitation. Il n'était monté NULLE PART — ni ici, ni dans
+		// les verticales, qui venaient de s'en séparer. Un client ne pouvait
+		// plus lire son solde, un livreur plus recharger, et la console plus
+		// créditer personne.
+		//
+		// ⚠️ La PROPULSION d'un plat n'est PAS montée : elle débite un
+		// portefeuille du socle mais porte sur le catalogue d'une verticale,
+		// que le socle ne connaît pas. `MountCatalogueSpending` ne s'allume
+		// que si les collaborateurs sont branchés — ils ne le sont pas, et des
+		// routes qui échouent seraient pires que des routes absentes.
+		tokenHandler := token.NewHandler(tokenSvc)
+		tokenHandler.Mount(r, authMW)
+		tokenHandler.MountCatalogueSpending(r, authMW)
 		// ⚠️ La confirmation manuelle d'un encaissement n'est ouverte qu'HORS
 		// production : simuler l'arrivée d'un paiement est un pouvoir qui n'a
 		// rien à faire sur un service qui manipule de l'argent réel.

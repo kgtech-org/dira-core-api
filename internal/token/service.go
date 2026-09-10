@@ -486,3 +486,15 @@ func (s *Service) CreditByOperator(ctx context.Context, actorID, ownerID string,
 	resp := newWalletResponse(updated, s.tokenPriceXOF)
 	return &resp, nil
 }
+
+// CanSpendOnCatalogue dit si les dépenses portant sur le catalogue d'une
+// verticale sont servables.
+//
+// ⚠️ Elles demandent DEUX collaborateurs que le socle n'a pas : de quoi
+// marquer un plat propulsé, et de quoi vérifier qu'une boutique appartient
+// bien à celui qui paie. Sans eux, propulser débiterait des jetons sans rien
+// propulser — et sans le second, n'importe quel marchand dépenserait sur le
+// point de vente d'un autre.
+func (s *Service) CanSpendOnCatalogue() bool {
+	return s != nil && s.booster != nil && s.stores != nil
+}

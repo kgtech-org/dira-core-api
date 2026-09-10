@@ -18,8 +18,13 @@ type Handler struct {
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
-// Mount registers the module routes on the /api/v1 router.
+// Mount registers the PORTEFEUILLE routes on the /api/v1 router.
 // authMW is the JWT middleware built at wiring time.
+//
+// ⚠️ LA PROPULSION N'EST PAS ICI — voir `MountCatalogueSpending`. Dépenser des
+// jetons sur un PLAT ou un POINT DE VENTE demande le catalogue de la
+// livraison, que le socle ne connaît pas. Les deux gestes vivaient dans le même
+// module tant qu'un seul service existait ; le partage passe entre les deux.
 func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 	r.Group(func(g chi.Router) {
 		g.Use(authMW)
@@ -31,19 +36,12 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		g.Post("/wallet/purchase", h.purchase)
 	})
 
-	r.Group(func(g chi.Router) {
-		g.Use(authMW)
-		g.Use(middleware.RequireRole(auth.RoleMerchant))
-		g.Post("/stores/{id}/dishes/{dish_id}/boost", h.boostDish)
-		g.Post("/stores/{id}/options", h.buyOption)
-	})
-
-	// Émulateur marchand de la console : même méthode de service, propriété
-	// levée pour l'administrateur. Le jeton est bien débité au point de vente.
+	// L'administration des portefeuilles. GÉNÉRIQUE : un propriétaire est un
+	// point de vente, un livreur ou un chauffeur — le socle ne fait pas la
+	// différence, et n'a pas à la faire.
 	r.Group(func(g chi.Router) {
 		g.Use(authMW)
 		g.Use(middleware.RequireRole(auth.RoleAdmin))
-		g.Post("/admin/stores/{id}/dishes/{dish_id}/boost", h.boostDish)
 		// Solde d'UN portefeuille, prix unitaire compris. La console lisait
 		// jusqu'ici la liste complète des portefeuilles pour y chercher le
 		// sien : correct sur un jeu de démo, faux dès la deuxième page.
@@ -56,6 +54,37 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		// jetons SANS contrepartie financière, justificatif exigé.
 		g.Post("/admin/wallets/{ownerID}/purchase", h.adminPurchase)
 		g.Post("/admin/wallets/{ownerID}/credit", h.adminCredit)
+	})
+}
+
+// MountCatalogueSpending monte les dépenses qui portent sur le CATALOGUE d'une
+// verticale : propulser un plat, acheter une option de point de vente.
+//
+// ⚠️ Montée SÉPARÉMENT, et seulement si les collaborateurs sont branchés. Ces
+// routes ont besoin de savoir ce qu'est un plat et à qui appartient une
+// boutique — deux choses que le socle ignore. Les monter avec des
+// collaborateurs absents servirait des routes qui échouent, ce qui est pire
+// que des routes qui n'existent pas : la console croirait le geste possible.
+//
+// Elles restent ici, et non dans la livraison, parce que c'est le PORTEFEUILLE
+// qu'elles débitent — et il est au socle. Le jour où la livraison expose son
+// catalogue au socle, elles s'allument sans bouger d'un fichier.
+func (h *Handler) MountCatalogueSpending(r chi.Router, authMW func(http.Handler) http.Handler) {
+	if h.svc == nil || !h.svc.CanSpendOnCatalogue() {
+		return
+	}
+	r.Group(func(g chi.Router) {
+		g.Use(authMW)
+		g.Use(middleware.RequireRole(auth.RoleMerchant))
+		g.Post("/stores/{id}/dishes/{dish_id}/boost", h.boostDish)
+		g.Post("/stores/{id}/options", h.buyOption)
+	})
+	// Émulateur marchand de la console : même méthode de service, propriété
+	// levée pour l'administrateur. Le jeton est bien débité au point de vente.
+	r.Group(func(g chi.Router) {
+		g.Use(authMW)
+		g.Use(middleware.RequireRole(auth.RoleAdmin))
+		g.Post("/admin/stores/{id}/dishes/{dish_id}/boost", h.boostDish)
 	})
 }
 

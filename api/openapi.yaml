@@ -120,6 +120,34 @@ paths:
       summary: Buy tokens
       responses:
         "201": {description: Payment started}
+  /admin/wallets/{ownerID}:
+    get:
+      tags: [wallet]
+      summary: One wallet, whoever owns it
+      description: >-
+        GÉNÉRIQUE : un propriétaire est un point de vente, un livreur ou un
+        chauffeur — le socle ne fait pas la différence, et n'a pas à la faire.
+      parameters: [{name: ownerID, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Wallet}
+  /admin/wallets/{ownerID}/purchase:
+    post:
+      tags: [wallet]
+      summary: Start a token purchase for an owner
+      description: Initie un vrai paiement, à honorer.
+      parameters: [{name: ownerID, in: path, required: true, schema: {type: string}}]
+      responses:
+        "201": {description: Payment started}
+  /admin/wallets/{ownerID}/credit:
+    post:
+      tags: [wallet]
+      summary: Grant tokens without payment
+      description: >-
+        ⚠️ SANS contrepartie financière — un geste commercial. Justificatif
+        exigé, et l'écriture porte la trace de qui l'a accordé.
+      parameters: [{name: ownerID, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Wallet}
   /payments/providers:
     get:
       tags: [payments]
