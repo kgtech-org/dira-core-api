@@ -28,6 +28,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/internal/indexes"
 	"github.com/kgtech-org/dira-core-api/internal/notify"
 	"github.com/kgtech-org/dira-core-api/internal/payment"
+	"github.com/kgtech-org/dira-core-api/internal/rating"
 	"github.com/kgtech-org/dira-core-api/internal/token"
 	"github.com/kgtech-org/dira-core-api/internal/user"
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
@@ -129,6 +130,8 @@ func run(logger *slog.Logger) error {
 	// paiements ici avant d'avoir posé ce rappel laisserait des commandes
 	// payées et jamais confirmées.
 
+	ratingSvc := rating.NewService(rating.NewRepository(mongo), nil)
+
 	notifySvc := notify.NewService(notify.NewRepository(mongo))
 	if sa := fcmServiceAccount(cfg, logger); sa != "" {
 		if client, err := fcm.New(sa); err != nil {
@@ -167,6 +170,10 @@ func run(logger *slog.Logger) error {
 		// production : simuler l'arrivée d'un paiement est un pouvoir qui n'a
 		// rien à faire sur un service qui manipule de l'argent réel.
 		payment.NewHandler(paymentSvc).Mount(r, authMW, !cfg.IsProd())
+		// Les notes : lecture publique, écriture RÉSERVÉE aux services. Le
+		// socle ne sait pas si une commande est livrée — la verticale valide,
+		// puis dépose.
+		rating.NewHandler(ratingSvc).Mount(r, middleware.Service(cfg.ServiceToken))
 	})
 
 	server := &http.Server{

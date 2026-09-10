@@ -65,6 +65,14 @@ var applicationIndexes = []db.Index{
 	{Collection: "message_templates", Keys: db.K("key", 1), Unique: true},
 	{Collection: "notifications", Keys: db.K("user_id", 1, "_id", -1)},
 	{Collection: "notifications", Keys: db.K("user_id", 1, "read_at", 1)},
+
+	// --- notes ---
+	// UNE note par (commande, cible). L'unicité est portée par l'INDEX et non
+	// par une lecture préalable : deux envois simultanés passeraient tous les
+	// deux un contrôle applicatif et compteraient double.
+	{Collection: "ratings", Keys: db.K("order_id", 1, "target_type", 1, "target_id", 1), Unique: true},
+	// La liste des avis d'une cible, du plus récent au plus ancien.
+	{Collection: "ratings", Keys: db.K("target_type", 1, "target_id", 1, "_id", -1)},
 }
 
 // Ensure pose les index du socle. Idempotent : Mongo ignore un index déjà
