@@ -11,7 +11,7 @@ of it. See the development plan in
 
 | Path | What | Importable from other services |
 |---|---|---|
-| `pkg/` | the **shared library** — errors, JWT, HTTP helpers, Mongo, indexes, FCM, storage, media, i18n, jobs, docs, audit, maps client | **yes** |
+| `pkg/` | the **shared library** — errors, JWT, HTTP helpers, Mongo, indexes, FCM, storage, media, i18n, jobs, docs, audit, maps client, chat | **yes** |
 | `internal/` | the **core service** itself — identity, wallets, payments, notifications | **no** — Go forbids it |
 
 That split is not a convention: Go's `internal/` rule *enforces* it. A vertical can depend
@@ -35,7 +35,24 @@ pkg/jobs        Asynq client
 pkg/docs        Swagger UI + OpenAPI serving (the contract is passed in)
 pkg/audit       audit-log recorder
 pkg/diramaps    dira-maps client (route duration, landmarks)
+pkg/chat        the client ↔ driver conversation — BEHAVIOUR, not storage
 ```
+
+> ⚠️ **`pkg/chat` is a LIBRARY, not a service, and that is deliberate.**
+>
+> Both verticals need the same **behaviour** — who may speak, until when, how a
+> message is marked read — but not the same **data**: an order conversation and a
+> ride conversation are never read together. Making it a service would have cost
+> a **third socket** in the apps (they already carry tracking + orders), and a
+> conversation-state synchronisation between services whose failure would read as
+> "no driver assigned" with nobody able to say why.
+>
+> Each vertical wires its own collection, its own parties and its own real-time
+> channel. What is shared is the **rule**.
+>
+> This is the test for anything else: does the core hold it because both need the
+> same *data* (a balance, an account), or merely the same *behaviour*? The second
+> belongs in `pkg/`.
 
 ⚠️ **What `pkg/` must never hold**: business settings. A delivery fee grid, a WhatsApp
 token or a ride commission belongs to its service. Gathering them here would turn a shared
