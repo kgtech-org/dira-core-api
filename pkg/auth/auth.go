@@ -5,6 +5,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -31,15 +32,25 @@ type Claims struct {
 	UserID string
 	Role   string
 	Type   string // access | refresh
-	// Scopes borne un administrateur à certaines VERTICALES : « food »,
-	// « vtc », « core ».
+	// Scopes borne un ADMINISTRATEUR à certaines VERTICALES : « core »,
+	// « food », « vtc ».
 	//
-	// ⚠️ VIDE = TOUTES. Ce n'est pas une négligence, c'est ce qui rend le
-	// changement rétrocompatible : tous les jetons déjà émis, et tout compte
-	// d'administration sans restriction déclarée, gardent l'accès qu'ils
-	// avaient. L'inverse — vide = aucune — aurait coupé l'accès de chaque
-	// administrateur connecté à l'instant du déploiement, y compris celui qui
-	// aurait dû corriger la situation.
+	// ⚠️ VIDE = AUCUNE. C'est la lecture littérale, et c'est la seule qui se
+	// tienne : une liste vide de permissions n'accorde rien. La convention
+	// inverse — vide = toutes — a existé ici pour ne casser aucun jeton en
+	// vol, et elle a coûté cher : il fallait une portée SENTINELLE pour
+	// suspendre quelqu'un sans le rendre tout-puissant, et une phrase
+	// d'avertissement dans l'interface pour que des cases à cocher vides ne
+	// se lisent pas comme « aucun accès ». Trois mécanismes pour compenser une
+	// convention à l'envers.
+	//
+	// Conséquence assumée : un compte `admin` SANS fiche de staff n'administre
+	// rien. C'est voulu — le provisionnement crée la fiche en même temps que
+	// le compte.
+	//
+	// ⚠️ Ne concerne QUE les administrateurs. Un client, un livreur ou un
+	// marchand n'a pas de portée et ne doit pas en avoir : c'est son RÔLE qui
+	// borne ce qu'il atteint. Voir `middleware.RequireScope`.
 	//
 	// La portée voyage DANS le jeton parce que chaque verticale le vérifie
 	// localement : la faire lire au socle à chaque requête referait de lui le
@@ -57,17 +68,21 @@ const (
 	ScopeVTC  = "vtc"
 )
 
+// AllScopes est l'ensemble des verticales de la plateforme.
+//
+// Exporté pour que le provisionnement et la console lisent la MÊME liste que
+// la validation — deux listes divergeraient au premier métier ajouté.
+var AllScopes = []string{ScopeCore, ScopeFood, ScopeVTC}
+
 // Allows dit si ces claims couvrent la verticale demandée.
+//
+// ⚠️ Appartenance PURE : pas de cas particulier, pas de valeur magique. Une
+// liste vide n'accorde rien. Toute la subtilité — « qui a besoin d'une portée
+// et qui n'en a pas besoin » — vit dans `middleware.RequireScope`, qui connaît
+// le rôle ; la mettre ici obligerait chaque lecteur de cette fonction à
+// deviner de quel type de compte on parle.
 func (c Claims) Allows(scope string) bool {
-	if len(c.Scopes) == 0 {
-		return true // aucune restriction déclarée
-	}
-	for _, s := range c.Scopes {
-		if s == scope {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.Scopes, scope)
 }
 
 type Manager struct {

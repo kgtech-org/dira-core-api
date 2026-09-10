@@ -162,6 +162,7 @@ func TestFullyCompliantDriver(t *testing.T) {
 		{Kind: DocIDCard, FileURL: "https://f/2.jpg", ExpiresAt: inDays(900)},
 		{Kind: DocRegistration, FileURL: "https://f/3.jpg", VehicleID: vehicle},
 		{Kind: DocInsurance, FileURL: "https://f/4.jpg", VehicleID: vehicle, ExpiresAt: inDays(200)},
+		{Kind: DocInspection, FileURL: "https://f/5.jpg", VehicleID: vehicle, ExpiresAt: inDays(300)},
 	} {
 		d := submit(t, fx, driver, req)
 		_, err := fx.svc.ReviewDocument(ctx, admin, d.ID, ReviewDocumentRequest{Status: DocValid})
@@ -172,7 +173,7 @@ func TestFullyCompliantDriver(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, st.Compliant)
 	assert.Empty(t, st.Missing)
-	assert.Len(t, st.Documents, 4)
+	assert.Len(t, st.Documents, 5)
 }
 
 // ⚠️ Une pièce EXPIRÉE ne bloque RIEN côté serveur — décision produit. Elle
@@ -260,4 +261,48 @@ func TestQueueSurvivesAnAccountLookupFailure(t *testing.T) {
 	require.Len(t, queue, 1)
 	assert.NotEmpty(t, queue[0].DriverID, "l'identifiant reste : la file demeure actionnable")
 	assert.Empty(t, queue[0].UserID, "et le compte manquant est ABSENT, pas inventé")
+}
+
+
+// ⚠️ UN VÉHICULE NON MOTORISÉ N'ATTEND AUCUNE PIÈCE.
+//
+// La plateforme réclamait une carte grise à un livreur À PIED, et une
+// assurance à un vélo. Ces gens restaient « non conformes » pour toujours, sur
+// un écran qui ne leur proposait aucun moyen de régulariser — et l'exploitation
+// voyait une file de conformité pleine de défauts impossibles à corriger, ce
+// qui est la meilleure façon de cesser de la regarder.
+func TestUnmotorisedVehicleNeedsNoPaper(t *testing.T) {
+	fx := newFixture()
+	userID := primitive.NewObjectID().Hex()
+	driverID := primitive.NewObjectID().Hex()
+	fx.fleet.byUser[userID] = driverID
+	fx.fleet.accounts[driverID] = userID
+	bike := fx.fleet.addVehicleOf(driverID, false)
+
+	ctx := context.Background()
+	admin := newAdmin()
+	for _, req := range []SubmitDocumentRequest{
+		{Kind: DocLicence, FileURL: "https://f/1.jpg", ExpiresAt: inDays(400)},
+		{Kind: DocIDCard, FileURL: "https://f/2.jpg", ExpiresAt: inDays(900)},
+	} {
+		d := submit(t, fx, userID, req)
+		_, err := fx.svc.ReviewDocument(ctx, admin, d.ID, ReviewDocumentRequest{Status: DocValid})
+		require.NoError(t, err)
+	}
+
+	st, err := fx.svc.Compliance(ctx, userID)
+	require.NoError(t, err)
+	assert.True(t, st.Compliant, "un livreur à vélo en règle de sa personne est en règle")
+	assert.Empty(t, st.Missing)
+	for _, m := range st.Missing {
+		assert.NotContains(t, m, bike)
+	}
+}
+
+// Et la règle elle-même, appelée directement.
+func TestKindsForDependsOnMotorisation(t *testing.T) {
+	assert.Equal(t, VehicleKinds, KindsFor(VehicleRef{ID: "x", Motorised: true}))
+	assert.Empty(t, KindsFor(VehicleRef{ID: "x", Motorised: false}))
+	// Les trois pièces d'un véhicule motorisé, contrôle technique compris.
+	assert.Contains(t, VehicleKinds, DocInspection)
 }

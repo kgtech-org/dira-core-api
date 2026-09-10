@@ -8,22 +8,40 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ⚠️ LE TEST DE RÉTROCOMPATIBILITÉ. Un jeton émis avant l'existence des
-// portées n'en porte aucune, et doit garder l'accès qu'il avait.
+// ⚠️ VIDE = AUCUNE, littéralement. C'est la lecture naturelle d'une liste de
+// permissions, et c'est ce qui permet de suspendre quelqu'un simplement en
+// vidant sa liste — sans valeur sentinelle, sans cas particulier.
 //
-// L'inverse — vide = aucune portée — aurait coupé l'accès de chaque
-// administrateur connecté à l'instant du déploiement, y compris celui qui
-// aurait dû corriger la situation.
-func TestNoScopeMeansEveryScope(t *testing.T) {
+// La convention inverse a existé ici : elle exigeait une portée « suspended »
+// qu'aucune route ne demandait, et une phrase d'avertissement dans l'interface
+// pour que des cases vides ne se lisent pas comme « aucun accès ».
+func TestNoScopeGrantsNothing(t *testing.T) {
 	m := NewManager("s3cret", time.Minute, time.Hour)
 	tok, err := m.GenerateAccess("u1", RoleAdmin)
 	require.NoError(t, err)
 
 	c, err := m.Verify(tok)
 	require.NoError(t, err)
-	assert.Empty(t, c.Scopes, "aucune portée n'est écrite dans le jeton")
-	for _, sc := range []string{ScopeCore, ScopeFood, ScopeVTC} {
-		assert.True(t, c.Allows(sc), "un jeton sans portée doit couvrir %q", sc)
+	assert.Empty(t, c.Scopes)
+	for _, sc := range AllScopes {
+		assert.False(t, c.Allows(sc), "une liste vide n'accorde pas %q", sc)
+	}
+}
+
+// Couvrir TOUTE la plateforme s'écrit explicitement : les trois portées.
+//
+// ⚠️ Pas de valeur « all » séparée. Elle aurait fait deux façons d'exprimer la
+// même chose, et le jour où une quatrième verticale apparaît, l'une des deux
+// serait devenue fausse en silence — « all » aurait continué de désigner les
+// trois d'hier.
+func TestFullCoverageIsWrittenOut(t *testing.T) {
+	m := NewManager("s3cret", time.Minute, time.Hour)
+	tok, err := m.GenerateAccess("u1", RoleAdmin, AllScopes...)
+	require.NoError(t, err)
+	c, err := m.Verify(tok)
+	require.NoError(t, err)
+	for _, sc := range AllScopes {
+		assert.True(t, c.Allows(sc))
 	}
 }
 

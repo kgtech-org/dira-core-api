@@ -72,20 +72,19 @@ type Response struct {
 	Function      string   `json:"function"`
 	Title         string   `json:"title,omitempty"`
 	Scopes        []string `json:"scopes"`
-	// Unrestricted dit EXPLICITEMENT que ce membre couvre tout, plutôt que de
-	// laisser la console déduire d'une liste pleine. Une liste des trois
-	// portées et « aucune restriction » se ressemblent à l'écran et ne se
-	// modifient pas pareil.
-	Unrestricted bool   `json:"unrestricted"`
-	Status       string `json:"status"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
+	// CoversEverything est un CONFORT d'affichage, calculé depuis `scopes`.
+	// La console peut résumer « toute la plateforme » sans recompter, et
+	// `scopes` reste la seule vérité — c'est lui qu'on modifie.
+	CoversEverything bool   `json:"covers_everything"`
+	Status           string `json:"status"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
 }
 
 func toResponse(m *Member) Response {
 	return Response{
 		ID: m.ID.Hex(), UserID: m.UserID.Hex(), Function: m.Function, Title: m.Title,
-		Scopes: m.EffectiveScopes(), Unrestricted: m.Unrestricted(), Status: m.Status,
+		Scopes: m.Scopes, CoversEverything: m.CoversEverything(), Status: m.Status,
 		CreatedAt: m.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		UpdatedAt: m.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
@@ -109,8 +108,53 @@ type UpdateRequest struct {
 	Status   *string   `json:"status" validate:"omitempty,oneof=active suspended"`
 }
 
+// requireDirection refuse à un membre du staff de modifier l'ÉQUIPE s'il n'a
+// pas la fonction de direction.
+//
+// ⚠️ Lire l'équipe et la MODIFIER ne sont pas le même geste. Sans cette
+// distinction, un chargé de support pouvait s'attribuer toutes les portées :
+// le périmètre ne bornait alors plus personne, puisque tout le monde pouvait
+// se le retirer. Une habilitation qu'on peut s'accorder soi-même n'en est pas
+// une.
+//
+// Le PROVISIONNEMENT passe : il s'exécute hors requête, sans acteur dans le
+// contexte, et c'est lui qui crée le premier administrateur — exiger une
+// direction préexistante empêcherait de démarrer.
+func (s *Service) requireDirection(ctx context.Context) error {
+	actor, ok := auth.UserFromContext(ctx)
+	if !ok || actor == "" {
+		return nil // hors requête : provisionnement
+	}
+	uid, err := primitive.ObjectIDFromHex(actor)
+	if err != nil {
+		return errNotDirection
+	}
+	m, err := s.repo.ByUserID(ctx, uid)
+	if err != nil {
+		return apperr.Internal(err)
+	}
+	if !mayChangeTeam(m) {
+		return errNotDirection
+	}
+	return nil
+}
+
+// mayChangeTeam porte la RÈGLE, séparée de la lecture en base pour être
+// testable.
+//
+// ⚠️ Une fonction pure, appelée par le test. Écrire la condition une seconde
+// fois dans le test aurait produit une garantie qui reste verte quand le code
+// change — c'est exactement ce qui était arrivé à la règle des portées
+// suspendues.
+func mayChangeTeam(m *Member) bool {
+	return m != nil && m.Status == StatusActive && m.Function == FunctionAdmin
+}
+
 // Create attaches a staff record.
 func (s *Service) Create(ctx context.Context, req CreateRequest) (*Response, error) {
+	if err := s.requireDirection(ctx); err != nil {
+		return nil, err
+	}
 	if !slices.Contains(Functions, req.Function) {
 		return nil, errBadFunction.WithMeta(map[string]any{"expected": Functions})
 	}
@@ -198,6 +242,9 @@ func (s *Service) List(ctx context.Context, function, scope, status string, page
 
 // Update changes a staff record.
 func (s *Service) Update(ctx context.Context, id string, req UpdateRequest) (*Response, error) {
+	if err := s.requireDirection(ctx); err != nil {
+		return nil, err
+	}
 	oid, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, errNotFound
@@ -247,6 +294,9 @@ func (s *Service) Update(ctx context.Context, id string, req UpdateRequest) (*Re
 
 // Remove deletes a staff record — the account survives.
 func (s *Service) Remove(ctx context.Context, id string) error {
+	if err := s.requireDirection(ctx); err != nil {
+		return err
+	}
 	oid, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return errNotFound
@@ -292,27 +342,22 @@ func (s *Service) ScopesOf(ctx context.Context, userID string) ([]string, error)
 	return scopesFor(m), nil
 }
 
-// ScopeSuspended est une portée qu'AUCUNE route ne demande — donc qui
-// n'autorise rien.
-//
-// ⚠️ Elle existe pour une raison précise : une liste VIDE veut dire « aucune
-// restriction ». Rendre vide pour une fiche suspendue aurait transformé la
-// personne en administrateur tout-puissant, exactement l'inverse de
-// l'intention, et sans que rien ne le signale.
-const ScopeSuspended = "suspended"
-
 // scopesFor porte la RÈGLE, séparée de la lecture en base pour être testable.
 //
 // ⚠️ Une fonction pure plutôt qu'un bloc au milieu de `ScopesOf` : un test
 // écrit sur des claims fabriqués à la main aurait continué de passer si cette
 // décision changeait. Une garantie qui ne touche pas le code qu'elle prétend
 // couvrir n'en est pas une.
+//
+// Les trois cas rendent une liste VIDE, qui n'accorde rien — pas de valeur
+// sentinelle, pas de cas particulier : c'est ce que la convention littérale
+// achète.
 func scopesFor(m *Member) []string {
 	if m == nil {
-		return nil // pas de fiche de staff : aucune restriction
+		return nil // pas de fiche de staff : n'administre rien
 	}
 	if m.Status == StatusSuspended {
-		return []string{ScopeSuspended}
+		return nil // habilitations retirées
 	}
 	return m.Scopes
 }
@@ -320,7 +365,7 @@ func scopesFor(m *Member) []string {
 // normaliseScopes valide et déduplique.
 func normaliseScopes(in []string) ([]string, error) {
 	if len(in) == 0 {
-		return nil, nil
+		return nil, errNoScope
 	}
 	out := make([]string, 0, len(in))
 	for _, s := range in {
@@ -335,13 +380,14 @@ func normaliseScopes(in []string) ([]string, error) {
 			out = append(out, s)
 		}
 	}
-	// ⚠️ Les TROIS portées équivalent à AUCUNE restriction, et sont stockées
-	// comme telles. Sans cette réduction, ajouter une quatrième verticale
-	// demain laisserait ces gens dehors — ils auraient « toutes » les portées
-	// d'hier, pas celles d'aujourd'hui.
-	if len(out) == len(Scopes) {
-		return nil, nil
+	if len(out) == 0 {
+		return nil, errNoScope
 	}
+	// ⚠️ AUCUNE réduction : les trois portées se stockent telles quelles. Les
+	// remplacer par une valeur « toutes » aurait fait deux façons d'écrire la
+	// même chose — et le jour où une quatrième verticale apparaît, cette
+	// valeur aurait continué de désigner les trois d'hier, sans que rien ne le
+	// signale. Écrire la liste, c'est écrire une date.
 	return out, nil
 }
 
@@ -350,4 +396,29 @@ func passThrough(err error) error {
 		return err
 	}
 	return apperr.Internal(err)
+}
+
+// EnsureMember crée la fiche de staff si elle n'existe pas, et la rend telle
+// qu'elle est sinon.
+//
+// ⚠️ IDEMPOTENT, et il ne RÉÉCRIT PAS une fiche existante. Un provisionnement
+// rejoué ne doit pas écraser un périmètre que l'exploitation a restreint à la
+// main — c'est la même règle que pour le mot de passe de l'administrateur, et
+// pour la même raison : un seed relancé ne doit rien reprendre à personne.
+func (s *Service) EnsureMember(ctx context.Context, userID, function, title string, scopes []string) (*Response, error) {
+	uid, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, apperr.Validation("user_id is not a valid id")
+	}
+	existing, err := s.repo.ByUserID(ctx, uid)
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	if existing != nil {
+		out := toResponse(existing)
+		return &out, nil
+	}
+	return s.Create(ctx, CreateRequest{
+		UserID: userID, Function: function, Title: title, Scopes: scopes,
+	})
 }

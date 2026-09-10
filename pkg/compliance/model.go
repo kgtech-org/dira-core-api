@@ -34,6 +34,14 @@ const (
 	DocIDCard       = "id_card"      // pièce d'identité — la PERSONNE
 	DocRegistration = "registration" // carte grise — le VÉHICULE
 	DocInsurance    = "insurance"    // assurance — le VÉHICULE
+	// DocInspection : le contrôle technique.
+	//
+	// ⚠️ Une pièce de VÉHICULE comme les deux précédentes, et non un champ de
+	// date posé sur le véhicule. Elle a une image, une validité, et un humain
+	// qui la regarde — c'est-à-dire exactement le cycle que ce paquet tient
+	// déjà. Une date nue sur le véhicule aurait fait un second mécanisme
+	// d'expiration, avec sa propre file d'attente à surveiller.
+	DocInspection = "inspection"
 )
 
 // PersonKinds et VehicleKinds sont les pièces attendues de chaque côté.
@@ -42,7 +50,7 @@ const (
 // deux listes — une pour vérifier, une pour réclamer — divergeraient.
 var (
 	PersonKinds  = []string{DocLicence, DocIDCard}
-	VehicleKinds = []string{DocRegistration, DocInsurance}
+	VehicleKinds = []string{DocRegistration, DocInsurance, DocInspection}
 )
 
 // docOwner dit à quoi chaque type de pièce se rattache.
@@ -55,6 +63,7 @@ var docOwner = map[string]string{
 	DocIDCard:       ownerPerson,
 	DocRegistration: ownerVehicle,
 	DocInsurance:    ownerVehicle,
+	DocInspection:   ownerVehicle,
 }
 
 const (

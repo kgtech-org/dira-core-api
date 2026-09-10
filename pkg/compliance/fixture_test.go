@@ -94,7 +94,7 @@ func (f *fakeStore) PendingOrExpiredDocuments(_ context.Context, now time.Time, 
 // qui appartient un véhicule.
 type fakeFleet struct {
 	byUser   map[string]string   // compte -> chauffeur
-	vehicles map[string][]string // chauffeur -> véhicules
+	vehicles map[string][]VehicleRef // chauffeur -> véhicules
 	owner    map[string]string   // véhicule -> chauffeur
 	accounts map[string]string   // chauffeur -> compte
 	// accountErr simule un annuaire injoignable, pour vérifier que la file
@@ -105,7 +105,7 @@ type fakeFleet struct {
 func newFleet() *fakeFleet {
 	return &fakeFleet{
 		byUser:   map[string]string{},
-		vehicles: map[string][]string{},
+		vehicles: map[string][]VehicleRef{},
 		owner:    map[string]string{},
 		accounts: map[string]string{},
 	}
@@ -135,14 +135,20 @@ func (f *fakeFleet) VehicleOwner(_ context.Context, vehicleID string) (string, e
 	return f.owner[vehicleID], nil
 }
 
-func (f *fakeFleet) VehiclesOf(_ context.Context, driverID string) ([]string, error) {
+func (f *fakeFleet) VehiclesOf(_ context.Context, driverID string) ([]VehicleRef, error) {
 	return f.vehicles[driverID], nil
 }
 
-// addVehicle déclare un véhicule à un chauffeur.
+// addVehicle déclare un véhicule MOTORISÉ à un chauffeur.
 func (f *fakeFleet) addVehicle(driverID string) string {
+	return f.addVehicleOf(driverID, true)
+}
+
+// addVehicleOf déclare un véhicule et dit s'il est motorisé — un vélo ou un
+// livreur à pied n'attend aucune pièce.
+func (f *fakeFleet) addVehicleOf(driverID string, motorised bool) string {
 	vid := primitive.NewObjectID().Hex()
-	f.vehicles[driverID] = append(f.vehicles[driverID], vid)
+	f.vehicles[driverID] = append(f.vehicles[driverID], VehicleRef{ID: vid, Motorised: motorised})
 	f.owner[vid] = driverID
 	return vid
 }
