@@ -42,7 +42,30 @@ token or a ride commission belongs to its service. Gathering them here would tur
 struct into the dumping ground of three products, and each service would carry variables it
 never reads — so variables nobody knows whether to set.
 
+## The service
+
+```
+cmd/api          HTTP entrypoint
+internal/user    accounts, auth, RBAC, addresses, preferences
+internal/token   token wallets and ledger
+internal/config  core-only settings (the shared ones come from pkg/config)
+internal/indexes the MongoDB indexes this service owns
+api/openapi.yaml the contract, embedded in the binary
+```
+
+⚠️ **The JWT secret is the SAME as the verticals'.** That is what lets each of them verify
+a token **locally**, without calling core — a per-request verification would make this
+service the single point of failure of the whole platform.
+
 ## Status
 
-**Step A of the plan is done**: the shared library is extracted and `dira-food-api` builds
-on it. The core *service* (step B) has not started.
+- **Step A — done.** The shared library is extracted; `dira-food-api` builds on it.
+- **Step B — in progress.** The service boots and serves **identity**: `/auth/*`, `/me`,
+  `/me/addresses`, `/me/preferences`. Wallets, payments, notifications, ratings and
+  vehicles are still served by `dira-food-api`.
+
+> ⚠️ **`internal/token` is not settled.** Its ledger belongs here, but `BoostDish` and the
+> store-option catalogue need the food **catalogue** and **brand ownership**. Those
+> collaborators are wired `nil` and their routes are not mounted — see the comment in
+> `cmd/api/main.go`. Splitting the module (ledger here, boosting in food) is the next
+> decision, and leaving it silent would suggest the module had found its place.

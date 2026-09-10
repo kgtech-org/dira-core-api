@@ -1,0 +1,60 @@
+openapi: 3.1.0
+info:
+  title: Dira Core API
+  version: 0.1.0
+  description: >-
+    Socle de la plateforme Dira : identité, portefeuilles, paiements,
+    notifications, véhicules et notes. Les verticales `dira-food-api`
+    (livraison) et `dira-vtc-api` (courses) se posent dessus.
+
+
+    ⚠️ Derrière la passerelle, ces routes sont servies à la RACINE
+    (`/api/v1/...`), sans préfixe de verticale : l'authentification et le
+    portefeuille sont les mêmes pour les deux, et les préfixer obligerait une
+    application à choisir une verticale juste pour se connecter.
+servers:
+  - url: /api/v1
+tags:
+  - name: auth
+    description: Inscription, connexion, rotation de jeton
+  - name: users
+    description: Profil, préférences, carnet d'adresses
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      security: []
+      summary: Create an account
+      responses:
+        "201": {description: Registered}
+  /auth/login:
+    post:
+      tags: [auth]
+      security: []
+      summary: Log in
+      responses:
+        "200": {description: Tokens}
+  /auth/refresh:
+    post:
+      tags: [auth]
+      security: []
+      summary: Rotate the refresh token
+      responses:
+        "200": {description: Tokens}
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke a refresh token
+      responses:
+        "204": {description: Logged out}
+  /me:
+    get:
+      tags: [users]
+      summary: Own profile
+      responses:
+        "200": {description: User}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+security:
+  - bearerAuth: []

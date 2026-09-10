@@ -1,0 +1,196 @@
+# Messages français (langue par défaut). Clés = codes apperr : errors.<code>.
+
+[errors.internal_error]
+other = "Une erreur interne est survenue"
+
+[errors.validation_failed]
+other = "Requête invalide"
+
+[errors.rate_limited]
+other = "Trop de requêtes, veuillez réessayer plus tard"
+
+[errors.missing_token]
+other = "Authentification requise"
+
+[errors.invalid_token]
+other = "Jeton invalide ou expiré"
+
+[errors.forbidden]
+other = "Vous n'êtes pas autorisé à effectuer cette action"
+
+[errors.not_found]
+other = "Ressource introuvable"
+
+# --- user / auth ---
+
+[errors.phone_taken]
+other = "Ce numéro de téléphone est déjà enregistré"
+
+[errors.invalid_credentials]
+other = "Numéro de téléphone ou mot de passe invalide"
+
+[errors.account_suspended]
+other = "Ce compte est suspendu"
+
+[errors.user_not_found]
+other = "Utilisateur introuvable"
+
+# --- merchant / store ---
+
+[errors.merchant_not_found]
+other = "Enseigne introuvable"
+
+[errors.store_not_found]
+other = "Point de vente introuvable"
+
+[errors.merchant_exists]
+other = "Vous avez déjà un compte enseigne"
+
+# --- dish ---
+
+[errors.dish_not_found]
+other = "Plat introuvable"
+
+[errors.category_not_found]
+other = "Catégorie introuvable"
+
+[errors.dish_unavailable]
+other = "Un plat de votre commande est indisponible dans le point de vente choisi"
+
+# --- order ---
+
+[errors.order_not_found]
+other = "Commande introuvable"
+
+[errors.invalid_transition]
+other = "Ce changement de statut de commande n'est pas autorisé"
+
+[errors.cannot_cancel]
+other = "Cette commande ne peut plus être annulée"
+
+[errors.empty_order]
+other = "Une commande doit contenir au moins un article"
+
+# --- token ---
+
+[errors.wallet_not_found]
+other = "Portefeuille introuvable"
+
+[errors.insufficient_tokens]
+other = "Solde de jetons insuffisant"
+
+[errors.option_not_found]
+other = "Option de boutique inconnue"
+
+# --- delivery ---
+
+[errors.delivery_not_found]
+other = "Livraison introuvable"
+
+[errors.no_active_vehicle]
+other = "Vous devez choisir un véhicule actif avant d'accepter des livraisons"
+
+[errors.delivery_not_available]
+other = "Cette livraison n'est plus disponible"
+
+[errors.vehicle_not_found]
+other = "Véhicule introuvable"
+
+[errors.pickup_not_found]
+other = "Collecte introuvable"
+
+[errors.pickup_out_of_order]
+other = "Les collectes doivent être effectuées dans l'ordre prévu"
+
+[errors.pickup_already_done]
+other = "Collecte déjà effectuée"
+
+[errors.vehicle_not_active]
+other = "Le véhicule est désactivé"
+
+# --- payment ---
+
+[errors.payment_not_found]
+other = "Paiement introuvable"
+
+[errors.invalid_signature]
+other = "Signature de webhook invalide"
+
+[errors.payment_failed]
+other = "Le paiement a échoué"
+
+[errors.duplicate_provider_ref]
+other = "Un paiement avec cette référence prestataire existe déjà"
+
+[errors.unknown_provider]
+other = "Prestataire de paiement inconnu"
+
+# --- feed ---
+
+[errors.video_not_found]
+other = "Vidéo introuvable"
+
+# --- nutrition ---
+
+[errors.profile_not_found]
+other = "Profil nutritionnel introuvable"
+
+[errors.reminder_not_found]
+other = "Rappel de repas introuvable"
+
+# --- whatsapp ---
+
+[errors.invalid_verify_token]
+other = "La vérification de l'abonnement au webhook a échoué"
+
+# --- support ---
+
+[errors.ticket_not_found]
+other = "Ticket introuvable"
+
+[errors.duplicate_ticket_reference]
+other = "La référence du ticket existe déjà"
+
+[errors.agent_not_found]
+other = "Livreur introuvable"
+
+[errors.agent_no_active_vehicle]
+other = "Le livreur n'a pas de véhicule actif"
+
+[errors.delivery_already_completed]
+other = "La livraison est déjà terminée"
+
+[errors.delivery_not_simulatable]
+other = "La livraison ne peut pas être lancée en simulation"
+
+[errors.cannot_delete_self]
+other = "Vous ne pouvez pas supprimer votre propre compte"
+
+[errors.promotion_not_found]
+other = "Promotion introuvable"
+
+# --- tombola ---
+
+[errors.insufficient_tickets]
+other = "Pas assez de tickets de tombola"
+
+[errors.draw_not_found]
+other = "Tirage introuvable"
+
+[errors.draw_not_open]
+other = "Ce tirage n'est pas ouvert aux participations"
+
+[errors.draw_immutable]
+other = "Un tirage effectué ne peut plus être modifié"
+
+[errors.max_entries_reached]
+other = "Vous avez atteint la limite de participations pour ce tirage"
+
+[errors.no_entries]
+other = "Ce tirage n'a aucune participation"
+
+[errors.win_not_found]
+other = "Gain introuvable"
+
+[errors.win_not_pending]
+other = "Ce gain a déjà été utilisé"

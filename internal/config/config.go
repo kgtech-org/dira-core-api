@@ -1,0 +1,59 @@
+// Package config loads dira-core-api's configuration.
+//
+// Les réglages communs à toute la plateforme viennent de `pkg/config.Base`.
+// Ce qui suit appartient au SOCLE, et à lui seul.
+package config
+
+import (
+	"fmt"
+
+	core "github.com/kgtech-org/dira-core-api/pkg/config"
+)
+
+type Config struct {
+	core.Base
+	// FCMServiceAccount est le JSON de compte de service Firebase, en clair
+	// dans l'environnement. FCMServiceAccountFile en est le chemin, pour les
+	// déploiements qui montent un secret en fichier — une clé privée RSA tient
+	// mal dans une variable d'environnement.
+	//
+	// Les deux vides = aucune notification poussée, et c'est dit au démarrage.
+	FCMServiceAccount     string
+	FCMServiceAccountFile string
+	// MockPaymentSecret signe les rappels du prestataire de paiement simulé.
+	MockPaymentSecret string
+	// ServiceToken authentifie les appels VENUS des verticales.
+	//
+	// ⚠️ VIDE = routes de service FERMÉES. Une porte de service sans serrure
+	// vaut moins que pas de porte : n'importe qui pourrait débiter le
+	// portefeuille de n'importe qui.
+	ServiceToken string
+}
+
+// Load reads the environment, applies defaults and validates.
+func Load() (*Config, error) {
+	base, err := core.LoadBase("dira_core", "dira-core")
+	if err != nil {
+		return nil, err
+	}
+	cfg := &Config{
+		Base:                  base,
+		FCMServiceAccount:     core.Env("FCM_SERVICE_ACCOUNT_JSON", ""),
+		FCMServiceAccountFile: core.Env("FCM_SERVICE_ACCOUNT_FILE", ""),
+		MockPaymentSecret:     core.Env("MOCK_PAYMENT_SECRET", "mock-secret"),
+		ServiceToken:          core.Env("CORE_SERVICE_TOKEN", ""),
+	}
+
+	switch cfg.Env {
+	case "dev", "staging", "prod":
+	default:
+		return nil, fmt.Errorf("config: invalid ENV %q (want dev|staging|prod)", cfg.Env)
+	}
+	// ⚠️ Le secret JWT est le MÊME que celui des verticales : c'est ce qui
+	// permet à chacune de vérifier un jeton localement, sans appeler le socle.
+	// Sans lui, le socle émettrait des jetons que personne ne saurait lire.
+	if cfg.JWTSecret == "" && cfg.IsProd() {
+		return nil, fmt.Errorf("config: JWT_SECRET is required in production")
+	}
+	return cfg, nil
+}

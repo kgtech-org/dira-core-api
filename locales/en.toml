@@ -1,0 +1,196 @@
+# English messages. Keys mirror apperr codes: errors.<code>.
+
+[errors.internal_error]
+other = "An internal error occurred"
+
+[errors.validation_failed]
+other = "Invalid request"
+
+[errors.rate_limited]
+other = "Too many requests, please retry later"
+
+[errors.missing_token]
+other = "Authentication required"
+
+[errors.invalid_token]
+other = "Invalid or expired token"
+
+[errors.forbidden]
+other = "You are not allowed to perform this action"
+
+[errors.not_found]
+other = "Resource not found"
+
+# --- user / auth ---
+
+[errors.phone_taken]
+other = "This phone number is already registered"
+
+[errors.invalid_credentials]
+other = "Invalid phone number or password"
+
+[errors.account_suspended]
+other = "This account is suspended"
+
+[errors.user_not_found]
+other = "User not found"
+
+# --- merchant / store ---
+
+[errors.merchant_not_found]
+other = "Merchant not found"
+
+[errors.store_not_found]
+other = "Store not found"
+
+[errors.merchant_exists]
+other = "You already have a merchant account"
+
+# --- dish ---
+
+[errors.dish_not_found]
+other = "Dish not found"
+
+[errors.category_not_found]
+other = "Category not found"
+
+[errors.dish_unavailable]
+other = "A dish in your order is unavailable in the selected store"
+
+# --- order ---
+
+[errors.order_not_found]
+other = "Order not found"
+
+[errors.invalid_transition]
+other = "This order status change is not allowed"
+
+[errors.cannot_cancel]
+other = "This order can no longer be cancelled"
+
+[errors.empty_order]
+other = "An order must contain at least one item"
+
+# --- token ---
+
+[errors.wallet_not_found]
+other = "Wallet not found"
+
+[errors.insufficient_tokens]
+other = "Insufficient token balance"
+
+[errors.option_not_found]
+other = "Unknown store option"
+
+# --- delivery ---
+
+[errors.delivery_not_found]
+other = "Delivery not found"
+
+[errors.no_active_vehicle]
+other = "You must select an active vehicle before accepting deliveries"
+
+[errors.delivery_not_available]
+other = "This delivery is no longer available"
+
+[errors.vehicle_not_found]
+other = "Vehicle not found"
+
+[errors.pickup_not_found]
+other = "Pickup not found"
+
+[errors.pickup_out_of_order]
+other = "Pickups must be completed in sequence order"
+
+[errors.pickup_already_done]
+other = "Pickup already collected"
+
+[errors.vehicle_not_active]
+other = "The vehicle is deactivated"
+
+# --- payment ---
+
+[errors.payment_not_found]
+other = "Payment not found"
+
+[errors.invalid_signature]
+other = "Invalid webhook signature"
+
+[errors.payment_failed]
+other = "Payment failed"
+
+[errors.duplicate_provider_ref]
+other = "A payment with this provider reference already exists"
+
+[errors.unknown_provider]
+other = "Unknown payment provider"
+
+# --- feed ---
+
+[errors.video_not_found]
+other = "Video not found"
+
+# --- nutrition ---
+
+[errors.profile_not_found]
+other = "Nutrition profile not found"
+
+[errors.reminder_not_found]
+other = "Meal reminder not found"
+
+# --- whatsapp ---
+
+[errors.invalid_verify_token]
+other = "Webhook subscription verification failed"
+
+# --- support ---
+
+[errors.ticket_not_found]
+other = "Ticket not found"
+
+[errors.duplicate_ticket_reference]
+other = "Ticket reference already exists"
+
+[errors.agent_not_found]
+other = "Delivery agent not found"
+
+[errors.agent_no_active_vehicle]
+other = "The delivery agent has no active vehicle"
+
+[errors.delivery_already_completed]
+other = "The delivery is already completed"
+
+[errors.delivery_not_simulatable]
+other = "The delivery cannot be dispatched into the simulation"
+
+[errors.cannot_delete_self]
+other = "You cannot delete your own account"
+
+[errors.promotion_not_found]
+other = "Promotion not found"
+
+# --- tombola ---
+
+[errors.insufficient_tickets]
+other = "Not enough tombola tickets"
+
+[errors.draw_not_found]
+other = "Draw not found"
+
+[errors.draw_not_open]
+other = "This draw is not open for entries"
+
+[errors.draw_immutable]
+other = "A completed draw cannot be modified"
+
+[errors.max_entries_reached]
+other = "You reached the entry limit for this draw"
+
+[errors.no_entries]
+other = "This draw has no entries"
+
+[errors.win_not_found]
+other = "Win not found"
+
+[errors.win_not_pending]
+other = "This win has already been redeemed"
