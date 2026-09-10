@@ -653,3 +653,49 @@ func TestAccountsByIDsRefusesAnUnboundedList(t *testing.T) {
 	_, err := svc.AccountsByIDs(context.Background(), ids)
 	require.Error(t, err)
 }
+
+// --- provisionnement d'un administrateur ---
+
+// ⚠️ Ce test existe parce que le socle ANNONÇAIT ce pouvoir sans l'avoir :
+// `/internal/accounts/ensure` acceptait le rôle `admin`, puis passait par la
+// validation de l'inscription PUBLIQUE, qui le refuse. Résultat : un 422 que
+// personne ne savait lire, sur une route dont le commentaire disait « un
+// service qui peut créer un administrateur peut tout ».
+func TestEnsureAccountCanProvisionAnAdmin(t *testing.T) {
+	svc, _, _ := newUserTestService()
+
+	id, err := svc.EnsureAccount(context.Background(), auth.RoleAdmin,
+		"+22890009999", "Ops", "s3cret-password")
+	require.NoError(t, err)
+	require.NotEmpty(t, id)
+
+	row, err := svc.AccountByID(context.Background(), id)
+	require.NoError(t, err)
+	assert.Equal(t, auth.RoleAdmin, row.Role)
+}
+
+// Et la porte PUBLIQUE, elle, doit rester fermée : l'ouvrir donnerait les
+// pleins pouvoirs à quiconque poste un formulaire d'inscription.
+func TestPublicRegistrationRefusesAdmin(t *testing.T) {
+	svc, _, _ := newUserTestService()
+
+	req := registerReq()
+	req.Role = auth.RoleAdmin
+	_, err := svc.Register(context.Background(), req)
+	require.Error(t, err)
+	assert.Equal(t, "validation_failed", apperr.From(err).Code)
+}
+
+// Idempotent : provisionner deux fois rend le même compte, sans erreur. Un
+// second passage du seed ne doit pas échouer.
+func TestEnsureAccountIsIdempotent(t *testing.T) {
+	svc, _, _ := newUserTestService()
+
+	first, err := svc.EnsureAccount(context.Background(), auth.RoleAdmin,
+		"+22890009998", "Ops", "s3cret-password")
+	require.NoError(t, err)
+	second, err := svc.EnsureAccount(context.Background(), auth.RoleAdmin,
+		"+22890009998", "Ops", "s3cret-password")
+	require.NoError(t, err)
+	assert.Equal(t, first, second)
+}

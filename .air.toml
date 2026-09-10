@@ -1,0 +1,22 @@
+# Rechargement à chaud de l'API en développement (stack `dev/` de dira-devops).
+#
+# Le binaire est recompilé à chaque écriture d'un fichier Go. `_test.go` est
+# exclu : un test en cours d'écriture ne doit pas faire redémarrer le service
+# sous les doigts de quelqu'un qui s'en sert.
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  bin = "./tmp/api"
+  cmd = "go build -o ./tmp/api ./cmd/api"
+  delay = 1000
+  exclude_dir = ["tmp", "docs", "indexes", "api", "docker"]
+  exclude_regex = ["_test.go"]
+  include_ext = ["go", "toml"]
+  log = "build-errors.log"
+
+[log]
+  main_only = true
+
+[misc]
+  clean_on_exit = true

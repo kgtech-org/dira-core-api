@@ -85,11 +85,26 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (AuthRespon
 	if role == "" {
 		role = auth.RoleClient
 	}
+	// ⚠️ `admin` n'est PAS acceptable ici, et cette porte est publique : la
+	// laisser ouverte donnerait les pleins pouvoirs à quiconque poste un
+	// formulaire d'inscription. Le provisionnement d'un administrateur passe
+	// par `EnsureAccount`, derrière le secret de service.
 	switch role {
 	case auth.RoleClient, auth.RoleDriver, auth.RoleMerchant:
 	default:
 		return AuthResponse{}, apperr.Validation("role must be client, driver or merchant")
 	}
+	return s.register(ctx, req, role)
+}
+
+// register crée le compte, une fois le rôle ADMIS par l'appelant.
+//
+// Séparé de `Register` pour une raison précise : l'inscription publique et le
+// provisionnement d'un service n'admettent pas les mêmes rôles, et faire passer
+// le second par la validation du premier revenait à annoncer un pouvoir —
+// « ouvrir un compte de n'importe quel rôle » — que le socle refusait ensuite
+// en silence, avec un 422 que personne ne savait lire.
+func (s *Service) register(ctx context.Context, req RegisterRequest, role string) (AuthResponse, error) {
 
 	hash, err := HashPassword(req.Password)
 	if err != nil {
@@ -533,6 +548,14 @@ func (s *Service) UserNames(ctx context.Context, ids []string) (map[string]strin
 // C'est voulu : le provisionnement rejoue le même jeu de données, et échouer
 // parce qu'un compte existe déjà en ferait un outil à usage unique.
 func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, password string) (string, error) {
+	// ⚠️ `admin` est admis ICI, et nulle part ailleurs. C'est un pouvoir plus
+	// large que le reste de la surface de service, gardé par le même secret :
+	// un service qui peut créer un administrateur peut tout.
+	switch role {
+	case auth.RoleClient, auth.RoleDriver, auth.RoleMerchant, auth.RoleAdmin:
+	default:
+		return "", apperr.Validation("role must be client, driver, merchant or admin")
+	}
 	existing, err := s.repo.FindByPhone(ctx, phone)
 	if err != nil {
 		return "", apperr.Internal(err)
@@ -540,9 +563,11 @@ func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, password
 	if existing != nil {
 		return existing.ID.Hex(), nil
 	}
-	resp, err := s.Register(ctx, RegisterRequest{
-		Phone: phone, Name: name, Password: password, Role: role,
-	})
+	// `register`, pas `Register` : l'inscription publique refuse `admin`, et
+	// c'est exactement ce qu'on veut qu'elle continue de faire.
+	resp, err := s.register(ctx, RegisterRequest{
+		Phone: phone, Name: name, Password: password,
+	}, role)
 	if err != nil {
 		return "", err
 	}
