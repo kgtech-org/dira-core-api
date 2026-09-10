@@ -132,7 +132,10 @@ func run(logger *slog.Logger) error {
 	// sans avoir prévenu la livraison laisserait une commande payée et jamais
 	// confirmée — et le prestataire, ayant reçu un accusé, ne réessaierait
 	// pas. Un échec ici lui fait retenter ; c'est le comportement voulu.
-	food := callback.New(cfg.FoodBaseURL, cfg.ServiceToken)
+	// ⚠️ Le jeton de RAPPEL, pas celui de service. Le socle PRÉSENTE celui-ci
+	// et EXIGE l'autre : réutiliser le même ferait qu'un secret volé chez la
+	// livraison ouvrirait tous les portefeuilles du socle.
+	food := callback.New(cfg.FoodBaseURL, cfg.FoodCallbackToken)
 	if !food.Enabled() {
 		logger.Error("FOOD_BASE_URL not set: an order payment cannot be confirmed to the delivery vertical")
 	}

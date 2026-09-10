@@ -37,6 +37,13 @@ type Config struct {
 	// sans avoir prévenu la livraison laisserait une commande payée et jamais
 	// confirmée, et le prestataire ne réessaierait pas.
 	FoodBaseURL string
+	// FoodCallbackToken authentifie les rappels du socle VERS la livraison.
+	//
+	// ⚠️ DISTINCT de ServiceToken, et ce n'est pas une coquetterie : celui-ci
+	// est le secret que le socle PRÉSENTE, l'autre est celui qu'il EXIGE.
+	// Réutiliser le même ferait qu'un secret volé chez la livraison ouvrirait
+	// la porte de service du socle — c'est-à-dire tous les portefeuilles.
+	FoodCallbackToken string
 }
 
 // Load reads the environment, applies defaults and validates.
@@ -52,6 +59,7 @@ func Load() (*Config, error) {
 		MockPaymentSecret:     core.Env("MOCK_PAYMENT_SECRET", "mock-secret"),
 		ServiceToken:          core.Env("CORE_SERVICE_TOKEN", ""),
 		FoodBaseURL:           core.Env("FOOD_BASE_URL", ""),
+		FoodCallbackToken:     core.Env("FOOD_CALLBACK_TOKEN", ""),
 	}
 
 	switch cfg.Env {
