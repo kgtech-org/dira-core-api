@@ -84,7 +84,7 @@ type Payments interface {
 // champ oublié dans une vue financière est un montant qui n'apparaît nulle
 // part, sans que rien n'échoue.
 type BackOffice interface {
-	ListWallets(ctx context.Context, walletType, cursor string, limit int) ([]token.WalletRow, string, error)
+	ListWallets(ctx context.Context, walletType, ownerID, cursor string, limit int) ([]token.WalletRow, string, error)
 	ListLedger(ctx context.Context, walletID, cursor string, limit int) ([]token.LedgerRow, string, error)
 	ListPayments(ctx context.Context, status, purpose, cursor string, limit int) ([]payment.PaymentRow, string, error)
 }
@@ -356,13 +356,14 @@ type pageRequest struct {
 func (h *Handler) listWallets(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		pageRequest
-		Type string `json:"type"`
+		Type    string `json:"type"`
+		OwnerID string `json:"owner_id"`
 	}
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	items, next, err := h.backoffice.ListWallets(r.Context(), req.Type, req.Cursor, req.Limit)
+	items, next, err := h.backoffice.ListWallets(r.Context(), req.Type, req.OwnerID, req.Cursor, req.Limit)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

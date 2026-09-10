@@ -62,12 +62,24 @@ func beforeCursor(filter bson.M, cursor string) bson.M {
 	return filter
 }
 
-// ListWallets pages wallets, newest first, optionally filtered by type.
-func (r *Repository) ListWallets(ctx context.Context, walletType, cursor string, limit int) ([]WalletRow, string, error) {
+// ListWallets pages wallets, newest first, filtered by type and/or owner.
+//
+// Le filtre par PROPRIÉTAIRE sert la fiche d'une personne : c'est un champ sur
+// une requête existante plutôt qu'une route « solde de quelqu'un » de plus.
+// Une surface de service se garde étroite en n'y ajoutant que ce qu'on ne peut
+// pas exprimer avec ce qui existe.
+func (r *Repository) ListWallets(ctx context.Context, walletType, ownerID, cursor string, limit int) ([]WalletRow, string, error) {
 	limit = pageLimit(limit)
 	filter := bson.M{}
 	if walletType != "" {
 		filter["type"] = walletType
+	}
+	if ownerID != "" {
+		oid, err := primitive.ObjectIDFromHex(ownerID)
+		if err != nil {
+			return nil, "", apperr.Validation("invalid owner id").WithCause(err)
+		}
+		filter["owner_id"] = oid
 	}
 	opts := options.Find().SetSort(bson.D{{Key: "_id", Value: -1}}).SetLimit(int64(limit + 1))
 	cur, err := r.wallets.Find(ctx, beforeCursor(filter, cursor), opts)

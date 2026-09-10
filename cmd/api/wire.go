@@ -24,8 +24,8 @@ type backOffice struct {
 	payments *payment.Repository
 }
 
-func (b backOffice) ListWallets(ctx context.Context, walletType, cursor string, limit int) ([]token.WalletRow, string, error) {
-	return b.tokens.ListWallets(ctx, walletType, cursor, limit)
+func (b backOffice) ListWallets(ctx context.Context, walletType, ownerID, cursor string, limit int) ([]token.WalletRow, string, error) {
+	return b.tokens.ListWallets(ctx, walletType, ownerID, cursor, limit)
 }
 
 func (b backOffice) ListLedger(ctx context.Context, walletID, cursor string, limit int) ([]token.LedgerRow, string, error) {
