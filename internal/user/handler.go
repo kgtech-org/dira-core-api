@@ -8,6 +8,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
+	"github.com/kgtech-org/dira-core-api/pkg/middleware"
 )
 
 // Handler exposes the user HTTP endpoints.
@@ -36,7 +37,64 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		g.Post("/me/addresses", h.createAddress)
 		g.Put("/me/addresses/{id}", h.updateAddress)
 		g.Delete("/me/addresses/{id}", h.deleteAddress)
+
+		// Administration des comptes. Elle vit au SOCLE parce qu'un compte est
+		// un compte : la console des repas et celle des courses cherchent la
+		// même personne. Deux écrans d'administration pour un seul annuaire
+		// auraient donné une suspension qui ne vaut que d'un côté.
+		//
+		// La fiche COMPLÈTE d'un livreur — solde, véhicules, courses — se
+		// compose dans la verticale, à partir de ces lignes.
+		admin := middleware.RequireRole(auth.RoleAdmin)
+		g.With(admin).Get("/admin/users", h.listAccounts)
+		g.With(admin).Get("/admin/users/{id}", h.getAccount)
+		g.With(admin).Patch("/admin/users/{id}/status", h.setAccountStatus)
 	})
+}
+
+// GET /admin/users?role=&status=&q=&cursor=&limit=
+func (h *Handler) listAccounts(w http.ResponseWriter, r *http.Request) {
+	page := httpx.PageFromRequest(r)
+	items, next, err := h.svc.ListAccounts(r.Context(), AccountFilter{
+		Role:   r.URL.Query().Get("role"),
+		Status: r.URL.Query().Get("status"),
+		Query:  r.URL.Query().Get("q"),
+	}, page.Cursor, page.Limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.List(w, items, next)
+}
+
+// GET /admin/users/{id}
+func (h *Handler) getAccount(w http.ResponseWriter, r *http.Request) {
+	row, err := h.svc.AccountByID(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, row)
+}
+
+// PATCH /admin/users/{id}/status
+func (h *Handler) setAccountStatus(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Status string `json:"status" validate:"required,oneof=active suspended"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	before, err := h.svc.SetAccountStatus(r.Context(), chi.URLParam(r, "id"), req.Status)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	// L'état AVANT est rendu pour que l'appelant sache ce qui a réellement
+	// bougé : suspendre un compte déjà suspendu n'est pas la même chose que
+	// suspendre un compte actif, et seule la trace d'audit le distingue.
+	httpx.JSON(w, http.StatusOK, map[string]any{"before": before, "status": req.Status})
 }
 
 func (h *Handler) register(w http.ResponseWriter, r *http.Request) {

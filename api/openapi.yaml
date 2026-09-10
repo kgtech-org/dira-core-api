@@ -12,6 +12,13 @@ info:
     (`/api/v1/...`), sans préfixe de verticale : l'authentification et le
     portefeuille sont les mêmes pour les deux, et les préfixer obligerait une
     application à choisir une verticale juste pour se connecter.
+
+
+    ⚠️ Les routes `/internal/...` NE FIGURENT PAS ici. Elles portent les
+    pouvoirs d'un service — débiter un portefeuille, ouvrir un compte — sont
+    gardées par un secret partagé, et ne sont appelées par aucune application.
+    Leur liste vit dans `internal/serviceapi/`, et un test refuse toute route
+    qui s'y ajouterait sans être déclarée.
 servers:
   - url: /api/v1
 tags:
@@ -25,75 +32,241 @@ tags:
     description: Mobile money — initiation, statut, rappels du prestataire
   - name: notifications
     description: Boîte de réception, appareils, gabarits multilingues
+  - name: ratings
+    description: Avis déposés par les verticales, lus par tout le monde
+  - name: admin
+    description: Administration des comptes — commune aux deux verticales
 paths:
   /auth/register:
     post:
       tags: [auth]
-      security: []
       summary: Create an account
       responses:
-        "201": {description: Registered}
+        "201": {description: Account created with a token pair}
   /auth/login:
     post:
       tags: [auth]
-      security: []
-      summary: Log in
+      summary: Sign in
       responses:
-        "200": {description: Tokens}
+        "200": {description: Token pair}
   /auth/refresh:
     post:
       tags: [auth]
-      security: []
       summary: Rotate the refresh token
       responses:
-        "200": {description: Tokens}
+        "200": {description: New token pair}
   /auth/logout:
     post:
       tags: [auth]
-      summary: Revoke a refresh token
+      summary: Revoke the refresh token
       responses:
-        "204": {description: Logged out}
+        "204": {description: Signed out}
   /me:
     get:
       tags: [users]
       summary: Own profile
       responses:
-        "200": {description: User}
+        "200": {description: Profile}
+    patch:
+      tags: [users]
+      summary: Update own profile
+      responses:
+        "200": {description: Profile}
+  /me/preferences:
+    patch:
+      tags: [users]
+      summary: Update notification, theme and language preferences
+      responses:
+        "200": {description: Profile}
+  /me/addresses:
+    get:
+      tags: [users]
+      summary: Own address book
+      responses:
+        "200": {description: Addresses}
+    post:
+      tags: [users]
+      summary: Save an address
+      responses:
+        "201": {description: Address}
+  /me/addresses/{id}:
+    put:
+      tags: [users]
+      summary: Update an address
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Address}
+    delete:
+      tags: [users]
+      summary: Delete an address
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: Deleted}
   /wallet:
     get:
       tags: [wallet]
       summary: Own wallet
       responses:
-        "200": {description: Wallet}
+        "200": {description: Balance}
+  /wallet/transactions:
+    get:
+      tags: [wallet]
+      summary: Own ledger
+      responses:
+        "200": {description: Movements}
+  /wallet/purchase:
+    post:
+      tags: [wallet]
+      summary: Buy tokens
+      responses:
+        "201": {description: Payment started}
   /payments/providers:
     get:
       tags: [payments]
-      summary: Mobile-money operators the server can ACTUALLY charge
-      description: >-
-        ⚠️ Ne codez PAS la liste en dur : c'est le registre du serveur, pas un
-        catalogue d'intentions. Une application qui affiche des opérateurs non
-        intégrés fait échouer le paiement au moment précis où le client vient
-        de valider son panier.
+      summary: Mobile-money operators available
       responses:
         "200": {description: Providers}
   /payments/initiate:
     post:
       tags: [payments]
-      summary: Start a mobile-money payment
+      summary: Start a payment
       responses:
-        "201": {description: Initiated}
+        "201": {description: Payment with its checkout URL}
+  /payments/{id}:
+    get:
+      tags: [payments]
+      summary: Payment status
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Payment}
+  /webhooks/payment/{provider}:
+    post:
+      tags: [payments]
+      summary: Provider callback
+      description: >-
+        Signature vérifiée. ⚠️ Confirmer le paiement d'une COMMANDE suppose de
+        prévenir la verticale, seule à savoir ce qu'est une commande : ce
+        rappel sortant n'existe pas encore, et le module le journalise
+        bruyamment plutôt que de le perdre.
+      parameters: [{name: provider, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: Acknowledged}
   /me/notifications:
     get:
       tags: [notifications]
       summary: Own inbox
       responses:
         "200": {description: Notifications}
+  /me/notifications/read:
+    post:
+      tags: [notifications]
+      summary: Mark the whole inbox read
+      responses:
+        "204": {description: Read}
+  /me/notifications/{id}/read:
+    post:
+      tags: [notifications]
+      summary: Mark one notification read
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: Read}
   /me/devices:
     post:
       tags: [notifications]
       summary: Register a push token
       responses:
         "204": {description: Registered}
+  /me/devices/{token}:
+    delete:
+      tags: [notifications]
+      summary: Forget a push token
+      parameters: [{name: token, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: Forgotten}
+  /admin/message-templates:
+    get:
+      tags: [notifications]
+      summary: List message templates
+      responses:
+        "200": {description: Templates}
+  /admin/message-templates/{key}:
+    put:
+      tags: [notifications]
+      summary: Update a template
+      parameters: [{name: key, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Template}
+  /admin/message-templates/{key}/preview:
+    post:
+      tags: [notifications]
+      summary: Render a template with sample variables
+      parameters: [{name: key, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Rendered message}
+  /stores/{id}/ratings:
+    get:
+      tags: [ratings]
+      summary: Reviews of a point of sale
+      description: >-
+        Lisible SANS compte : c'est ce qui aide à choisir avant même de
+        s'inscrire.
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Reviews}
+  /agents/{id}/ratings:
+    get:
+      tags: [ratings]
+      summary: Reviews of a courier
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Reviews}
+  /dishes/{id}/ratings:
+    get:
+      tags: [ratings]
+      summary: Reviews of a dish
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Reviews}
+  /admin/users:
+    get:
+      tags: [admin]
+      summary: Search accounts
+      description: >-
+        L'annuaire est COMMUN aux deux verticales : la console des repas et
+        celle des courses cherchent la même personne. La fiche complète d'un
+        livreur — solde, véhicules, courses — se compose dans la verticale, à
+        partir de ces lignes.
+      parameters:
+        - {name: role, in: query, schema: {type: string, enum: [client, driver, merchant, admin]}}
+        - {name: status, in: query, schema: {type: string, enum: [active, suspended]}}
+        - {name: q, in: query, schema: {type: string}, description: Nom ou téléphone}
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, maximum: 100}}
+      responses:
+        "200": {description: Accounts}
+  /admin/users/{id}:
+    get:
+      tags: [admin]
+      summary: One account
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Account}
+        "404": {description: user_not_found}
+  /admin/users/{id}/status:
+    patch:
+      tags: [admin]
+      summary: Activate or suspend an account
+      description: >-
+        Rend l'état AVANT la modification, pour que la trace d'audit dise ce
+        qui a réellement bougé. ⚠️ Une suspension ne ferme pas les sessions en
+        cours : les verticales vérifient le jeton localement, sans appeler le
+        socle. Le rafraîchissement est refusé, donc la porte se referme au plus
+        tard à l'expiration de l'accès.
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Previous state and new status}
+        "404": {description: user_not_found}
+        "422": {description: status must be active or suspended}
 components:
   securitySchemes:
     bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}

@@ -39,6 +39,14 @@ type Repo interface {
 	SaveAddress(ctx context.Context, a *Address) error
 	DeleteAddress(ctx context.Context, userID, id primitive.ObjectID) (bool, error)
 	ClearDefaultAddress(ctx context.Context, userID, except primitive.ObjectID) error
+
+	// Administration des comptes : chercher, lire, suspendre. Voir
+	// backoffice.go — ces lectures servent la console, et la fiche complète
+	// d'un livreur se compose ensuite dans la verticale.
+	ListAccounts(ctx context.Context, f AccountFilter, cursor string, limit int) ([]AccountRow, string, error)
+	AccountByID(ctx context.Context, id string) (*AccountRow, error)
+	AccountsByIDs(ctx context.Context, ids []string) ([]AccountRow, error)
+	SetAccountStatus(ctx context.Context, id, status string) (*AccountRow, error)
 }
 
 // WalletCreator creates the driver token wallet at registration time. Wiring
@@ -539,4 +547,44 @@ func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, password
 		return "", err
 	}
 	return resp.User.ID, nil
+}
+
+// --- administration des comptes ---
+
+// ListAccounts searches accounts for an administration screen.
+func (s *Service) ListAccounts(ctx context.Context, f AccountFilter, cursor string, limit int) ([]AccountRow, string, error) {
+	return s.repo.ListAccounts(ctx, f, cursor, limit)
+}
+
+// AccountByID reads one account.
+func (s *Service) AccountByID(ctx context.Context, id string) (*AccountRow, error) {
+	return s.repo.AccountByID(ctx, id)
+}
+
+// AccountsByIDs reads several accounts at once, for listings a vertical
+// decorates with an identity.
+func (s *Service) AccountsByIDs(ctx context.Context, ids []string) ([]AccountRow, error) {
+	const batch = 200
+	if len(ids) > batch {
+		return nil, apperr.Validation("too many ids").
+			WithMeta(map[string]any{"max": batch, "got": len(ids)})
+	}
+	return s.repo.AccountsByIDs(ctx, ids)
+}
+
+// SetAccountStatus activates or suspends an account and returns the state
+// BEFORE the change.
+//
+// ⚠️ Une SUSPENSION ne ferme pas les sessions en cours : le jeton d'accès
+// reste valable jusqu'à son expiration, parce que les verticales le vérifient
+// localement, sans appeler le socle. C'est le prix assumé de cette
+// vérification locale — voir le commentaire de `pkg/auth`. Le rafraîchissement
+// est refusé, donc la porte se referme au plus tard à l'expiration.
+func (s *Service) SetAccountStatus(ctx context.Context, id, status string) (*AccountRow, error) {
+	switch status {
+	case StatusActive, StatusSuspended:
+	default:
+		return nil, apperr.Validation("status must be active or suspended")
+	}
+	return s.repo.SetAccountStatus(ctx, id, status)
 }

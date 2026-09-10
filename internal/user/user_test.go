@@ -503,3 +503,153 @@ func (f *fakeUserRepo) FindNamesByIDs(_ context.Context, ids []primitive.ObjectI
 	}
 	return out, nil
 }
+
+// --- administration des comptes ---
+
+// Le faux dépôt REPRODUIT le comportement attendu — filtres, tri croissant,
+// curseur, état rendu avant modification — plutôt que de rendre des listes
+// vides. Un faux qui ne fait rien fait passer au vert des tests qui ne
+// vérifient rien.
+
+func (f *fakeUserRepo) toRow(u *User) AccountRow {
+	return AccountRow{
+		ID: u.ID.Hex(), OID: u.ID, Role: u.Role, Phone: u.Phone, Name: u.Name,
+		Email: u.Email, Status: u.Status, CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
+	}
+}
+
+func (f *fakeUserRepo) ListAccounts(_ context.Context, flt AccountFilter, cursor string, limit int) ([]AccountRow, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var rows []AccountRow
+	for _, u := range f.users {
+		if flt.Role != "" && u.Role != flt.Role {
+			continue
+		}
+		if flt.Status != "" && u.Status != flt.Status {
+			continue
+		}
+		if flt.Query != "" {
+			q := strings.ToLower(flt.Query)
+			if !strings.Contains(strings.ToLower(u.Name), q) && !strings.Contains(u.Phone, flt.Query) {
+				continue
+			}
+		}
+		rows = append(rows, f.toRow(u))
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].OID.Hex() < rows[j].OID.Hex() })
+	if cursor != "" {
+		for i, r := range rows {
+			if r.OID.Hex() > cursor {
+				rows = rows[i:]
+				break
+			}
+			if i == len(rows)-1 {
+				rows = nil
+			}
+		}
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	next := ""
+	if len(rows) > limit {
+		rows = rows[:limit]
+		next = rows[limit-1].OID.Hex()
+	}
+	return rows, next, nil
+}
+
+func (f *fakeUserRepo) AccountByID(_ context.Context, id string) (*AccountRow, error) {
+	oid, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, errAccountNotFound
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[oid]
+	if !ok {
+		return nil, errAccountNotFound
+	}
+	row := f.toRow(u)
+	return &row, nil
+}
+
+func (f *fakeUserRepo) AccountsByIDs(_ context.Context, ids []string) ([]AccountRow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var rows []AccountRow
+	for _, id := range ids {
+		oid, err := primitive.ObjectIDFromHex(id)
+		if err != nil {
+			continue
+		}
+		if u, ok := f.users[oid]; ok {
+			rows = append(rows, f.toRow(u))
+		}
+	}
+	return rows, nil
+}
+
+func (f *fakeUserRepo) SetAccountStatus(_ context.Context, id, status string) (*AccountRow, error) {
+	oid, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, errAccountNotFound
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[oid]
+	if !ok {
+		return nil, errAccountNotFound
+	}
+	before := f.toRow(u)
+	u.Status = status
+	u.UpdatedAt = time.Now().UTC()
+	return &before, nil
+}
+
+func TestSetAccountStatusReturnsThePreviousState(t *testing.T) {
+	svc, _, _ := newUserTestService()
+
+	created, err := svc.Register(context.Background(), registerReq())
+	require.NoError(t, err)
+
+	before, err := svc.SetAccountStatus(context.Background(), created.User.ID, StatusSuspended)
+	require.NoError(t, err)
+	// L'état AVANT distingue « suspendre un compte actif » de « suspendre un
+	// compte déjà suspendu ». Sans lui, la trace d'audit ne dit pas ce qui a
+	// réellement bougé.
+	assert.Equal(t, StatusActive, before.Status)
+
+	again, err := svc.SetAccountStatus(context.Background(), created.User.ID, StatusSuspended)
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuspended, again.Status)
+}
+
+func TestSetAccountStatusRefusesAnUnknownStatus(t *testing.T) {
+	svc, repo, _ := newUserTestService()
+	created, err := svc.Register(context.Background(), registerReq())
+	require.NoError(t, err)
+
+	// « deleted » n'est pas un état de compte. L'accepter écrirait dans la
+	// base un état qu'aucun écran ne sait lire et qu'aucun filtre ne trouve.
+	_, err = svc.SetAccountStatus(context.Background(), created.User.ID, "deleted")
+	require.Error(t, err)
+
+	// Et surtout : le refus doit avoir eu lieu AVANT l'écriture.
+	row, err := repo.AccountByID(context.Background(), created.User.ID)
+	require.NoError(t, err)
+	assert.Equal(t, StatusActive, row.Status)
+}
+
+func TestAccountsByIDsRefusesAnUnboundedList(t *testing.T) {
+	svc, _, _ := newUserTestService()
+	ids := make([]string, 201)
+	for i := range ids {
+		ids[i] = primitive.NewObjectID().Hex()
+	}
+	// Une liste d'identifiants sans limite est une lecture de toute la table
+	// déguisée en résolution de noms.
+	_, err := svc.AccountsByIDs(context.Background(), ids)
+	require.Error(t, err)
+}

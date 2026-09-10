@@ -19,6 +19,7 @@ import (
 
 	"github.com/kgtech-org/dira-core-api/internal/payment"
 	"github.com/kgtech-org/dira-core-api/internal/token"
+	"github.com/kgtech-org/dira-core-api/internal/user"
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
 )
 
@@ -40,6 +41,16 @@ type Accounts interface {
 	// administrateur peut tout.
 	EnsureAccount(ctx context.Context, role, phone, name, password string) (string, error)
 	IDByPhone(ctx context.Context, phone string) (string, error)
+
+	// AccountsByIDs et AccountByID servent les LISTES d'une verticale : une
+	// course, une commande, un ticket ne portent qu'un identifiant, et un
+	// écran d'administration doit afficher un nom.
+	//
+	// ⚠️ N'ÉLARGISSENT RIEN : `ContactOf` rendait déjà le nom et le téléphone,
+	// une personne à la fois. Ces routes évitent d'appeler cent fois ce qui
+	// tient en un appel — c'est un gain de trajets, pas de pouvoir.
+	AccountsByIDs(ctx context.Context, ids []string) ([]user.AccountRow, error)
+	AccountByID(ctx context.Context, id string) (*user.AccountRow, error)
 }
 
 // Wallets is the money a vertical moves on a person's behalf.
@@ -103,6 +114,8 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 
 		g.Post("/internal/accounts/contact", h.contact)
 		g.Post("/internal/accounts/names", h.names)
+		g.Post("/internal/accounts/rows", h.accountRows)
+		g.Post("/internal/accounts/get", h.accountGet)
 		g.Post("/internal/accounts/ensure-merchant", h.ensureMerchant)
 		g.Post("/internal/accounts/ensure", h.ensureAccount)
 		g.Post("/internal/accounts/by-phone", h.byPhone)
@@ -390,4 +403,39 @@ func (h *Handler) listPayments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.List(w, items, next)
+}
+
+// POST /internal/accounts/rows — plusieurs comptes en un appel.
+func (h *Handler) accountRows(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs []string `json:"ids" validate:"required,max=200,dive,len=24,hexadecimal"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	rows, err := h.accounts.AccountsByIDs(r.Context(), req.IDs)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": rows})
+}
+
+// POST /internal/accounts/get — un compte, pour la fiche que la verticale
+// compose avec ce qu'elle possède (solde, véhicules, courses).
+func (h *Handler) accountGet(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID string `json:"user_id" validate:"required,len=24,hexadecimal"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	row, err := h.accounts.AccountByID(r.Context(), req.UserID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, row)
 }
