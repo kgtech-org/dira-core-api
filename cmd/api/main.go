@@ -26,12 +26,15 @@ import (
 	"github.com/kgtech-org/dira-core-api/api"
 	"github.com/kgtech-org/dira-core-api/internal/config"
 	"github.com/kgtech-org/dira-core-api/internal/indexes"
+	"github.com/kgtech-org/dira-core-api/internal/notify"
+	"github.com/kgtech-org/dira-core-api/internal/payment"
 	"github.com/kgtech-org/dira-core-api/internal/token"
 	"github.com/kgtech-org/dira-core-api/internal/user"
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
 	"github.com/kgtech-org/dira-core-api/pkg/db"
 	"github.com/kgtech-org/dira-core-api/pkg/docs"
+	"github.com/kgtech-org/dira-core-api/pkg/fcm"
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
 	"github.com/kgtech-org/dira-core-api/pkg/i18n"
 	"github.com/kgtech-org/dira-core-api/pkg/middleware"
@@ -93,9 +96,51 @@ func run(logger *slog.Logger) error {
 	// sont pas montées. Le découpage — le grand livre au socle, la propulsion
 	// à la livraison — reste à faire ; le laisser dans cet état sans le dire
 	// ferait croire que le module a trouvé sa place.
-	tokenSvc := token.NewService(token.NewRepository(mongo), nil, nil, nil, nil,
+	paymentSvc := payment.NewService(payment.NewRepository(mongo),
+		map[string]payment.PaymentProvider{"mock": payment.NewMockProvider(cfg.MockPaymentSecret)}, nil)
+
+	tokenSvc := token.NewService(token.NewRepository(mongo), nil, paymentSvc, nil, nil,
 		token.DefaultTokenPriceXOF, token.DefaultBoostCost, nil)
 	userSvc := user.NewService(user.NewRepository(mongo), tokens, tokenSvc)
+
+	// L'opérateur habituel d'un client vient des COMPTES : le proposer d'office
+	// évite de redemander à chaque paiement lequel il utilise.
+	paymentSvc.SetPreferences(userSvc)
+
+	// Les deux dénouements que le socle sait mener lui-même.
+	//
+	// ⚠️ Le crédit n'a lieu qu'à la CONFIRMATION du prestataire. Créditer sur
+	// la réponse d'une initiation reviendrait à offrir l'argent : une
+	// initiation dit qu'on a demandé à payer, pas qu'on a payé.
+	paymentSvc.OnWalletToppedUp = func(ctx context.Context, userID string, amountXOF int, paymentID string) error {
+		return tokenSvc.TopUp(ctx, userID, amountXOF, map[string]any{"payment_id": paymentID})
+	}
+	paymentSvc.OnTokensPurchased = func(ctx context.Context, walletOwnerID string, tokens int) error {
+		return tokenSvc.Credit(ctx, walletOwnerID, tokens, "topup")
+	}
+
+	// ⚠️ `OnOrderPaid` reste NIL, et c'est le premier vrai manque de service à
+	// service : confirmer le paiement d'une commande demande de prévenir la
+	// LIVRAISON, qui seule sait ce qu'est une commande.
+	//
+	// Le module le journalise à voix haute plutôt que de l'oublier. Ce crochet
+	// deviendra un rappel HTTP vers la verticale à l'étape C ; tant que
+	// dira-food-api encaisse lui-même, rien n'est cassé — mais router les
+	// paiements ici avant d'avoir posé ce rappel laisserait des commandes
+	// payées et jamais confirmées.
+
+	notifySvc := notify.NewService(notify.NewRepository(mongo))
+	if sa := fcmServiceAccount(cfg, logger); sa != "" {
+		if client, err := fcm.New(sa); err != nil {
+			// Une clé illisible se corrige ; démarrer en la taisant ferait
+			// chercher la panne du côté des téléphones.
+			logger.Error("core: FCM service account unreadable, push notifications disabled", "error", err)
+		} else {
+			notifySvc.SetPusher(fcmPusher{client: client})
+		}
+	} else {
+		logger.Warn("core: no FCM service account, push notifications disabled")
+	}
 
 	router := chi.NewRouter()
 	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +162,11 @@ func run(logger *slog.Logger) error {
 			httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		})
 		user.NewHandler(userSvc).Mount(r, authMW)
+		notify.NewHandler(notifySvc).Mount(r, authMW)
+		// ⚠️ La confirmation manuelle d'un encaissement n'est ouverte qu'HORS
+		// production : simuler l'arrivée d'un paiement est un pouvoir qui n'a
+		// rien à faire sur un service qui manipule de l'argent réel.
+		payment.NewHandler(paymentSvc).Mount(r, authMW, !cfg.IsProd())
 	})
 
 	server := &http.Server{
@@ -142,4 +192,48 @@ func run(logger *slog.Logger) error {
 		}
 		return err
 	}
+}
+
+// fcmServiceAccount lit le compte de service Firebase, du fichier de
+// préférence.
+//
+// Deux sources parce qu'une clé privée RSA tient mal dans une variable
+// d'environnement : la plupart des déploiements montent un secret en fichier.
+// Le FICHIER l'emporte quand les deux sont donnés — c'est la source la moins
+// susceptible d'avoir été tronquée en chemin.
+func fcmServiceAccount(cfg *config.Config, logger *slog.Logger) string {
+	if cfg.FCMServiceAccountFile != "" {
+		data, err := os.ReadFile(cfg.FCMServiceAccountFile)
+		if err != nil {
+			logger.Error("FCM: compte de service illisible", "path", cfg.FCMServiceAccountFile, "error", err)
+			return ""
+		}
+		return string(data)
+	}
+	return cfg.FCMServiceAccount
+}
+
+// fcmPusher adapts the Firebase client to what the notify module expects.
+//
+// Le module ne connaît pas Firebase : il connaît « envoyer un titre et un corps
+// à des jetons, et me dire lesquels sont morts ». Changer de fournisseur ne
+// toucherait que cet adaptateur.
+type fcmPusher struct{ client *fcm.Client }
+
+func (p fcmPusher) Push(ctx context.Context, msgs []notify.PushMessage) ([]notify.PushResult, error) {
+	out := make([]fcm.Message, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, fcm.Message{Token: m.Token, Title: m.Title, Body: m.Body, Data: m.Data})
+	}
+	res, err := p.client.Send(ctx, out)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]notify.PushResult, 0, len(res))
+	for _, r := range res {
+		results = append(results, notify.PushResult{
+			Token: r.Token, Err: r.Err, Unregistered: r.Unregistered,
+		})
+	}
+	return results, nil
 }

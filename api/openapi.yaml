@@ -19,6 +19,12 @@ tags:
     description: Inscription, connexion, rotation de jeton
   - name: users
     description: Profil, préférences, carnet d'adresses
+  - name: wallet
+    description: Portefeuille de jetons et solde Dira
+  - name: payments
+    description: Mobile money — initiation, statut, rappels du prestataire
+  - name: notifications
+    description: Boîte de réception, appareils, gabarits multilingues
 paths:
   /auth/register:
     post:
@@ -53,6 +59,41 @@ paths:
       summary: Own profile
       responses:
         "200": {description: User}
+  /wallet:
+    get:
+      tags: [wallet]
+      summary: Own wallet
+      responses:
+        "200": {description: Wallet}
+  /payments/providers:
+    get:
+      tags: [payments]
+      summary: Mobile-money operators the server can ACTUALLY charge
+      description: >-
+        ⚠️ Ne codez PAS la liste en dur : c'est le registre du serveur, pas un
+        catalogue d'intentions. Une application qui affiche des opérateurs non
+        intégrés fait échouer le paiement au moment précis où le client vient
+        de valider son panier.
+      responses:
+        "200": {description: Providers}
+  /payments/initiate:
+    post:
+      tags: [payments]
+      summary: Start a mobile-money payment
+      responses:
+        "201": {description: Initiated}
+  /me/notifications:
+    get:
+      tags: [notifications]
+      summary: Own inbox
+      responses:
+        "200": {description: Notifications}
+  /me/devices:
+    post:
+      tags: [notifications]
+      summary: Register a push token
+      responses:
+        "204": {description: Registered}
 components:
   securitySchemes:
     bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}

@@ -48,6 +48,8 @@ never reads — so variables nobody knows whether to set.
 cmd/api          HTTP entrypoint
 internal/user    accounts, auth, RBAC, addresses, preferences
 internal/token   token wallets and ledger
+internal/payment mobile money (provider abstraction + mock)
+internal/notify  inbox, push devices, multilingual templates (FCM)
 internal/config  core-only settings (the shared ones come from pkg/config)
 internal/indexes the MongoDB indexes this service owns
 api/openapi.yaml the contract, embedded in the binary
@@ -60,9 +62,18 @@ service the single point of failure of the whole platform.
 ## Status
 
 - **Step A — done.** The shared library is extracted; `dira-food-api` builds on it.
-- **Step B — in progress.** The service boots and serves **identity**: `/auth/*`, `/me`,
-  `/me/addresses`, `/me/preferences`. Wallets, payments, notifications, ratings and
-  vehicles are still served by `dira-food-api`.
+- **Step B — in progress.** The service boots and serves **identity**, **wallets**,
+  **payments** and **notifications**. Ratings and vehicles are still in `dira-food-api`.
+
+> ⚠️ **`OnOrderPaid` is nil, and it is the first real service-to-service gap.** Confirming
+> the payment of an *order* means telling the **vertical**, which alone knows what an order
+> is. The module logs it loudly rather than losing it; the hook becomes an HTTP callback in
+> step C. Nothing is broken while `dira-food-api` still takes its own payments — but routing
+> payments here before that callback exists would leave orders paid and never confirmed.
+
+> ⚠️ **`internal/rating` was moved here and moved back.** It has no import coupling, but it
+> needs the order, delivery, brand and dish services to know *what* is being rated. Its
+> rollup mechanism may become shared later; the module as it stands is the vertical's.
 
 > ⚠️ **`internal/token` is not settled.** Its ledger belongs here, but `BoostDish` and the
 > store-option catalogue need the food **catalogue** and **brand ownership**. Those

@@ -53,6 +53,18 @@ var applicationIndexes = []db.Index{
 	{Collection: "token_transactions", Keys: db.K("wallet_id", 1)},
 	{Collection: "token_transactions", Keys: db.K("created_at", 1)},
 	{Collection: "token_transactions", Keys: db.K("order_id", 1), Sparse: true},
+
+	// --- paiements ---
+	{Collection: "payments", Keys: db.K("provider_ref", 1), Unique: true},
+	{Collection: "payments", Keys: db.K("user_id", 1)},
+	{Collection: "payments", Keys: db.K("status", 1)},
+
+	// --- notifications ---
+	{Collection: "push_devices", Keys: db.K("token", 1), Unique: true},
+	{Collection: "push_devices", Keys: db.K("user_id", 1, "disabled_at", 1)},
+	{Collection: "message_templates", Keys: db.K("key", 1), Unique: true},
+	{Collection: "notifications", Keys: db.K("user_id", 1, "_id", -1)},
+	{Collection: "notifications", Keys: db.K("user_id", 1, "read_at", 1)},
 }
 
 // Ensure pose les index du socle. Idempotent : Mongo ignore un index déjà
