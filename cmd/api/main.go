@@ -14,6 +14,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/hibiken/asynq"
+	"github.com/kgtech-org/dira-core-api/pkg/jobs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -82,6 +84,21 @@ func run(logger *slog.Logger) error {
 	rdb := redis.NewClient(redisOpts)
 	defer func() { _ = rdb.Close() }()
 
+	// LA FILE. Une seule tâche y passe — l'annonce d'un paiement abouti à sa
+	// verticale — et c'est la seule qui la mérite : les vingt-trois autres
+	// échanges entre services sont des commandes qui attendent une réponse.
+	//
+	// ⚠️ Le CONSOMMATEUR tourne DANS ce processus, pas dans un binaire à part.
+	// Un conteneur de plus sur un seul serveur, pour une tâche qui consiste à
+	// faire un appel HTTP, coûterait plus à exploiter qu'il ne rapporte. Le
+	// jour où le volume le justifie, l'extraire est mécanique : le
+	// gestionnaire est déjà un type autonome.
+	asynqRedis := asynq.RedisClientOpt{
+		Addr: redisOpts.Addr, Password: redisOpts.Password, DB: redisOpts.DB,
+	}
+	asynqClient := asynq.NewClient(asynqRedis)
+	defer func() { _ = asynqClient.Close() }()
+
 	translator, err := i18n.New(cfg.LocalesPath)
 	if err != nil {
 		return err
@@ -149,16 +166,35 @@ func run(logger *slog.Logger) error {
 	} else {
 		logger.Info("payment confirmations routed", "purposes", verticals.Purposes())
 	}
+	// ⚠️ LE RAPPEL PART EN FILE, il n'est plus émis en ligne.
+	//
+	// Avant, le webhook du prestataire de paiement attendait la réponse de la
+	// verticale. Pendant un redéploiement de la livraison, le paiement d'un
+	// client ÉCHOUAIT — on faisait porter à l'acheteur la latence de nos mises
+	// en production, et c'est au prestataire qu'il revenait de réessayer.
+	//
+	// La mise en file répond en quelques millisecondes ; les reprises sont
+	// exponentielles et durables, et la file morte garde ce qui n'est jamais
+	// passé.
+	//
+	// ⚠️ L'ÉCHEC DE MISE EN FILE RESTE FATAL au webhook, et il le faut : le
+	// paiement vient d'être marqué « abouti », et répondre « reçu » sans avoir
+	// enfilé le rappel laisserait la commande payée et jamais confirmée. Le
+	// prestataire réessaie, et le socle ré-enfile — voir `RefPaidDuplicate`
+	// ci-dessous, sans quoi la seconde tentative se croirait en doublon et ne
+	// rappellerait personne.
 	paymentSvc.OnRefPaid = func(ctx context.Context, purpose, refID, paymentID string) error {
-		v := verticals.For(purpose)
-		if v == nil {
-			// ⚠️ Une ERREUR, pas un silence : le prestataire doit réessayer.
-			// Répondre « reçu » sans avoir prévenu personne laisserait une
-			// commande ou une course payée et jamais confirmée.
-			return fmt.Errorf("callback: no vertical configured for purpose %q", purpose)
-		}
-		return v.RefPaid(ctx, refID, paymentID)
+		return enqueueRefPaid(ctx, asynqClient, purpose, refID, paymentID)
 	}
+	// ⚠️ Le DOUBLON ré-enfile aussi.
+	//
+	// Sans cela, un échec de mise en file serait définitif : le paiement est
+	// déjà « abouti », la reprise du prestataire tomberait sur la branche
+	// « doublon », et personne ne serait jamais prévenu. C'est le rappel qui
+	// est idempotent côté verticale — une commande déjà payée y poursuit vers
+	// la livraison — donc en enfiler un de trop ne coûte rien, et en oublier
+	// un coûte une commande perdue.
+	paymentSvc.OnRefPaidDuplicate = paymentSvc.OnRefPaid
 
 	ratingSvc := rating.NewService(rating.NewRepository(mongo), nil)
 
@@ -263,6 +299,27 @@ func run(logger *slog.Logger) error {
 			Mount(r, middleware.Service(cfg.ServiceToken))
 	})
 
+	// Le consommateur démarre avec l'API et s'arrête avec elle.
+	//
+	// ⚠️ Une panne de la file ne doit PAS empêcher l'API de servir : elle
+	// tient les comptes et les portefeuilles de toute la plateforme. On
+	// journalise, fort, et on continue — un socle qui refuse de démarrer parce
+	// qu'une file d'annonces est indisponible ferait tomber les deux métiers
+	// pour un rappel différé.
+	asynqSrv := asynq.NewServer(asynqRedis, asynq.Config{
+		Concurrency: 4,
+		Logger:      asynqSlog{},
+	})
+	mux := asynq.NewServeMux()
+	mux.HandleFunc(jobs.TypeRefPaid, callback.NewWorker(verticals).HandleRefPaid)
+	if err := asynqSrv.Start(mux); err != nil {
+		logger.Error("core: payment callbacks will NOT be delivered — job queue unavailable",
+			"error", err, "hint", "check REDIS_URI")
+	} else {
+		defer asynqSrv.Shutdown()
+		logger.Info("core: payment callback worker started", "concurrency", 4)
+	}
+
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           router,
@@ -365,3 +422,58 @@ func staffRow(r user.AccountRow) staff.AccountRow {
 		ID: r.ID, Role: r.Role, Name: r.Name, Phone: r.Phone, Email: r.Email, Status: r.Status,
 	}
 }
+
+// enqueueRefPaid met en file l'annonce d'un paiement abouti.
+//
+// ⚠️ La ROUTE (quelle verticale prévenir) n'est PAS résolue ici mais dans le
+// consommateur. Sinon une verticale mal configurée ferait échouer le webhook
+// du prestataire — ce que la file existe précisément pour éviter. Le
+// consommateur, lui, journalise et abandonne sans reprise : une configuration
+// absente le restera au vingtième essai.
+func enqueueRefPaid(ctx context.Context, client *asynq.Client, purpose, refID, paymentID string) error {
+	if client == nil {
+		return fmt.Errorf("callback: no job queue configured, cannot notify the vertical")
+	}
+	task, err := jobs.NewTask(jobs.TypeRefPaid, jobs.RefPaidPayload{
+		Purpose: purpose, RefID: refID, PaymentID: paymentID,
+	})
+	if err != nil {
+		return err
+	}
+	// ⚠️ L'identifiant de tâche est DÉRIVÉ du paiement. Deux webhooks du
+	// prestataire pour le même paiement produisent la même tâche, et Asynq
+	// refuse la seconde : la verticale n'est prévenue qu'une fois dans le cas
+	// courant. Elle reste idempotente pour le cas où la reprise dépasse la
+	// fenêtre d'unicité — une file « au moins une fois » ne promet rien de
+	// plus.
+	if _, err := client.EnqueueContext(ctx, task,
+		asynq.TaskID("ref-paid:"+paymentID),
+		asynq.MaxRetry(20),
+		asynq.Retention(retainFailedCallbacks),
+	); err != nil {
+		if errors.Is(err, asynq.ErrTaskIDConflict) {
+			slog.InfoContext(ctx, "callback: this payment is already queued for its vertical",
+				"payment_id", paymentID, "purpose", purpose)
+			return nil
+		}
+		return fmt.Errorf("callback: enqueue ref-paid: %w", err)
+	}
+	return nil
+}
+
+// retainFailedCallbacks garde les tâches abouties assez longtemps pour qu'on
+// puisse répondre à « ce paiement a-t-il bien été annoncé ? » le lendemain.
+const retainFailedCallbacks = 72 * time.Hour
+
+// asynqSlog fait passer les journaux de la file par `log/slog`, comme tout le
+// reste du service.
+//
+// Sans lui, la file écrit dans son propre format : deux formats de journal
+// dans un même flux, et un agrégateur qui n'en indexe qu'un.
+type asynqSlog struct{}
+
+func (asynqSlog) Debug(args ...any) { slog.Debug(fmt.Sprint(args...)) }
+func (asynqSlog) Info(args ...any)  { slog.Info(fmt.Sprint(args...)) }
+func (asynqSlog) Warn(args ...any)  { slog.Warn(fmt.Sprint(args...)) }
+func (asynqSlog) Error(args ...any) { slog.Error(fmt.Sprint(args...)) }
+func (asynqSlog) Fatal(args ...any) { slog.Error(fmt.Sprint(args...)) }

@@ -53,6 +53,18 @@ type Service struct {
 	// d'une verticale aboutit. Le `purpose` dit laquelle prévenir — le socle
 	// ne sait ni ce qu'est une commande, ni ce qu'est une course.
 	OnRefPaid func(ctx context.Context, purpose, refID, paymentID string) error
+	// OnRefPaidDuplicate est invoqué quand un webhook ARRIVE EN DOUBLON sur un
+	// paiement déjà abouti.
+	//
+	// ⚠️ Il existe pour une raison précise, et son absence était un trou. Le
+	// rappel de la verticale part désormais en FILE : si la mise en file
+	// échoue, le paiement est pourtant déjà marqué « abouti ». Le prestataire
+	// réessaie, tombe sur la branche « doublon » — et sans ce point
+	// d'accroche, personne ne serait jamais prévenu. La commande resterait
+	// payée et jamais confirmée.
+	//
+	// Nil-safe : sans lui, le doublon reste un simple no-op, ce qu'il était.
+	OnRefPaidDuplicate func(ctx context.Context, purpose, refID, paymentID string) error
 	// OnTokensPurchased is invoked exactly once when a token purchase
 	// succeeds. Wiring sets it to credit the wallet (token.Credit). Nil-safe:
 	// skipped with a warning when unset.
@@ -203,8 +215,14 @@ func (s *Service) HandleWebhook(ctx context.Context, providerName string, payloa
 	if err != nil {
 		return err
 	}
-	// Idempotency: already confirmed -> 200 no-op.
+	// Idempotency: already confirmed -> 200.
+	//
+	// ⚠️ On RÉ-ENFILE le rappel au passage. C'est ce qui rend récupérable un
+	// échec de mise en file : le paiement est abouti, mais rien ne dit que la
+	// verticale l'a su. Le rappel étant idempotent chez elle, en envoyer un de
+	// trop ne coûte rien — en oublier un coûte une commande perdue.
 	if p.Status == StatusSucceeded {
+		s.replayRefPaid(ctx, p)
 		return nil
 	}
 
@@ -218,13 +236,34 @@ func (s *Service) HandleWebhook(ctx context.Context, providerName string, payloa
 	}
 }
 
+// replayRefPaid remet en file l'annonce d'un paiement déjà abouti.
+//
+// ⚠️ AU MIEUX, et volontairement silencieux en cas d'échec : on est sur la
+// branche « doublon », le prestataire a déjà eu sa réponse la première fois.
+// Faire échouer le webhook ici le ferait réessayer indéfiniment pour un
+// paiement qui, lui, est bien enregistré.
+func (s *Service) replayRefPaid(ctx context.Context, p *Payment) {
+	if s.OnRefPaidDuplicate == nil {
+		return
+	}
+	if p.Purpose != PurposeOrder && p.Purpose != PurposeRide {
+		return
+	}
+	if err := s.OnRefPaidDuplicate(ctx, p.Purpose, p.RefID.Hex(), p.ID.Hex()); err != nil {
+		slog.WarnContext(ctx, "payment: could not re-queue the vertical callback for a duplicate webhook",
+			"payment_id", p.ID.Hex(), "purpose", p.Purpose, "error", err)
+	}
+}
+
 func (s *Service) confirmSucceeded(ctx context.Context, p *Payment) error {
 	transitioned, err := s.repo.SetStatusIfPending(ctx, p.ID, StatusSucceeded)
 	if err != nil {
 		return err
 	}
 	if !transitioned {
-		// Lost the race with a concurrent webhook: treat as duplicate.
+		// Course perdue avec un webhook concurrent : c'est un doublon, et il
+		// ré-enfile pour la même raison que ci-dessus.
+		s.replayRefPaid(ctx, p)
 		return nil
 	}
 

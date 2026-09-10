@@ -202,8 +202,33 @@ SEED_ADMIN_PASSWORD=<choose-one> go run ./cmd/seed   # the admin, and nothing el
 ```
 
 `docker/Dockerfile` builds the production image — **two binaries**, `api` and
-`seed`. No worker (the core does nothing deferred), and no ffmpeg (it processes
-no video).
+`seed`. No ffmpeg (it processes no video), and **no separate worker**: the one
+deferred task the core owns runs *inside* `api`.
+
+> ⚠️ **One queued task, and one only** — `core:ref_paid`, which tells a vertical
+> that a payment went through.
+>
+> The other **twenty-three** cross-service calls are *commands awaiting an
+> answer* — "debit this wallet, did it work?". A queue buys them nothing: you
+> would rebuild request/reply on top of it, which is HTTP done worse. This one
+> is the only **event**: the core states a fact and expects nothing back.
+>
+> It was inlined, and that coupled the provider's webhook to the vertical's
+> availability. During a delivery redeploy a customer's payment *failed*, and it
+> fell to the provider to retry — we made the buyer carry the latency of our
+> releases.
+>
+> ⚠️ **A failed enqueue still fails the webhook**, and must: the payment is
+> already marked succeeded, so answering "received" without queueing the
+> callback would leave an order paid and never confirmed. The provider retries —
+> and the **duplicate path re-enqueues**, without which that retry would find a
+> "duplicate" and notify nobody. The vertical's callback is idempotent, so one
+> callback too many costs nothing and one missing costs an order.
+>
+> The consumer runs in the API process rather than its own container: one more
+> container on a single host, for a task that makes an HTTP call, costs more to
+> operate than it returns. Extracting it later is mechanical — the handler is
+> already a standalone type.
 
 > ⚠️ **`seed` provisions the ADMIN, and nothing else.** The core does not know
 > what a restaurant or a trip is; each vertical seeds its own demo set and asks
