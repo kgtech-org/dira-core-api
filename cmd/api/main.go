@@ -29,6 +29,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/internal/notify"
 	"github.com/kgtech-org/dira-core-api/internal/payment"
 	"github.com/kgtech-org/dira-core-api/internal/rating"
+	"github.com/kgtech-org/dira-core-api/internal/serviceapi"
 	"github.com/kgtech-org/dira-core-api/internal/token"
 	"github.com/kgtech-org/dira-core-api/internal/user"
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
@@ -174,6 +175,12 @@ func run(logger *slog.Logger) error {
 		// socle ne sait pas si une commande est livrée — la verticale valide,
 		// puis dépose.
 		rating.NewHandler(ratingSvc).Mount(r, middleware.Service(cfg.ServiceToken))
+		// ⚠️ LA SURFACE DE SERVICE DU SOCLE. Ces routes portent les pouvoirs
+		// d'une verticale — débiter un portefeuille, ouvrir un compte — et
+		// n'ont aucun sens pour une personne. Elles sont gardées par le secret
+		// partagé, et rassemblées en un seul endroit pour être auditables.
+		serviceapi.NewHandler(userSvc, tokenSvc, notifySvc).
+			Mount(r, middleware.Service(cfg.ServiceToken))
 	})
 
 	server := &http.Server{
