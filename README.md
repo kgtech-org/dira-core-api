@@ -127,3 +127,29 @@ store names are added there.
 > collaborators are wired `nil` and their routes are not mounted — see the comment in
 > `cmd/api/main.go`. Splitting the module (ledger here, boosting in food) is the next
 > decision, and leaving it silent would suggest the module had found its place.
+
+## Running it
+
+```sh
+cp .env.example .env   # adjust values
+go run ./cmd/api       # HTTP API on :8082 (default)
+```
+
+`docker/Dockerfile` builds the production image — **one binary**, no worker (the
+core does nothing deferred) and no seed (provisioning a demo set belongs to the
+vertical that knows what it is demonstrating, and it opens its accounts through
+the service surface). No ffmpeg either: the core processes no video.
+
+| Route | Content |
+|---|---|
+| `GET /docs` | Swagger UI |
+| `GET /openapi.yaml` | OpenAPI 3.1 contract, embedded in the binary |
+
+Behind the gateway the core keeps the **root** — `api.dira.llc/api/v1/...` — while
+the verticals take a prefix. Its `/internal/...` routes are **404 at the edge**:
+their callers are on the internal Docker network, and a shared secret is a thing
+that can leak.
+
+The service **refuses to start without MongoDB** — a ping at boot, and a fatal
+error otherwise. Starting half-alive would answer requests with an empty
+directory.
