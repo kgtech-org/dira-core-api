@@ -49,7 +49,10 @@ type Service struct {
 	// Wiring sets it to mark the order paid AND create the delivery
 	// (order.MarkPaid + delivery.CreateForOrder). Nil-safe: skipped with a
 	// warning when unset.
-	OnOrderPaid func(ctx context.Context, orderID, paymentID string) error
+	// OnRefPaid est invoqué EXACTEMENT UNE FOIS quand le paiement d'un objet
+	// d'une verticale aboutit. Le `purpose` dit laquelle prévenir — le socle
+	// ne sait ni ce qu'est une commande, ni ce qu'est une course.
+	OnRefPaid func(ctx context.Context, purpose, refID, paymentID string) error
 	// OnTokensPurchased is invoked exactly once when a token purchase
 	// succeeds. Wiring sets it to credit the wallet (token.Credit). Nil-safe:
 	// skipped with a warning when unset.
@@ -228,15 +231,16 @@ func (s *Service) confirmSucceeded(ctx context.Context, p *Payment) error {
 	s.record(ctx, "payment.succeeded", p, StatusSucceeded)
 
 	switch p.Purpose {
-	case PurposeOrder:
-		if s.OnOrderPaid == nil {
-			slog.WarnContext(ctx, "payment: OnOrderPaid hook not configured, skipping", "payment_id", p.ID.Hex(), "order_id", p.RefID.Hex())
+	case PurposeOrder, PurposeRide:
+		if s.OnRefPaid == nil {
+			slog.WarnContext(ctx, "payment: OnRefPaid hook not configured, skipping",
+				"payment_id", p.ID.Hex(), "purpose", p.Purpose, "ref_id", p.RefID.Hex())
 			return nil
 		}
 		// L'identifiant du PAIEMENT part avec : la verticale en a besoin pour
 		// sa trace d'audit, et il est le seul moyen de remonter au
-		// prestataire depuis une commande contestée.
-		if err := s.OnOrderPaid(ctx, p.RefID.Hex(), p.ID.Hex()); err != nil {
+		// prestataire depuis une commande ou une course contestée.
+		if err := s.OnRefPaid(ctx, p.Purpose, p.RefID.Hex(), p.ID.Hex()); err != nil {
 			return apperr.Internal(err)
 		}
 	case PurposeWalletTopup:

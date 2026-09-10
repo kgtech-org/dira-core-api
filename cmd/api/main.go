@@ -13,6 +13,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -135,12 +136,25 @@ func run(logger *slog.Logger) error {
 	// ⚠️ Le jeton de RAPPEL, pas celui de service. Le socle PRÉSENTE celui-ci
 	// et EXIGE l'autre : réutiliser le même ferait qu'un secret volé chez la
 	// livraison ouvrirait tous les portefeuilles du socle.
-	food := callback.New(cfg.FoodBaseURL, cfg.FoodCallbackToken)
-	if !food.Enabled() {
-		logger.Error("FOOD_BASE_URL not set: an order payment cannot be confirmed to the delivery vertical")
+	verticals := callback.NewRegistry(map[string]*callback.Client{
+		payment.PurposeOrder: callback.New(cfg.FoodBaseURL, cfg.FoodCallbackToken),
+		payment.PurposeRide:  callback.New(cfg.VTCBaseURL, cfg.VTCCallbackToken),
+	})
+	if len(verticals.Purposes()) == 0 {
+		logger.Error("no vertical configured: no mobile-money payment can ever be confirmed",
+			"hint", "set FOOD_BASE_URL / VTC_BASE_URL and their callback tokens")
+	} else {
+		logger.Info("payment confirmations routed", "purposes", verticals.Purposes())
 	}
-	paymentSvc.OnOrderPaid = func(ctx context.Context, orderID, paymentID string) error {
-		return food.OrderPaid(ctx, orderID, paymentID)
+	paymentSvc.OnRefPaid = func(ctx context.Context, purpose, refID, paymentID string) error {
+		v := verticals.For(purpose)
+		if v == nil {
+			// ⚠️ Une ERREUR, pas un silence : le prestataire doit réessayer.
+			// Répondre « reçu » sans avoir prévenu personne laisserait une
+			// commande ou une course payée et jamais confirmée.
+			return fmt.Errorf("callback: no vertical configured for purpose %q", purpose)
+		}
+		return v.RefPaid(ctx, refID, paymentID)
 	}
 
 	ratingSvc := rating.NewService(rating.NewRepository(mongo), nil)

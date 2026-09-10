@@ -36,20 +36,23 @@ const operationsCollection = "wallet_operations"
 var errOperationApplied = errors.New("token: operation already applied")
 
 // operationKeys : la clé naturelle de chaque mouvement rattaché à un objet.
-func payOrderKey(orderID string) string    { return "order_payment:" + orderID }
-func refundOrderKey(orderID string) string { return "order_refund:" + orderID }
+// Le GENRE fait partie de la clé : une commande et une course peuvent porter le
+// même identifiant sans jamais se confondre — deux collections, deux compteurs
+// d'ObjectID, aucune garantie d'unicité entre elles.
+func payKey(refKind, refID string) string    { return "payment:" + refKind + ":" + refID }
+func refundKey(refKind, refID string) string { return "refund:" + refKind + ":" + refID }
 
 // earningsKey distingue le bénéficiaire : une même commande verse à la
 // boutique ET au livreur, et ces deux versements ne sont pas le même
 // mouvement.
-func earningsKey(ownerID, orderID, reason string) string {
-	return "earnings:" + reason + ":" + ownerID + ":" + orderID
+func earningsKey(ownerID, refKind, refID, reason string) string {
+	return "earnings:" + reason + ":" + ownerID + ":" + refKind + ":" + refID
 }
 
 // consumeKey identifie une dépense de jetons rattachée à une commande — un
 // livreur qui accepte, un marchand qui propulse.
-func consumeKey(ownerID, orderID, reason string) string {
-	return "consume:" + reason + ":" + ownerID + ":" + orderID
+func consumeKey(ownerID, refKind, refID, reason string) string {
+	return "consume:" + reason + ":" + ownerID + ":" + refKind + ":" + refID
 }
 
 // ClaimOperation réserve une opération, ou dit qu'elle a déjà eu lieu.

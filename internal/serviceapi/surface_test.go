@@ -43,8 +43,8 @@ var declaredSurface = []string{
 	"/internal/wallets/create",
 	"/internal/wallets/credit",
 	"/internal/wallets/credit-earnings",
-	"/internal/wallets/pay-order",
-	"/internal/wallets/refund-order",
+	"/internal/wallets/pay",
+	"/internal/wallets/refund",
 }
 
 var internalRoute = regexp.MustCompile(`"(/internal/[a-z0-9/{}-]*)"`)

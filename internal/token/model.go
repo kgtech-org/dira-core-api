@@ -64,17 +64,23 @@ const (
 	// ReasonWalletTopup crédite le portefeuille d'un client après confirmation
 	// d'un paiement mobile money.
 	ReasonWalletTopup = "wallet_topup"
-	// ReasonOrderPayment débite le portefeuille d'un client au paiement d'une
-	// commande.
-	ReasonOrderPayment = "order_payment"
+	// ReasonPayment débite le portefeuille d'un client. Ce qu'il paie est dit
+	// par `ref_kind` : une commande de repas, une course.
+	ReasonPayment = "payment"
 	// ReasonPromoCredit crédite le SOLDE PROMOTIONNEL — un geste commercial,
 	// dépensé avant l'argent réel. Motif distinct de `wallet_topup` exprès :
 	// ce que la plateforme offre ne doit jamais se confondre, au grand livre,
 	// avec ce qu'un client a payé.
 	ReasonPromoCredit = "promo_credit"
-	// ReasonOrderRefund rend au portefeuille ce qu'une commande annulée avait
-	// pris.
-	ReasonOrderRefund = "order_refund"
+	// ReasonRefund rend au portefeuille ce qu'une commande ou une course
+	// annulée avait pris.
+	ReasonRefund = "refund"
+)
+
+// Ce à quoi un mouvement se rattache.
+const (
+	RefOrder = "order"
+	RefRide  = "ride"
 )
 
 // Unités du grand livre.
@@ -126,8 +132,20 @@ type Transaction struct {
 	Amount   int                `bson:"amount"`
 	// Unit dit QUELLE unité ce mouvement déplace. Absent = jeton : c'est ce
 	// que sont tous les mouvements antérieurs à l'argent.
-	Unit      string              `bson:"unit,omitempty"`
-	OrderID   *primitive.ObjectID `bson:"order_id,omitempty"`
+	Unit string `bson:"unit,omitempty"`
+	// RefID et RefKind disent À QUOI ce mouvement se rattache : une commande
+	// de repas, une course, rien du tout.
+	//
+	// ⚠️ Le champ s'appelait `order_id`. La même mécanique sert désormais deux
+	// verticales, et un nom qui désigne une seule des deux aurait obligé les
+	// courses à s'écrire « commande » au grand livre — c'est-à-dire à mentir
+	// sur ce que l'argent a payé.
+	//
+	// Le COUPLE fait l'identité : deux verticales peuvent porter le même
+	// identifiant sans se confondre, et un rapport financier se ventile par
+	// `ref_kind` sans avoir à deviner.
+	RefID     *primitive.ObjectID `bson:"ref_id,omitempty"`
+	RefKind   string              `bson:"ref_kind,omitempty"`
 	Ref       map[string]any      `bson:"ref,omitempty"`
 	CreatedAt time.Time           `bson:"created_at"`
 }

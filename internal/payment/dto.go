@@ -4,7 +4,7 @@ import "time"
 
 // InitiatePaymentRequest is the body of POST /payments/initiate.
 type InitiatePaymentRequest struct {
-	Purpose string `json:"purpose" validate:"required,oneof=order token_purchase wallet_topup"`
+	Purpose string `json:"purpose" validate:"required,oneof=order ride token_purchase wallet_topup"`
 	Amount  int    `json:"amount" validate:"required,gt=0"`
 	// RefID is the order id (purpose "order") or the wallet owner id
 	// (purpose "token_purchase").

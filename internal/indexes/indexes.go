@@ -52,7 +52,10 @@ var applicationIndexes = []db.Index{
 	{Collection: "token_wallets", Keys: db.K("owner_id", 1), Unique: true},
 	{Collection: "token_transactions", Keys: db.K("wallet_id", 1)},
 	{Collection: "token_transactions", Keys: db.K("created_at", 1)},
-	{Collection: "token_transactions", Keys: db.K("order_id", 1), Sparse: true},
+	// La référence d'un mouvement : le COUPLE, pas l'identifiant seul. Deux
+	// verticales peuvent porter le même identifiant — deux collections, deux
+	// compteurs d'ObjectID, aucune garantie d'unicité entre elles.
+	{Collection: "token_transactions", Keys: db.K("ref_kind", 1, "ref_id", 1), Sparse: true},
 	// ⚠️ C'EST CET INDEX qui rend un mouvement d'argent rejouable sans danger.
 	// La clé est le `_id` du marqueur — unique par construction — et la
 	// réservation se fait DANS la transaction qui débite. Sans lui, une réponse

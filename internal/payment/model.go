@@ -15,7 +15,12 @@ const Collection = "payments"
 
 // Payment purposes.
 const (
-	PurposeOrder         = "order"
+	PurposeOrder = "order"
+	// PurposeRide paie une COURSE. Distinct de `order` : ce n'est pas la même
+	// verticale qu'il faut prévenir quand le prestataire confirme, et confondre
+	// les deux enverrait la confirmation d'une course à la livraison — qui ne
+	// connaît aucune course et la refuserait.
+	PurposeRide          = "ride"
 	PurposeTokenPurchase = "token_purchase"
 	// PurposeWalletTopup recharge le portefeuille d'ARGENT d'un client. Le
 	// crédit n'a lieu qu'à la CONFIRMATION du prestataire : créditer sur la

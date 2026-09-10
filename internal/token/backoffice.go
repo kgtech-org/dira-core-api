@@ -36,7 +36,8 @@ type LedgerRow struct {
 	Kind      string    `json:"kind"`
 	Reason    string    `json:"reason"`
 	Amount    int       `json:"amount"`
-	OrderID   string    `json:"order_id,omitempty"`
+	RefID     string    `json:"ref_id,omitempty"`
+	RefKind   string    `json:"ref_kind,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -133,7 +134,8 @@ func (r *Repository) ListLedger(ctx context.Context, walletID, cursor string, li
 		Kind      string              `bson:"kind"`
 		Reason    string              `bson:"reason"`
 		Amount    int                 `bson:"amount"`
-		OrderID   *primitive.ObjectID `bson:"order_id,omitempty"`
+		RefID     *primitive.ObjectID `bson:"ref_id,omitempty"`
+		RefKind   string              `bson:"ref_kind,omitempty"`
 		CreatedAt time.Time           `bson:"created_at"`
 	}
 	if err := cur.All(ctx, &docs); err != nil {
@@ -150,8 +152,9 @@ func (r *Repository) ListLedger(ctx context.Context, walletID, cursor string, li
 			ID: d.ID.Hex(), WalletID: d.WalletID.Hex(), Kind: d.Kind,
 			Reason: d.Reason, Amount: d.Amount, CreatedAt: d.CreatedAt,
 		}
-		if d.OrderID != nil {
-			row.OrderID = d.OrderID.Hex()
+		row.RefKind = d.RefKind
+		if d.RefID != nil {
+			row.RefID = d.RefID.Hex()
 		}
 		out = append(out, row)
 	}

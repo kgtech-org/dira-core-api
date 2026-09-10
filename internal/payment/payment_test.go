@@ -3,6 +3,7 @@ package payment
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -180,7 +181,7 @@ func TestHandleWebhook_SucceededOrder(t *testing.T) {
 	orderID := primitive.NewObjectID().Hex()
 
 	var paidOrders []string
-	svc.OnOrderPaid = func(ctx context.Context, id, _ string) error {
+	svc.OnRefPaid = func(ctx context.Context, _, id, _ string) error {
 		paidOrders = append(paidOrders, id)
 		return nil
 	}
@@ -206,7 +207,7 @@ func TestHandleWebhook_DoubleDeliveryIsIdempotent(t *testing.T) {
 	svc, _, rec, mock := newTestService(t)
 
 	hookCalls := 0
-	svc.OnOrderPaid = func(ctx context.Context, id, _ string) error {
+	svc.OnRefPaid = func(ctx context.Context, _, id, _ string) error {
 		hookCalls++
 		return nil
 	}
@@ -255,7 +256,7 @@ func TestHandleWebhook_Failed(t *testing.T) {
 	svc, repo, rec, mock := newTestService(t)
 
 	hookCalled := false
-	svc.OnOrderPaid = func(ctx context.Context, id, _ string) error {
+	svc.OnRefPaid = func(ctx context.Context, _, id, _ string) error {
 		hookCalled = true
 		return nil
 	}
@@ -344,4 +345,59 @@ func TestUnknownProviderKeepsItsID(t *testing.T) {
 	got := svc.Providers()
 	require.Len(t, got, 1)
 	assert.Equal(t, "kkiapay", got[0].Label)
+}
+
+// ⚠️ Le socle ne sait ni ce qu'est une commande, ni ce qu'est une course : il
+// sait qu'un paiement portait un `purpose`. C'est ce mot, et lui seul, qui
+// décide de qui prévenir — envoyer la confirmation d'une course à la livraison
+// la ferait refuser, et le passager attendrait une voiture que personne n'a
+// commandée.
+func TestWebhookConfirmsToTheRightVertical(t *testing.T) {
+	svc, _, _, mock := newTestService(t)
+
+	type confirmed struct{ purpose, ref string }
+	var got []confirmed
+	svc.OnRefPaid = func(_ context.Context, purpose, refID, _ string) error {
+		got = append(got, confirmed{purpose, refID})
+		return nil
+	}
+
+	rideID := primitive.NewObjectID().Hex()
+	resp, err := svc.Initiate(context.Background(), primitive.NewObjectID().Hex(), InitiatePaymentRequest{
+		Purpose: PurposeRide, Amount: 2500, RefID: rideID,
+	})
+	require.NoError(t, err)
+
+	payload, sig := signedEvent(t, mock, resp.Payment.ProviderRef, StatusSucceeded)
+	require.NoError(t, svc.HandleWebhook(context.Background(), "mock", payload, sig))
+
+	require.Len(t, got, 1)
+	assert.Equal(t, PurposeRide, got[0].purpose, "la confirmation doit dire QUEL objet a été payé")
+	assert.Equal(t, rideID, got[0].ref)
+}
+
+// Un `purpose` dont aucune verticale n'est branchée doit faire ÉCHOUER le
+// webhook, pas l'acquitter : le prestataire réessaiera. Répondre « reçu » sans
+// avoir prévenu personne laisserait la course payée et jamais confirmée — et
+// le prestataire, ayant reçu un accusé, ne retenterait pas.
+func TestWebhookFailsWhenNoVerticalCanBeToldButPaymentIsRecorded(t *testing.T) {
+	svc, repo, _, mock := newTestService(t)
+	svc.OnRefPaid = func(context.Context, string, string, string) error {
+		return errors.New("no vertical configured for purpose \"ride\"")
+	}
+
+	resp, err := svc.Initiate(context.Background(), primitive.NewObjectID().Hex(), InitiatePaymentRequest{
+		Purpose: PurposeRide, Amount: 2500, RefID: primitive.NewObjectID().Hex(),
+	})
+	require.NoError(t, err)
+
+	payload, sig := signedEvent(t, mock, resp.Payment.ProviderRef, StatusSucceeded)
+	require.Error(t, svc.HandleWebhook(context.Background(), "mock", payload, sig))
+
+	// ⚠️ Le paiement RESTE abouti : l'argent est bien arrivé chez le
+	// prestataire, et le nier ferait croire à un échec d'encaissement. C'est
+	// la NOTIFICATION qui a échoué, et c'est elle que le réessai rejoue.
+	stored, err := repo.FindByProviderRef(context.Background(), resp.Payment.ProviderRef)
+	require.NoError(t, err)
+	assert.Equal(t, StatusSucceeded, stored.Status)
 }

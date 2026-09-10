@@ -69,7 +69,7 @@ wallet, open an account, notify someone in their name. No person ever calls them
 |---|---|
 | `POST /internal/accounts/{contact,names,by-phone}` | read a name, a phone, an id — nothing more |
 | `POST /internal/accounts/{ensure,ensure-merchant}` | open an account; `ensure` takes any role, so it can create an admin |
-| `POST /internal/wallets/{create,consume,credit,pay-order,refund-order,credit-earnings}` | move money |
+| `POST /internal/wallets/{create,consume,credit,pay,refund,credit-earnings}` | move money |
 | `POST /internal/notifications/send` | send one templated message |
 | `POST /internal/payments/initiate` | start a payment on a client's behalf (WhatsApp) |
 | `POST /internal/backoffice/{wallets,token-transactions,payments}` | read the money, **raw** — ids, not names |
@@ -93,7 +93,15 @@ store names are added there.
 - **Step C — done.** `dira-food-api` no longer carries those modules: it reaches them through
   `internal/corebridge`, and its own copies are deleted.
 
-> **`OnOrderPaid` now calls the vertical back** — `internal/callback`, the one place where the
+> **Money is tied to a REFERENCE, not to an order.** A ledger entry carries
+> `ref_kind` (`order` \| `ride`) and `ref_id`. The field used to be `order_id`,
+> from the time a single vertical existed — a name that designates one of two
+> would have forced rides to write themselves down as "orders", that is, to lie
+> about what the money paid for. The **pair** is the identity: two verticals can
+> carry the same id without colliding, and a financial report splits by
+> `ref_kind` instead of guessing.
+
+> **`OnRefPaid` now calls the vertical back** — `internal/callback`, the one place where the
 > core talks *to* a vertical rather than being asked. It is deliberately thin and one-way:
 > the core states a fact, once, and asks nothing back. A dependency where each side queries
 > the other would deadlock at startup and stop the core from being deployable alone.

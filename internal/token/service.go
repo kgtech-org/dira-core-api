@@ -125,7 +125,7 @@ func (s *Service) CreateWallet(ctx context.Context, ownerID, walletType string) 
 // Consume atomically debits amount tokens from the owner's wallet and records
 // the matching transaction in the same MongoDB transaction. Returns
 // insufficient_tokens (402) when the balance is lower than amount.
-func (s *Service) Consume(ctx context.Context, ownerID string, amount int, reason, orderID string, ref map[string]any) error {
+func (s *Service) Consume(ctx context.Context, ownerID string, amount int, reason, refKind, refID string, ref map[string]any) error {
 	if amount <= 0 {
 		return apperr.Validation("amount must be positive")
 	}
@@ -134,13 +134,9 @@ func (s *Service) Consume(ctx context.Context, ownerID string, amount int, reaso
 		return err
 	}
 
-	var orderOID *primitive.ObjectID
-	if orderID != "" {
-		oid, err := primitive.ObjectIDFromHex(orderID)
-		if err != nil {
-			return apperr.Validation("invalid order id").WithCause(err)
-		}
-		orderOID = &oid
+	refOID, err := parseRef(refKind, refID)
+	if err != nil {
+		return err
 	}
 
 	err = s.repo.WithTransaction(ctx, func(txCtx context.Context) error {
@@ -148,8 +144,8 @@ func (s *Service) Consume(ctx context.Context, ownerID string, amount int, reaso
 		// accepte une course une fois, un marchand propulse un plat une fois.
 		// Sans commande, aucune clé naturelle — deux dépenses identiques
 		// peuvent être deux gestes voulus.
-		if orderID != "" {
-			if err := s.repo.ClaimOperation(txCtx, consumeKey(ownerID, orderID, reason)); err != nil {
+		if refID != "" {
+			if err := s.repo.ClaimOperation(txCtx, consumeKey(ownerID, refKind, refID, reason)); err != nil {
 				return err
 			}
 		}
@@ -165,7 +161,8 @@ func (s *Service) Consume(ctx context.Context, ownerID string, amount int, reaso
 			Kind:      KindConsume,
 			Reason:    reason,
 			Amount:    -amount,
-			OrderID:   orderOID,
+			RefID:     refOID,
+			RefKind:   refKind,
 			Ref:       ref,
 			CreatedAt: time.Now().UTC(),
 		}
@@ -178,7 +175,7 @@ func (s *Service) Consume(ctx context.Context, ownerID string, amount int, reaso
 		// DÉJÀ DÉPENSÉ : un succès. Rendre `insufficient_tokens` sur un
 		// réessai ferait refuser une course déjà payée.
 		slog.InfoContext(ctx, "token: consume replayed, not applied twice",
-			"owner_id", ownerID, "order_id", orderID, "reason", reason)
+			"owner_id", ownerID, "ref_kind", refKind, "ref_id", refID, "reason", reason)
 		return nil
 	}
 	if err != nil {
@@ -186,7 +183,8 @@ func (s *Service) Consume(ctx context.Context, ownerID string, amount int, reaso
 	}
 
 	s.record(ctx, "token.consume", wallet.ID.Hex(), map[string]any{
-		"amount": -amount, "reason": reason, "order_id": orderID, "owner_id": ownerID,
+		"amount": -amount, "reason": reason,
+		"ref_kind": refKind, "ref_id": refID, "owner_id": ownerID,
 	})
 	return nil
 }
@@ -336,7 +334,7 @@ func (s *Service) BoostDish(ctx context.Context, userID, role, storeID, dishID s
 		return BoostResponse{}, err
 	}
 	ref := map[string]any{"dish_id": dishID}
-	if err := s.Consume(ctx, storeID, s.boostCost, ReasonBoostDish, "", ref); err != nil {
+	if err := s.Consume(ctx, storeID, s.boostCost, ReasonBoostDish, "", "", ref); err != nil {
 		return BoostResponse{}, err
 	}
 	if err := s.booster.SetBoosted(ctx, dishID, true); err != nil {
@@ -359,7 +357,7 @@ func (s *Service) BuyOption(ctx context.Context, userID, storeID, option string)
 		return BuyOptionResponse{}, apperr.NotFound("option_not_found", "unknown option")
 	}
 	ref := map[string]any{"option": option}
-	if err := s.Consume(ctx, storeID, cost, ReasonBuyOption, "", ref); err != nil {
+	if err := s.Consume(ctx, storeID, cost, ReasonBuyOption, "", "", ref); err != nil {
 		return BuyOptionResponse{}, err
 	}
 	return BuyOptionResponse{Option: option, Cost: cost}, nil

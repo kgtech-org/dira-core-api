@@ -44,6 +44,13 @@ type Config struct {
 	// Réutiliser le même ferait qu'un secret volé chez la livraison ouvrirait
 	// la porte de service du socle — c'est-à-dire tous les portefeuilles.
 	FoodCallbackToken string
+
+	// VTCBaseURL et VTCCallbackToken : le même contrat pour les COURSES. Le
+	// socle prévient la verticale que le `purpose` du paiement désigne — la
+	// confirmation d'une course envoyée à la livraison serait refusée, et le
+	// passager attendrait une voiture que personne n'a commandée.
+	VTCBaseURL       string
+	VTCCallbackToken string
 }
 
 // Load reads the environment, applies defaults and validates.
@@ -60,6 +67,8 @@ func Load() (*Config, error) {
 		ServiceToken:          core.Env("CORE_SERVICE_TOKEN", ""),
 		FoodBaseURL:           core.Env("FOOD_BASE_URL", ""),
 		FoodCallbackToken:     core.Env("FOOD_CALLBACK_TOKEN", ""),
+		VTCBaseURL:            core.Env("VTC_BASE_URL", ""),
+		VTCCallbackToken:      core.Env("VTC_CALLBACK_TOKEN", ""),
 	}
 
 	switch cfg.Env {

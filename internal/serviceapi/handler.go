@@ -56,11 +56,14 @@ type Accounts interface {
 // Wallets is the money a vertical moves on a person's behalf.
 type Wallets interface {
 	CreateWallet(ctx context.Context, ownerID, walletType string) error
-	Consume(ctx context.Context, ownerID string, amount int, reason, orderID string, ref map[string]any) error
+	Consume(ctx context.Context, ownerID string, amount int, reason, refKind, refID string, ref map[string]any) error
 	Credit(ctx context.Context, ownerID string, amount int, reason string) error
-	PayOrder(ctx context.Context, userID string, amountXOF int, orderID string) error
-	RefundOrder(ctx context.Context, userID string, amountXOF int, orderID string) error
-	CreditEarnings(ctx context.Context, ownerID string, amountXOF int, reason, orderID string, ref map[string]any) error
+	// Pay et Refund déplacent l'ARGENT d'un client, pour une RÉFÉRENCE : une
+	// commande de repas, une course. Le couple (genre, identifiant) fait
+	// l'identité — deux verticales peuvent porter le même identifiant.
+	Pay(ctx context.Context, userID string, amountXOF int, refKind, refID string) error
+	Refund(ctx context.Context, userID string, amountXOF int, refKind, refID string) error
+	CreditEarnings(ctx context.Context, ownerID string, amountXOF int, reason, refKind, refID string, ref map[string]any) error
 }
 
 // Payments starts a mobile-money payment ON BEHALF OF a person.
@@ -132,8 +135,8 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/wallets/create", h.createWallet)
 		g.Post("/internal/wallets/consume", h.consume)
 		g.Post("/internal/wallets/credit", h.credit)
-		g.Post("/internal/wallets/pay-order", h.payOrder)
-		g.Post("/internal/wallets/refund-order", h.refundOrder)
+		g.Post("/internal/wallets/pay", h.payRef)
+		g.Post("/internal/wallets/refund", h.refundRef)
 		g.Post("/internal/wallets/credit-earnings", h.creditEarnings)
 
 		g.Post("/internal/notifications/send", h.notify)
@@ -247,7 +250,8 @@ type walletRequest struct {
 	OwnerID string         `json:"owner_id" validate:"required,len=24,hexadecimal"`
 	Amount  int            `json:"amount" validate:"required,gt=0"`
 	Reason  string         `json:"reason" validate:"omitempty,max=60"`
-	OrderID string         `json:"order_id" validate:"omitempty,len=24,hexadecimal"`
+	RefID   string         `json:"ref_id" validate:"omitempty,len=24,hexadecimal"`
+	RefKind string         `json:"ref_kind" validate:"omitempty,oneof=order ride"`
 	Ref     map[string]any `json:"ref"`
 	Type    string         `json:"type" validate:"omitempty,oneof=driver merchant client"`
 }
@@ -267,7 +271,7 @@ func (h *Handler) createWallet(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) consume(w http.ResponseWriter, r *http.Request) {
 	h.move(w, r, func(ctx context.Context, req walletRequest) error {
-		return h.wallets.Consume(ctx, req.OwnerID, req.Amount, req.Reason, req.OrderID, req.Ref)
+		return h.wallets.Consume(ctx, req.OwnerID, req.Amount, req.Reason, req.RefKind, req.RefID, req.Ref)
 	})
 }
 
@@ -277,21 +281,21 @@ func (h *Handler) credit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) payOrder(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) payRef(w http.ResponseWriter, r *http.Request) {
 	h.move(w, r, func(ctx context.Context, req walletRequest) error {
-		return h.wallets.PayOrder(ctx, req.OwnerID, req.Amount, req.OrderID)
+		return h.wallets.Pay(ctx, req.OwnerID, req.Amount, req.RefKind, req.RefID)
 	})
 }
 
-func (h *Handler) refundOrder(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) refundRef(w http.ResponseWriter, r *http.Request) {
 	h.move(w, r, func(ctx context.Context, req walletRequest) error {
-		return h.wallets.RefundOrder(ctx, req.OwnerID, req.Amount, req.OrderID)
+		return h.wallets.Refund(ctx, req.OwnerID, req.Amount, req.RefKind, req.RefID)
 	})
 }
 
 func (h *Handler) creditEarnings(w http.ResponseWriter, r *http.Request) {
 	h.move(w, r, func(ctx context.Context, req walletRequest) error {
-		return h.wallets.CreditEarnings(ctx, req.OwnerID, req.Amount, req.Reason, req.OrderID, req.Ref)
+		return h.wallets.CreditEarnings(ctx, req.OwnerID, req.Amount, req.Reason, req.RefKind, req.RefID, req.Ref)
 	})
 }
 

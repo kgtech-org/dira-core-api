@@ -259,7 +259,7 @@ func TestConsumeConcurrentDebit(t *testing.T) {
 	for range 2 {
 		go func() {
 			start.Wait()
-			results <- svc.Consume(context.Background(), ownerID.Hex(), 1, ReasonOrderAccept, "", nil)
+			results <- svc.Consume(context.Background(), ownerID.Hex(), 1, ReasonOrderAccept, "", "", nil)
 		}()
 	}
 	start.Done()
@@ -285,7 +285,7 @@ func TestConsumeBalanceNeverNegative(t *testing.T) {
 	svc, _, _, _ := newTestService(repo)
 	ownerID := seedWallet(t, repo, WalletTypeDriver, 3)
 
-	err := svc.Consume(context.Background(), ownerID.Hex(), 5, ReasonOrderAccept, "", nil)
+	err := svc.Consume(context.Background(), ownerID.Hex(), 5, ReasonOrderAccept, "", "", nil)
 	assertCode(t, err, "insufficient_tokens")
 	assert.Equal(t, 3, repo.balanceOf(ownerID), "failed debit must not change the balance")
 	assert.Equal(t, 0, repo.transactionCount(), "failed debit must not record a transaction")
@@ -297,7 +297,7 @@ func TestConsumeOrderAcceptRecordsOrderID(t *testing.T) {
 	ownerID := seedWallet(t, repo, WalletTypeDriver, 2)
 	orderID := primitive.NewObjectID()
 
-	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, ReasonOrderAccept, orderID.Hex(), nil))
+	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, ReasonOrderAccept, RefOrder, orderID.Hex(), nil))
 
 	assert.Equal(t, 1, repo.balanceOf(ownerID), "order accept consumes exactly 1 token")
 	require.Equal(t, 1, repo.transactionCount())
@@ -305,14 +305,17 @@ func TestConsumeOrderAcceptRecordsOrderID(t *testing.T) {
 	assert.Equal(t, KindConsume, tx.Kind)
 	assert.Equal(t, ReasonOrderAccept, tx.Reason)
 	assert.Equal(t, -1, tx.Amount)
-	require.NotNil(t, tx.OrderID, "order_id must be recorded on order_accept")
-	assert.Equal(t, orderID, *tx.OrderID)
+	require.NotNil(t, tx.RefID, "la référence doit être écrite sur order_accept")
+	assert.Equal(t, orderID, *tx.RefID)
+	// Le GENRE aussi : sans lui, une écriture de course et une écriture de
+	// commande seraient indiscernables au grand livre.
+	assert.Equal(t, RefOrder, tx.RefKind)
 }
 
 func TestConsumeWalletNotFound(t *testing.T) {
 	repo := newFakeRepo()
 	svc, _, _, _ := newTestService(repo)
-	err := svc.Consume(context.Background(), primitive.NewObjectID().Hex(), 1, ReasonOrderAccept, "", nil)
+	err := svc.Consume(context.Background(), primitive.NewObjectID().Hex(), 1, ReasonOrderAccept, "", "", nil)
 	assertCode(t, err, "wallet_not_found")
 }
 
@@ -395,7 +398,7 @@ func TestListTransactionsPaginated(t *testing.T) {
 	ownerID := seedWallet(t, repo, WalletTypeDriver, 10)
 
 	for range 3 {
-		require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, ReasonOrderAccept, "", nil))
+		require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, ReasonOrderAccept, "", "", nil))
 	}
 
 	page1, next, err := svc.ListTransactions(context.Background(), ownerID.Hex(), auth.RoleDriver, "", httpx.Page{Limit: 2})
@@ -483,10 +486,10 @@ func TestPayOrderReplayDoesNotDebitTwice(t *testing.T) {
 	owner := seedMoneyWallet(t, repo, 10_000, 0)
 	orderID := primitive.NewObjectID().Hex()
 
-	require.NoError(t, svc.PayOrder(context.Background(), owner, 3_000, orderID))
+	require.NoError(t, svc.Pay(context.Background(), owner, 3_000, RefOrder, orderID))
 	// Le réessai doit RÉUSSIR — l'appelant voulait que l'argent bouge, il a
 	// bougé — sans rien débiter de plus.
-	require.NoError(t, svc.PayOrder(context.Background(), owner, 3_000, orderID))
+	require.NoError(t, svc.Pay(context.Background(), owner, 3_000, RefOrder, orderID))
 
 	oid, err := primitive.ObjectIDFromHex(owner)
 	require.NoError(t, err)
@@ -507,8 +510,8 @@ func TestPayOrderReplayAfterPromoExhaustedDoesNotDebitCash(t *testing.T) {
 	owner := seedMoneyWallet(t, repo, 10_000, 3_000)
 	orderID := primitive.NewObjectID().Hex()
 
-	require.NoError(t, svc.PayOrder(context.Background(), owner, 3_000, orderID))
-	require.NoError(t, svc.PayOrder(context.Background(), owner, 3_000, orderID))
+	require.NoError(t, svc.Pay(context.Background(), owner, 3_000, RefOrder, orderID))
+	require.NoError(t, svc.Pay(context.Background(), owner, 3_000, RefOrder, orderID))
 
 	oid, err := primitive.ObjectIDFromHex(owner)
 	require.NoError(t, err)
@@ -525,8 +528,8 @@ func TestPayOrderStillDebitsDifferentOrders(t *testing.T) {
 	svc, _, _, _ := newTestService(repo)
 	owner := seedMoneyWallet(t, repo, 10_000, 0)
 
-	require.NoError(t, svc.PayOrder(context.Background(), owner, 3_000, primitive.NewObjectID().Hex()))
-	require.NoError(t, svc.PayOrder(context.Background(), owner, 2_000, primitive.NewObjectID().Hex()))
+	require.NoError(t, svc.Pay(context.Background(), owner, 3_000, RefOrder, primitive.NewObjectID().Hex()))
+	require.NoError(t, svc.Pay(context.Background(), owner, 2_000, RefOrder, primitive.NewObjectID().Hex()))
 
 	oid, err := primitive.ObjectIDFromHex(owner)
 	require.NoError(t, err)
@@ -543,8 +546,8 @@ func TestRefundOrderReplayDoesNotCreditTwice(t *testing.T) {
 	owner := seedMoneyWallet(t, repo, 1_000, 0)
 	orderID := primitive.NewObjectID().Hex()
 
-	require.NoError(t, svc.RefundOrder(context.Background(), owner, 3_000, orderID))
-	require.NoError(t, svc.RefundOrder(context.Background(), owner, 3_000, orderID))
+	require.NoError(t, svc.Refund(context.Background(), owner, 3_000, RefOrder, orderID))
+	require.NoError(t, svc.Refund(context.Background(), owner, 3_000, RefOrder, orderID))
 
 	oid, err := primitive.ObjectIDFromHex(owner)
 	require.NoError(t, err)
@@ -562,8 +565,8 @@ func TestConsumeReplayForTheSameOrderDoesNotDebitTwice(t *testing.T) {
 	ownerID := seedWallet(t, repo, WalletTypeDriver, 5)
 	orderID := primitive.NewObjectID().Hex()
 
-	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, ReasonOrderAccept, orderID, nil))
-	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, ReasonOrderAccept, orderID, nil))
+	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, ReasonOrderAccept, RefOrder, orderID, nil))
+	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, ReasonOrderAccept, RefOrder, orderID, nil))
 
 	assert.Equal(t, 4, repo.balanceOf(ownerID), "un livreur accepte une course une fois")
 }
@@ -575,8 +578,8 @@ func TestConsumeWithoutOrderIsNotGuarded(t *testing.T) {
 
 	// Sans commande, aucune clé naturelle : deux dépenses identiques peuvent
 	// être deux gestes voulus, et les confondre bloquerait la seconde.
-	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, "manual", "", nil))
-	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, "manual", "", nil))
+	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, "manual", "", "", nil))
+	require.NoError(t, svc.Consume(context.Background(), ownerID.Hex(), 1, "manual", "", "", nil))
 
 	assert.Equal(t, 3, repo.balanceOf(ownerID))
 }

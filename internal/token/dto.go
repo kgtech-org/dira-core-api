@@ -51,7 +51,8 @@ type TransactionResponse struct {
 	Kind      string         `json:"kind"`
 	Reason    string         `json:"reason"`
 	Amount    int            `json:"amount"`
-	OrderID   string         `json:"order_id,omitempty"`
+	RefID     string         `json:"ref_id,omitempty"`
+	RefKind   string         `json:"ref_kind,omitempty"`
 	Ref       map[string]any `json:"ref,omitempty"`
 	CreatedAt time.Time      `json:"created_at"`
 }
@@ -66,8 +67,9 @@ func newTransactionResponse(t Transaction) TransactionResponse {
 		Ref:       t.Ref,
 		CreatedAt: t.CreatedAt,
 	}
-	if t.OrderID != nil {
-		resp.OrderID = t.OrderID.Hex()
+	resp.RefKind = t.RefKind
+	if t.RefID != nil {
+		resp.RefID = t.RefID.Hex()
 	}
 	return resp
 }
