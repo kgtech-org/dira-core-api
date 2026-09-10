@@ -2,6 +2,7 @@ package compliance
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -221,6 +222,12 @@ func TestComplianceQueueShowsWhatNeedsAction(t *testing.T) {
 	// De quoi retrouver la personne. Le NOM, lui, est attaché par la verticale
 	// qui connaît les comptes — cette bibliothèque ne les connaît pas.
 	assert.NotEmpty(t, queue[0].DriverID)
+	// ⚠️ Et le COMPTE, quand la verticale sait le donner : sans lui, la
+	// console n'affiche qu'un identifiant de chauffeur et retrouver la
+	// personne demande une recherche à la main. C'est l'écran qui existe pour
+	// que personne ne passe à côté d'un défaut ; le rendre pénible à utiliser
+	// revient à le supprimer.
+	assert.Equal(t, driver, queue[0].UserID)
 }
 
 // Une pièce DÉJÀ périmée à la remise n'est pas une mise en conformité.
@@ -232,4 +239,25 @@ func TestPastExpiryIsRefused(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Equal(t, "validation_failed", apperr.From(err).Code)
+}
+
+// ⚠️ Une erreur sur le COMPTE ne doit pas faire échouer la file.
+//
+// C'est un arbitrage, pas un oubli : cet écran est le seul endroit où l'on
+// apprend qu'un livreur n'est pas en règle — rien n'étant bloqué côté serveur.
+// Le faire disparaître parce qu'un nom manque reviendrait à supprimer la seule
+// contrepartie de cette décision produit.
+func TestQueueSurvivesAnAccountLookupFailure(t *testing.T) {
+	fx := newFixture()
+	driver, _ := fx.newDriver(t, 5)
+	ctx := context.Background()
+	submit(t, fx, driver, SubmitDocumentRequest{Kind: DocLicence, FileURL: "https://f/1.jpg", ExpiresAt: inDays(400)})
+
+	fx.fleet.accountErr = errors.New("annuaire injoignable")
+
+	queue, err := fx.svc.ComplianceQueue(ctx, 50)
+	require.NoError(t, err, "la file s'affiche même sans les noms")
+	require.Len(t, queue, 1)
+	assert.NotEmpty(t, queue[0].DriverID, "l'identifiant reste : la file demeure actionnable")
+	assert.Empty(t, queue[0].UserID, "et le compte manquant est ABSENT, pas inventé")
 }

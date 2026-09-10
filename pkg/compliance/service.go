@@ -79,6 +79,17 @@ type Fleet interface {
 	// ⚠️ C'est ce qui empêche de déposer une assurance sur le véhicule d'un
 	// autre — ce qui le rendrait conforme sans que son propriétaire le sache.
 	VehicleOwner(ctx context.Context, vehicleID string) (driverID string, err error)
+	// AccountOf rend le COMPTE derrière un chauffeur, ou "".
+	//
+	// L'inverse de `DriverOf`, et pour une seule raison : la file de
+	// conformité est lue par un humain qui doit pouvoir ouvrir la fiche de la
+	// personne. Sans ce lien, la console n'affiche qu'un identifiant de
+	// chauffeur, et retrouver le compte demande une recherche à la main.
+	//
+	// ⚠️ AU MIEUX : une erreur ici ne doit pas faire échouer la file. Une file
+	// sans noms reste actionnable par ses identifiants ; une file qui ne
+	// s'affiche pas ne l'est pas du tout.
+	AccountOf(ctx context.Context, driverID string) (userID string, err error)
 	// VehiclesOf liste les véhicules d'un chauffeur.
 	//
 	// Ils décident de ce qui MANQUE : on ne réclame pas une assurance à
@@ -305,11 +316,27 @@ func (s *Service) ComplianceQueue(ctx context.Context, limit int) ([]ComplianceQ
 		return nil, err
 	}
 	out := make([]ComplianceQueueItem, 0, len(docs))
+	// Le compte est résolu UNE FOIS par chauffeur : une file de cinquante
+	// pièces porte souvent trois personnes, et une requête par ligne ferait
+	// payer l'affichage d'une liste au nombre de pièces plutôt qu'au nombre
+	// de gens.
+	accounts := make(map[string]string, len(docs))
 	for i := range docs {
 		d := &docs[i]
+		driverID := d.OwnerID.Hex()
+		userID, seen := accounts[driverID]
+		if !seen {
+			// AU MIEUX : l'erreur est IGNORÉE, délibérément. Une file sans
+			// noms reste actionnable par ses identifiants ; une file qui
+			// échoue ne l'est pas du tout — et c'est précisément l'écran qui
+			// existe pour que personne ne passe à côté d'un défaut.
+			userID, _ = s.fleet.AccountOf(ctx, driverID)
+			accounts[driverID] = userID
+		}
 		out = append(out, ComplianceQueueItem{
 			DocumentResponse: toDocumentResponse(d, now),
-			DriverID:         d.OwnerID.Hex(),
+			DriverID:         driverID,
+			UserID:           userID,
 		})
 	}
 	return out, nil
@@ -323,6 +350,10 @@ func (s *Service) ComplianceQueue(ctx context.Context, limit int) ([]ComplianceQ
 type ComplianceQueueItem struct {
 	DocumentResponse
 	DriverID string `json:"driver_id"`
+	// UserID est le COMPTE, quand la verticale a su le donner. Absent plutôt
+	// que vide : la console distingue « pas de compte lié » de « compte
+	// inconnu », et n'affiche un lien mort ni dans un cas ni dans l'autre.
+	UserID string `json:"user_id,omitempty"`
 }
 
 func docKey(kind string, vehicleID *primitive.ObjectID) string {
