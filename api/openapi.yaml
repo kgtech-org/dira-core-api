@@ -372,6 +372,29 @@ paths:
         - {name: limit, in: query, schema: {type: integer, maximum: 100}}
       responses:
         "200": {description: Accounts}
+    post:
+      tags: [admin]
+      summary: Open an account from the back-office
+      description: >-
+        Tout rôle, admin compris. Un `driver` reçoit son portefeuille de
+        jetons à l'ouverture. Le téléphone est l'identifiant : un doublon
+        rend 409 `phone_taken`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role, name, phone, password]
+              properties:
+                role: {type: string, enum: [client, driver, merchant, admin]}
+                name: {type: string}
+                phone: {type: string, description: E.164}
+                email: {type: string}
+                password: {type: string, minLength: 8}
+      responses:
+        "201": {description: Account}
+        "409": {description: phone_taken}
   /admin/users/{id}:
     get:
       tags: [admin]
@@ -380,6 +403,41 @@ paths:
       responses:
         "200": {description: Account}
         "404": {description: user_not_found}
+    patch:
+      tags: [admin]
+      summary: Correct an account's identity
+      description: >-
+        Les champs absents ne bougent pas. `password` remplace le mot de passe
+        sans exiger l'ancien — c'est un geste d'administration, tracé à
+        l'audit. Le statut a sa propre route.
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                email: {type: string}
+                phone: {type: string, description: E.164}
+                password: {type: string, minLength: 8}
+                avatar_url: {type: string}
+      responses:
+        "200": {description: Account}
+        "404": {description: user_not_found}
+    delete:
+      tags: [admin]
+      summary: Delete an account
+      description: >-
+        Définitif. Les écritures qui le citent — commandes, courses,
+        portefeuilles — restent pour la comptabilité. On ne se supprime pas
+        soi-même (409 `cannot_delete_self`) ; suspendre est le geste
+        réversible qui répond au même besoin.
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: Deleted}
+        "404": {description: user_not_found}
+        "409": {description: cannot_delete_self}
   /admin/users/{id}/status:
     patch:
       tags: [admin]
