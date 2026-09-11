@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -106,7 +107,21 @@ func run(logger *slog.Logger) error {
 	httpx.SetTranslator(translator)
 
 	tokens := auth.NewManager(cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
-	authMW := middleware.Auth(tokens)
+	// ⚠️ LA PORTÉE DU STAFF EST VÉRIFIÉE UNE FOIS, ICI — comme dans chaque
+	// verticale. Sans ce garde, un administrateur borné à la livraison lisait
+	// quand même les comptes, les portefeuilles et l'équipe du socle : la
+	// portée « core » ne bornait rien, puisque personne ne la demandait.
+	//
+	// Un non-administrateur passe : la portée est une notion de STAFF, et ce
+	// service sert aussi la connexion, le profil et le portefeuille de tous
+	// les clients.
+	//
+	// ⚠️ SEULEMENT sous `/admin/` : `/me`, `/wallet`, `/me/notifications` sont
+	// le profil de la personne connectée, et un administrateur borné à la
+	// livraison doit pouvoir voir le sien. Un garde global l'aurait déconnecté
+	// de la console à la première lecture de son propre nom.
+	authMW := chain(middleware.Auth(tokens),
+		onlyUnder("/api/v1/admin/", middleware.RequireScope(auth.ScopeCore)))
 
 	// Le portefeuille de jetons est créé À L'INSCRIPTION d'un livreur — c'est
 	// pourquoi l'identité connaît les jetons, et non l'inverse. `CreateWallet`
@@ -477,3 +492,37 @@ func (asynqSlog) Info(args ...any)  { slog.Info(fmt.Sprint(args...)) }
 func (asynqSlog) Warn(args ...any)  { slog.Warn(fmt.Sprint(args...)) }
 func (asynqSlog) Error(args ...any) { slog.Error(fmt.Sprint(args...)) }
 func (asynqSlog) Fatal(args ...any) { slog.Error(fmt.Sprint(args...)) }
+
+// chain compose des middlewares dans l'ordre où on les lit.
+//
+// `chain(a, b)` applique `a` PUIS `b` — l'ordre compte : la vérification de
+// portée lit ce que l'authentification a posé dans le contexte, et l'inverse
+// refuserait tout le monde.
+func chain(mws ...func(http.Handler) http.Handler) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		for i := len(mws) - 1; i >= 0; i-- {
+			next = mws[i](next)
+		}
+		return next
+	}
+}
+
+// onlyUnder n'applique un middleware qu'aux chemins portant le préfixe.
+//
+// Le préfixe est ABSOLU (`/api/v1/admin/`) parce que ce middleware est posé
+// sur le groupe authentifié, où `r.URL.Path` est complet. Un préfixe relatif
+// n'aurait jamais correspondu, et le garde serait resté décoratif — sans
+// qu'aucun test ne le dise, puisque les tests montent les handlers sans le
+// préfixe de version.
+func onlyUnder(prefix string, mw func(http.Handler) http.Handler) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		guarded := mw(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, prefix) {
+				guarded.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
