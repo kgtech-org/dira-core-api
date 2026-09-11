@@ -1,7 +1,7 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
 > **Version 2.1.0** · 10 septembre 2026
-> Socle : `https://api.dira.llc/api/v1` · Courses : `https://api.dira.llc/api/v1/vtc` · Suivi : `wss://tracking.dira.llc`
+> Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
 
@@ -178,7 +178,7 @@ Le suivi temps réel passe par **`dira-tracking`**, sur son propre hôte — pas
 par cette API.
 
 ```
-WS wss://tracking.dira.llc/track/subscribe/{ride_id}
+WS wss://tracking-staging.dira.llc/track/subscribe/{ride_id}
 ```
 
 L'identifiant de course sert d'identifiant de mission. Reconnexion + repli REST

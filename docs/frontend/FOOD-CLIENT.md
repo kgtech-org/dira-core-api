@@ -1,7 +1,7 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
 > **Version 2.1.0** · 10 septembre 2026
-> Socle : `https://api.dira.llc/api/v1` · Livraison : `https://api.dira.llc/api/v1/food` · Suivi : `wss://tracking.dira.llc`
+> Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
 > ## ⚠️ v2.0.0 — LES ROUTES CHANGENT DE BASE
@@ -249,7 +249,7 @@ GET /deliveries/{id}
 Puis le **microservice de suivi**, pas l'API :
 
 ```
-wss://tracking.dira.llc/track/subscribe/{delivery_id}
+wss://tracking-staging.dira.llc/track/subscribe/{delivery_id}
 
 { "type": "hello",    "mission_id": "…" }
 { "type": "position", "vehicle_id": "…", "vehicle_type": "moto", "plate": "…",
@@ -313,7 +313,7 @@ GET  /stores/{id}/ratings · /agents/{id}/ratings · /dishes/{id}/ratings   (pub
 ## 8. Temps réel — le socket des commandes
 
 ```
-wss://api.dira.llc/api/v1/ws/orders?token=<access_token>
+wss://api-staging.dira.llc/api/v1/food/ws/orders?token=<access_token>
 
 { "type": "hello", "role": "client" }
 { "type": "order_created" | "order_status", "order_id": "…", "from": "paid",

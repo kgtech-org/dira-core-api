@@ -252,7 +252,7 @@ deferred task the core owns runs *inside* `api`.
 | `GET /docs` | Swagger UI |
 | `GET /openapi.yaml` | OpenAPI 3.1 contract, embedded in the binary |
 
-Behind the gateway the core keeps the **root** — `api.dira.llc/api/v1/...` — while
+Behind the gateway the core keeps the **root** — `api-staging.dira.llc/api/v1/...` — while
 the verticals take a prefix. Its `/internal/...` routes are **404 at the edge**:
 their callers are on the internal Docker network, and a shared secret is a thing
 that can leak.
