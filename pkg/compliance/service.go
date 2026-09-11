@@ -118,6 +118,27 @@ type VehicleRef struct {
 	Motorised bool
 }
 
+// PersonKindsFor rend les pièces attendues de la PERSONNE, compte tenu de ce
+// qu'elle conduit.
+//
+// ⚠️ LE PERMIS SUIT LES VÉHICULES. On le réclamait à tout le monde — donc à
+// un livreur à vélo, qui n'en a pas et n'en aura jamais, et qui restait « non
+// conforme » sans aucun moyen de régulariser. Le même défaut que la carte
+// grise, un cran plus haut : c'est le caractère motorisé qui crée
+// l'obligation, pas le fait d'être livreur.
+//
+// La règle SUIT : un cycliste qui déclare une moto demain devra son permis
+// dès ce jour-là, sans qu'on touche à sa fiche.
+func PersonKindsFor(vehicles []VehicleRef) []string {
+	out := append([]string(nil), PersonKinds...)
+	for _, v := range vehicles {
+		if v.Motorised {
+			return append(out, DocLicence)
+		}
+	}
+	return out
+}
+
 // KindsFor rend les pièces attendues d'un véhicule.
 //
 // Un véhicule non motorisé n'en attend AUCUNE : c'est une liste vide, pas une
@@ -281,7 +302,7 @@ func (s *Service) complianceOf(ctx context.Context, driverID string) (*Complianc
 			covered[docKey(d.Kind, d.VehicleID)] = true
 		}
 	}
-	for _, kind := range PersonKinds {
+	for _, kind := range PersonKindsFor(vehicles) {
 		if !covered[docKey(kind, nil)] {
 			out.Missing = append(out.Missing, kind)
 			out.Compliant = false
