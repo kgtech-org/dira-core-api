@@ -281,22 +281,36 @@ func TestUnmotorisedVehicleNeedsNoPaper(t *testing.T) {
 
 	ctx := context.Background()
 	admin := newAdmin()
-	for _, req := range []SubmitDocumentRequest{
-		{Kind: DocLicence, FileURL: "https://f/1.jpg", ExpiresAt: inDays(400)},
-		{Kind: DocIDCard, FileURL: "https://f/2.jpg", ExpiresAt: inDays(900)},
-	} {
-		d := submit(t, fx, userID, req)
-		_, err := fx.svc.ReviewDocument(ctx, admin, d.ID, ReviewDocumentRequest{Status: DocValid})
-		require.NoError(t, err)
-	}
+	// ⚠️ SEULEMENT la pièce d'identité. Pas de permis : un cycliste n'en a
+	// pas, et le lui réclamer le laissait non conforme pour toujours. Si ce
+	// test déposait un permis « pour faire bonne mesure », il ne prouverait
+	// plus rien sur la règle.
+	d := submit(t, fx, userID, SubmitDocumentRequest{Kind: DocIDCard, FileURL: "https://f/2.jpg", ExpiresAt: inDays(900)})
+	_, err := fx.svc.ReviewDocument(ctx, admin, d.ID, ReviewDocumentRequest{Status: DocValid})
+	require.NoError(t, err)
 
 	st, err := fx.svc.Compliance(ctx, userID)
 	require.NoError(t, err)
-	assert.True(t, st.Compliant, "un livreur à vélo en règle de sa personne est en règle")
+	assert.True(t, st.Compliant, "un livreur à vélo n'a besoin que de sa pièce d'identité")
 	assert.Empty(t, st.Missing)
 	for _, m := range st.Missing {
 		assert.NotContains(t, m, bike)
 	}
+}
+
+// ⚠️ LE PERMIS SUIT LES VÉHICULES, et la règle est appelée directement.
+//
+// Un cycliste qui déclare une moto demain devra son permis dès ce jour-là,
+// sans qu'on touche à sa fiche.
+func TestLicenceFollowsMotorisedVehicles(t *testing.T) {
+	bike := VehicleRef{ID: "b", Motorised: false}
+	moto := VehicleRef{ID: "m", Motorised: true}
+
+	assert.Equal(t, []string{DocIDCard}, PersonKindsFor(nil), "à pied : la pièce d'identité seulement")
+	assert.Equal(t, []string{DocIDCard}, PersonKindsFor([]VehicleRef{bike}), "à vélo : pas de permis")
+	assert.ElementsMatch(t, []string{DocIDCard, DocLicence}, PersonKindsFor([]VehicleRef{moto}))
+	assert.ElementsMatch(t, []string{DocIDCard, DocLicence}, PersonKindsFor([]VehicleRef{bike, moto}),
+		"UNE moto suffit à exiger le permis, quel que soit le reste du parc")
 }
 
 // Et la règle elle-même, appelée directement.

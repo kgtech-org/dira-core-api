@@ -49,7 +49,9 @@ const (
 // Exportées parce que l'AGRÉGATION s'en sert pour dire ce qui manque, et que
 // deux listes — une pour vérifier, une pour réclamer — divergeraient.
 var (
-	PersonKinds  = []string{DocLicence, DocIDCard}
+	// PersonKinds : ce qu'on attend de TOUTE personne, quel que soit son
+	// véhicule. Le PERMIS n'en fait pas partie — voir `PersonKindsFor`.
+	PersonKinds  = []string{DocIDCard}
 	VehicleKinds = []string{DocRegistration, DocInsurance, DocInspection}
 )
 
