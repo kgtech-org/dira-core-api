@@ -1,7 +1,7 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
 > **Version 2.1.0** · 10 septembre 2026
-> Socle : `https://api.dira.llc/api/v1` · Livraison : `https://api.dira.llc/api/v1/food` · Suivi : `wss://tracking.dira.llc` · SIG : `https://maps.dira.llc/api`
+> Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
 > ## ⚠️ v2.0.0 — LES ROUTES CHANGENT DE BASE
@@ -233,7 +233,7 @@ Depuis la v1.2.0, une course **attribuée** porte :
 ## 6. Émettre sa position
 
 ```
-wss://tracking.dira.llc/track/agent
+wss://tracking-staging.dira.llc/track/agent
 
 { "vehicle_id": "…", "mission_id": "<delivery_id>", "type": "moto",
   "plate": "…", "lng": …, "lat": …, "heading": …, "speed": …, "ts": … }
@@ -266,7 +266,7 @@ Ouvert de l'affectation jusqu'à **2 h après la livraison** ; ensuite `409 conv
 Réception en temps réel sur le socket **de l'API** :
 
 ```
-wss://api.dira.llc/api/v1/ws/orders?token=<access_token>
+wss://api-staging.dira.llc/api/v1/food/ws/orders?token=<access_token>
 { "type": "order_message", "order_id": "…", "sender_role": "client", "body": "…", "ts": … }
 ```
 

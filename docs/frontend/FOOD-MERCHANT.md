@@ -1,7 +1,7 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
 > **Version 2.1.0** · 10 septembre 2026
-> Socle : `https://api.dira.llc/api/v1` · Livraison : `https://api.dira.llc/api/v1/food`
+> Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
 > ## ⚠️ v2.0.0 — LES ROUTES CHANGENT DE BASE

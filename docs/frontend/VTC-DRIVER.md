@@ -1,7 +1,7 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
 > **Version 2.1.0** · 10 septembre 2026
-> Socle : `https://api.dira.llc/api/v1` · Courses : `https://api.dira.llc/api/v1/vtc` · Suivi : `wss://tracking.dira.llc` · SIG : `https://maps.dira.llc/api`
+> Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
 
@@ -72,7 +72,7 @@ L'appel arrive **par le socket du SUIVI**, celui-là même sur lequel vous
 poussez vos positions :
 
 ```
-WS wss://tracking.dira.llc/track/agent
+WS wss://tracking-staging.dira.llc/track/agent
 ```
 
 ```json
@@ -89,8 +89,8 @@ Puis, à la fermeture : `{ "type": "call_closed", "call_id": "…", "reason": "�
 **Répondre** — sur le service de SUIVI, avec votre jeton :
 
 ```
-POST https://tracking.dira.llc/track/calls/{call_id}/accept   { "vehicle_id": "…" }
-POST https://tracking.dira.llc/track/calls/{call_id}/decline  { "vehicle_id": "…" }
+POST https://tracking-staging.dira.llc/track/calls/{call_id}/accept   { "vehicle_id": "…" }
+POST https://tracking-staging.dira.llc/track/calls/{call_id}/decline  { "vehicle_id": "…" }
 ```
 
 > ⚠️ **Position émise DÈS L'ENTRÉE dans le parcours.** Sans elle, aucun appel
