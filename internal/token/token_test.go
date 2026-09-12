@@ -583,3 +583,36 @@ func TestConsumeWithoutOrderIsNotGuarded(t *testing.T) {
 
 	assert.Equal(t, 3, repo.balanceOf(ownerID))
 }
+
+// Le portefeuille d'un client n'a JAMAIS pu s'ouvrir : `CreateWallet` refusait
+// le type `client` que tous ses appelants lui passaient. Trois conséquences,
+// chacune épinglée ici : l'ouverture doit passer, un client sans portefeuille
+// doit en LIRE un (vide) plutôt qu'un 404, et une recharge confirmée doit se
+// poser quelque part — un paiement `succeeded` sans crédit est de l'argent
+// perdu.
+func TestClientWalletOpensOnDemand(t *testing.T) {
+	repo := newFakeRepo()
+	svc, _, _, _ := newTestService(repo)
+	ctx := context.Background()
+
+	require.NoError(t, svc.CreateWallet(ctx, primitive.NewObjectID().Hex(), WalletTypeClient),
+		"le type client doit être accepté")
+
+	// Un compte de la période où l'ouverture échouait : aucun portefeuille.
+	userID := primitive.NewObjectID().Hex()
+	w, err := svc.GetWallet(ctx, userID, auth.RoleClient, "")
+	require.NoError(t, err, "un client sans portefeuille en lit un vide, pas un 404")
+	assert.Equal(t, WalletTypeClient, w.Type)
+	assert.Equal(t, 0, w.BalanceXOF)
+
+	// Une recharge sur un AUTRE compte sans portefeuille : elle doit y arriver.
+	other := primitive.NewObjectID().Hex()
+	require.NoError(t, svc.TopUp(ctx, other, 2_000, map[string]any{"payment_id": "p1"}))
+	w, err = svc.GetWallet(ctx, other, auth.RoleClient, "")
+	require.NoError(t, err)
+	assert.Equal(t, 2_000, w.BalanceXOF, "la recharge crédite le portefeuille qu'elle vient d'ouvrir")
+
+	// Un livreur, lui, doit AVOIR son portefeuille : l'absence reste visible.
+	_, err = svc.GetWallet(ctx, primitive.NewObjectID().Hex(), auth.RoleDriver, "")
+	require.Error(t, err, "pas d'ouverture implicite pour un livreur")
+}

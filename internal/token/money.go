@@ -89,6 +89,32 @@ func (s *Service) CreateClientWallet(ctx context.Context, userID string) error {
 	return s.CreateWallet(ctx, userID, WalletTypeClient)
 }
 
+// ensureClientWallet ouvre le portefeuille d'un client s'il n'existe pas
+// encore, puis le rend.
+//
+// L'ouverture à l'inscription est « au mieux » et, pendant des mois, a
+// échoué pour TOUS les clients (voir `CreateWallet`). Les comptes de cette
+// période n'ont pas de portefeuille, et rien ne les distingue d'un compte
+// neuf. Plutôt qu'une migration qu'il faudrait rejouer à chaque nouvelle
+// cause d'échec, chaque geste d'ARGENT d'un client passe par ici : un
+// portefeuille absent est un portefeuille vide, pas une erreur — et une
+// recharge confirmée par le prestataire ne doit JAMAIS être perdue faute de
+// portefeuille où la poser.
+func (s *Service) ensureClientWallet(ctx context.Context, userID string) (*Wallet, error) {
+	wallet, err := s.findWallet(ctx, userID)
+	if err == nil {
+		return wallet, nil
+	}
+	var appErr *apperr.Error
+	if !errors.As(err, &appErr) || appErr.Code != "wallet_not_found" {
+		return nil, err
+	}
+	if err := s.CreateClientWallet(ctx, userID); err != nil {
+		return nil, err
+	}
+	return s.findWallet(ctx, userID)
+}
+
 // TopUp crédite le portefeuille d'un client, après confirmation du paiement.
 //
 // Appelé par le module de paiement, jamais par le client : créditer sur la
@@ -96,6 +122,9 @@ func (s *Service) CreateClientWallet(ctx context.Context, userID string) error {
 func (s *Service) TopUp(ctx context.Context, userID string, amountXOF int, ref map[string]any) error {
 	if amountXOF <= 0 {
 		return apperr.Validation("amount must be positive")
+	}
+	if _, err := s.ensureClientWallet(ctx, userID); err != nil {
+		return err
 	}
 	// La recharge porte déjà son unicité : le module de paiement n'appelle ceci
 	// qu'une fois par paiement abouti, et l'index unique sur `provider_ref`
@@ -108,6 +137,9 @@ func (s *Service) TopUp(ctx context.Context, userID string, amountXOF int, ref m
 func (s *Service) CreditPromo(ctx context.Context, userID string, amountXOF int, ref map[string]any) error {
 	if amountXOF <= 0 {
 		return apperr.Validation("amount must be positive")
+	}
+	if _, err := s.ensureClientWallet(ctx, userID); err != nil {
+		return err
 	}
 	// Un geste commercial n'a pas de clé naturelle : il n'est rattaché à rien,
 	// et deux crédits identiques peuvent être deux gestes voulus.
@@ -123,7 +155,9 @@ func (s *Service) Pay(ctx context.Context, userID string, amountXOF int, refKind
 	if amountXOF <= 0 {
 		return apperr.Validation("amount must be positive")
 	}
-	wallet, err := s.findWallet(ctx, userID)
+	// Un client sans portefeuille n'a « pas de quoi payer », pas « pas de
+	// portefeuille » : c'est ce que l'application doit lui dire.
+	wallet, err := s.ensureClientWallet(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -201,6 +235,9 @@ func (s *Service) Pay(ctx context.Context, userID string, amountXOF int, refKind
 func (s *Service) Refund(ctx context.Context, userID string, amountXOF int, refKind, refID string) error {
 	if amountXOF <= 0 {
 		return apperr.Validation("amount must be positive")
+	}
+	if _, err := s.ensureClientWallet(ctx, userID); err != nil {
+		return err
 	}
 	return s.moveMoney(ctx, userID, "balance_xof", amountXOF, KindPurchase, ReasonRefund, refKind, refID,
 		refundKey(refKind, refID), nil)
