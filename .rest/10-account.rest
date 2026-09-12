@@ -109,6 +109,48 @@ DELETE {{baseUrl}}/me/addresses/{{addressId}}
 Authorization: Bearer {{token}}
 
 # ---------------------------------------------------------------------------
+# Envoi de fichiers — une porte pour toute la plateforme. kind ∈ avatar |
+# vehicle | dish | store | brand | feed | banner ; images ≤ 5 MiB, et pour
+# `feed` aussi des vidéos ≤ 60 MiB et ≤ 60 s. Rend {url} (+ duration_seconds
+# pour une vidéo) : c'est CETTE url qu'on rattache ensuite à l'objet.
+# ⚠️ Renseigner un vrai chemin de fichier après le `<`.
+# ---------------------------------------------------------------------------
+
+### 8b. Envoyer un avatar — 201 {url}
+# @name upload
+POST {{baseUrl}}/uploads?kind=avatar&entity={{userId}}
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=DiraBoundary
+
+--DiraBoundary
+Content-Disposition: form-data; name="file"; filename="avatar.png"
+Content-Type: image/png
+
+< ./sample-avatar.png
+--DiraBoundary--
+
+### 8c. Rattacher l'avatar au profil
+PATCH {{baseUrl}}/me
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "avatar_url": "{{upload.response.body.$.url}}"
+}
+
+### 8d. Contrôle négatif — 422 (type refusé hors feed : une vidéo sur un avatar)
+POST {{baseUrl}}/uploads?kind=avatar
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=DiraBoundary
+
+--DiraBoundary
+Content-Disposition: form-data; name="file"; filename="clip.mp4"
+Content-Type: video/mp4
+
+< ./sample-clip.mp4
+--DiraBoundary--
+
+# ---------------------------------------------------------------------------
 # Appareils — le jeton FCM d'un téléphone. Sans lui, pas de notification
 # poussée ; la boîte de réception, elle, garde tout.
 # ---------------------------------------------------------------------------

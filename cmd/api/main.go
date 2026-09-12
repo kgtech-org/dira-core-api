@@ -38,6 +38,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/internal/serviceapi"
 	"github.com/kgtech-org/dira-core-api/internal/staff"
 	"github.com/kgtech-org/dira-core-api/internal/token"
+	"github.com/kgtech-org/dira-core-api/internal/upload"
 	"github.com/kgtech-org/dira-core-api/internal/user"
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/audit"
@@ -48,6 +49,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
 	"github.com/kgtech-org/dira-core-api/pkg/i18n"
 	"github.com/kgtech-org/dira-core-api/pkg/middleware"
+	"github.com/kgtech-org/dira-core-api/pkg/storage"
 )
 
 func main() {
@@ -105,6 +107,21 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	httpx.SetTranslator(translator)
+
+	// Le stockage des fichiers envoyés. Le socle reste debout sans lui —
+	// l'envoi répond 503 `storage_unavailable` — et le dit FORT : la console
+	// ne peut alors poser aucune image, et un avertissement discret dans un
+	// journal a déjà laissé un staging entier sans envoi pendant des jours.
+	media, err := storage.New(ctx, storage.Config{
+		Endpoint: cfg.MinioEndpoint, AccessKey: cfg.MinioAccessKey, SecretKey: cfg.MinioSecretKey,
+		UseSSL: cfg.MinioUseSSL, Bucket: cfg.MinioBucket, PublicBaseURL: cfg.MinioPublicURL,
+	})
+	if err != nil {
+		logger.Error("core: object storage unavailable — every upload will answer 503",
+			"error", err, "endpoint", cfg.MinioEndpoint, "bucket", cfg.MinioBucket,
+			"hint", "MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY / MINIO_BUCKET")
+		media = nil
+	}
 
 	tokens := auth.NewManager(cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL)
 	// ⚠️ LA PORTÉE DU STAFF EST VÉRIFIÉE UNE FOIS, ICI — comme dans chaque
@@ -274,6 +291,10 @@ func run(logger *slog.Logger) error {
 			httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		})
 		user.NewHandler(userSvc).Mount(r, authMW)
+		// L'ENVOI DE FICHIERS, pour tout rôle connecté : avatar, véhicule,
+		// document de conformité, et les objets des verticales (plat, point de
+		// vente, enseigne, vidéo de feed, bannière). Une porte, une règle.
+		upload.NewHandler(media).Mount(r, authMW)
 		// ⚠️ LA GESTION DES COMPTES PAR LA CONSOLE — ouvrir, corriger,
 		// supprimer. Le module existait, ses trois routes aussi, et rien ne
 		// les montait : « + Nouveau client » et « Éditer » répondaient 404

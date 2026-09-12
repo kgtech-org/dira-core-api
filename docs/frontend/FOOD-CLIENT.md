@@ -11,7 +11,7 @@
 >
 > | Ce que vous appelez | Où c'est servi | Base |
 > |---|---|---|
-> | connexion, profil, adresses, portefeuille, paiements, notifications, avis | **socle** (`dira-core-api`) | `…/api/v1/…` — **inchangé** |
+> | connexion, profil, adresses, **envoi de fichiers**, portefeuille, paiements, notifications, avis | **socle** (`dira-core-api`) | `…/api/v1/…` — **inchangé** |
 > | tout le reste de ce document | **livraison** (`dira-food-api`) | `…/api/v1/food/…` — **nouveau préfixe** |
 >
 > Concrètement : `POST /api/v1/auth/login` ne bouge pas, `GET /api/v1/food/orders`
@@ -419,7 +419,7 @@ POST   /me/notifications/{id}/read
 GET  /tombola/draws · POST /tombola/draws/{id}/enter · GET /tombola/me
 POST /tickets · GET /tickets · POST /tickets/{id}/messages
 POST /bug-reports
-POST /uploads?kind=avatar&entity={id}    (kind ∈ dish|store|brand|vehicle|avatar|feed|banner)
+POST /uploads?kind=avatar&entity={id}    (SOCLE, sans /food — kind ∈ avatar|vehicle|dish|store|brand|feed|banner)
 ```
 
 Un crédit tombola en attente est appliqué **automatiquement** en remise à la commande suivante — il apparaît dans `discount`.
