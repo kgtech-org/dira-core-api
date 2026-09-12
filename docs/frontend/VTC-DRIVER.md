@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 3.1.0** · 12 septembre 2026
+> **Version 3.2.0** · 12 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -187,6 +187,28 @@ d'une livraison.
 
 **Ce que vous voyez et que le passager ne voit pas** : `commission_xof` et
 `driver_xof`. C'est votre part, et elle n'est servie qu'à vous.
+
+### Émettre sa position PENDANT la course — `mission_id` (v3.2.0)
+
+Les positions poussées sur le socket du suivi portent **`mission_id`** dès
+que la course est acceptée, et jusqu'à `completed` :
+
+```json
+{ "vehicle_id": "…", "mission_id": "<ride_id>", "lng": 1.2255, "lat": 6.1319,
+  "heading": 40, "speed": 12, "ts": 1789044151142 }
+```
+
+C'est ce champ qui fait le **parcours** : à `completed`, le serveur fige les
+positions portées par la course, les recale sur la route, et la course garde
+**`traveled_polyline`** (polyline Google), **`actual_distance_m`** et
+**`distance_source`** (`tracked`). Sans `mission_id`, la course se termine
+avec `distance_source: "planned"` — la distance du devis, aucun tracé — et
+personne ne peut la rejouer. **Le prix ne change pas** : il vient du devis,
+le parcours est une trace, pas une facture.
+
+> Une course terminée sans tracé n'est pas une erreur du serveur : c'est un
+> `mission_id` absent ou une position jamais poussée. Vérifier le socket avant
+> d'ouvrir un ticket.
 
 ---
 

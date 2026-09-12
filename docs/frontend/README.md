@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 3.1.0** · 12 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 3.2.0** · 12 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -142,6 +142,19 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 3.2.0 — 12 septembre 2026
+
+**Ajout rétrocompatible** — le parcours d'une course.
+
+- **Une course terminée garde son parcours** : `traveled_polyline` (polyline
+  Google, recalée sur la route), `actual_distance_m`, `distance_source`
+  (`tracked` · `planned`) sur `GET /vtc/rides/{id}` et dans l'historique —
+  passager et chauffeur. Absents avant `completed` et sur une annulation.
+  Le prix ne change pas : il vient du devis.
+- **Côté chauffeur, c'est `mission_id` = `ride_id` sur chaque position**
+  poussée au suivi, de l'acceptation à la fin, qui fait exister ce parcours
+  (`VTC-DRIVER.md` §4). Sans lui : `distance_source: "planned"`, aucun tracé.
 
 ### 3.1.0 — 12 septembre 2026
 

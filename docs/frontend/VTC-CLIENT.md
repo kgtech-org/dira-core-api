@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 3.1.0** · 12 septembre 2026
+> **Version 3.2.0** · 12 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -148,6 +148,15 @@ searching → accepted → approach → onboard → completed
 GET /rides/{id}
 GET /rides?cursor=…     # l'historique de VOS courses, page par page
 ```
+
+**Le parcours d'une course terminée (v3.2.0).** À `completed`, la course
+porte **`traveled_polyline`** (polyline Google, le chemin réellement roulé,
+recalé sur la route), **`actual_distance_m`** et **`distance_source`** :
+`tracked` quand le tracé existe, `planned` quand le chauffeur n'a envoyé
+aucune position — la distance est alors celle du devis et il n'y a rien à
+dessiner. Les trois champs sont absents avant la fin de la course et sur une
+course annulée. **Le prix ne dépend pas de ce tracé** : `fare_xof` vient du
+devis, le parcours est ce qu'on montre dans le détail et le reçu.
 
 `stop_index` est l'étape **atteinte** — zéro tant que le départ n'est pas fait.
 Chaque `stops[i].reached_at` porte l'instant.
