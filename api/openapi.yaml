@@ -51,6 +51,8 @@ tags:
     description: Avis déposés par les verticales, lus par tout le monde
   - name: admin
     description: Administration des comptes — commune aux deux verticales
+  - name: uploads
+    description: Envoi de fichiers — une porte pour toute la plateforme
 paths:
   /auth/register:
     post:
@@ -139,6 +141,53 @@ paths:
       parameters: [{name: id, in: path, required: true, schema: {type: string}}]
       responses:
         "204": {description: Deleted}
+  /uploads:
+    post:
+      tags: [uploads]
+      summary: Upload a media file and get its public URL
+      description: >-
+        Tout rôle connecté. AU SOCLE, pas dans une verticale : un avatar est
+        un objet du profil, une photo de véhicule ou un permis servent aux
+        deux métiers, et les courses n'avaient aucune porte d'envoi. L'URL
+        rendue se rattache ensuite à l'objet (`PATCH /me`, véhicule,
+        document de conformité, plat…) — l'étape est séparée pour qu'un
+        envoi qui échoue ne fasse pas perdre la saisie.
+
+
+        Images (jpeg, png, webp, svg) jusqu'à 5 MiB pour tout `kind`. Le
+        `kind` `feed` accepte AUSSI des vidéos (mp4, webm, mov) jusqu'à
+        60 MiB — un clip promo pèse des dizaines de mégaoctets, rien d'autre
+        ne doit profiter de ce plafond. Une vidéo de feed est un SHORT : la
+        durée est lue dans le conteneur, jamais déclarée, et au-delà de 60 s
+        c'est `video_too_long` ; un conteneur illisible est `video_unreadable`
+        plutôt qu'accepté à l'aveugle. La durée mesurée revient dans
+        `duration_seconds`.
+
+
+        ⚠️ Le type est celui DÉCLARÉ par la part multipart ; le serveur ne
+        renifle pas le contenu.
+      parameters:
+        - {in: query, name: kind, required: true, schema: {type: string, enum: [avatar, vehicle, dish, store, brand, feed, banner]}, description: préfixe de la clé d'objet}
+        - {in: query, name: entity, schema: {type: string}, description: identifiant facultatif qui regroupe les objets}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: {type: object, required: [file], properties: {file: {type: string, format: binary}}}
+      responses:
+        "201":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url: {type: string, format: uri}
+                  duration_seconds: {type: integer, description: "vidéos seulement : lue dans le conteneur"}
+        "401": {description: missing_token}
+        "422": {description: "validation_failed (type, poids, kind, champ `file` absent), video_too_long, video_unreadable"}
+        "503": {description: storage_unavailable — le stockage d'objets n'a pas démarré}
   /wallet:
     get:
       tags: [wallet]

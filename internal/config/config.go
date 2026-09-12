@@ -55,7 +55,11 @@ type Config struct {
 
 // Load reads the environment, applies defaults and validates.
 func Load() (*Config, error) {
-	base, err := core.LoadBase("dira_core", "dira-core")
+	// `dira-media` : le bucket des fichiers envoyés par TOUTE la plateforme —
+	// avatars, véhicules, permis, plats, vidéos. Il est au socle parce que
+	// l'envoi y est ; le worker de la livraison, qui réencode les vidéos de
+	// feed, lit et écrit le MÊME bucket (voir dira-devops).
+	base, err := core.LoadBase("dira_core", "dira-media")
 	if err != nil {
 		return nil, err
 	}

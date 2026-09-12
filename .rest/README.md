@@ -1,6 +1,6 @@
 # Collection `.rest` — Dira Core API
 
-Requêtes HTTP exécutables couvrant **l'intégralité des routes du socle** (70 au
+Requêtes HTTP exécutables couvrant **l'intégralité des routes du socle** (71 au
 moment de l'écriture, `/internal` compris), organisées **par parcours** plutôt
 que par module : on lit un fichier de haut en bas comme on suit un scénario.
 
@@ -52,7 +52,7 @@ L'hôte est déclaré en tête de chaque fichier — une ligne à changer :
 | Fichier | Qui | Contenu |
 |---|---|---|
 | `00-public.rest` | anonyme, tous rôles | santé, `/docs`, inscription, connexion (téléphone / email), rotation, déconnexion, notes publiques |
-| `10-account.rest` | tout compte | profil, préférences, carnet d'adresses, appareils, boîte de réception |
+| `10-account.rest` | tout compte | profil, préférences, carnet d'adresses, **envoi de fichiers**, appareils, boîte de réception |
 | `20-wallet-payments.rest` | livreur, client, admin | jetons du livreur, Dira Cash du client, opérateurs, initiation, statut, **webhook signé**, confirmation sandbox |
 | `40-admin.rest` | `admin` | annuaire et fiches (ouvrir, corriger, suspendre, supprimer), portefeuilles, gabarits, flottes, staff |
 | `50-service.rest` | **secret de service** | `/internal/*` : comptes, portefeuilles, notifications, paiements, back-office, notes, flottes |

@@ -11,7 +11,7 @@
 >
 > | Ce que vous appelez | Où c'est servi | Base |
 > |---|---|---|
-> | connexion, profil, adresses, portefeuille, paiements, notifications, avis | **socle** (`dira-core-api`) | `…/api/v1/…` — **inchangé** |
+> | connexion, profil, adresses, **envoi de fichiers**, portefeuille, paiements, notifications, avis | **socle** (`dira-core-api`) | `…/api/v1/…` — **inchangé** |
 > | tout le reste de ce document | **livraison** (`dira-food-api`) | `…/api/v1/food/…` — **nouveau préfixe** |
 >
 > Concrètement : `POST /api/v1/auth/login` ne bouge pas, `GET /api/v1/food/orders`
@@ -317,7 +317,7 @@ GET /dishes/{id}/ratings     (public)
 
 ```
 GET /me · PATCH /me · PATCH /me/preferences        (SOCLE, sans /food)
-POST /uploads?kind=dish&entity={id}
+POST /uploads?kind=dish&entity={id}                (SOCLE, sans /food)
 POST /me/devices · GET /me/notifications           (SOCLE, sans /food)
 POST /tickets · POST /bug-reports
 ```

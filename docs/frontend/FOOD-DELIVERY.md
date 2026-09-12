@@ -11,7 +11,7 @@
 >
 > | Ce que vous appelez | Où c'est servi | Base |
 > |---|---|---|
-> | connexion, profil, adresses, portefeuille, paiements, notifications, avis | **socle** (`dira-core-api`) | `…/api/v1/…` — **inchangé** |
+> | connexion, profil, adresses, **envoi de fichiers**, portefeuille, paiements, notifications, avis | **socle** (`dira-core-api`) | `…/api/v1/…` — **inchangé** |
 > | tout le reste de ce document | **livraison** (`dira-food-api`) | `…/api/v1/food/…` — **nouveau préfixe** |
 >
 > Concrètement : `POST /api/v1/auth/login` ne bouge pas, `GET /api/v1/food/orders`
@@ -62,7 +62,7 @@ PATCH  /agent/availability     { available }
 ```
 
 - `type` ∈ `moto` · `velo` · `voiture` · `pieton` · `tricycle`. `capacity` = courses simultanées.
-- Photo : téléverser d'abord (`POST /uploads?kind=vehicle&entity={id}`), rattacher l'URL par `PATCH`. L'étape est séparée pour qu'une photo qui échoue ne fasse pas perdre la saisie.
+- Photo : téléverser d'abord (`POST /api/v1/uploads?kind=vehicle&entity={id}` — au **socle**, sans `/food` : la même porte sert les courses), rattacher l'URL par `PATCH`. L'étape est séparée pour qu'une photo qui échoue ne fasse pas perdre la saisie.
 - **Mettre hors service ≠ supprimer** : `PATCH { "is_active": false }`. Un véhicule ayant servi doit rester lisible dans l'historique.
 - **Le véhicule actif porte le GPS**, c'est lui que le client voit avancer, et lui qui est enregistré sur la course.
 
