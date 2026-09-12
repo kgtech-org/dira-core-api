@@ -92,8 +92,20 @@ paths:
     post:
       tags: [auth]
       summary: Rotate the refresh token
+      description: >-
+        **Durées de vie.** L'access token vit `JWT_ACCESS_TTL` (défaut
+        **15 min** ; staging **10 min** pour rendre l'expiration testable),
+        le refresh token `JWT_REFRESH_TTL` (défaut **30 jours**). Le refresh
+        est **consommé** : le rejouer répond 401 — deux requêtes concurrentes
+        avec le même en invalident une. ⚠️ L'access token, lui, reste
+        **valide jusqu'à son échéance** même après une rotation : une
+        connexion WebSocket ouverte avec l'ancien jeton n'est pas coupée par
+        le rafraîchissement — c'est le suivi qui la ferme, à l'échéance,
+        avec le code 4401 `token_expired`, et le client revient avec le
+        nouveau. Un court chevauchement est donc normal.
       responses:
         "200": {description: New token pair}
+        "401": {description: refresh token consumed, expired or revoked — sign in again}
   /auth/logout:
     post:
       tags: [auth]
@@ -115,8 +127,29 @@ paths:
     patch:
       tags: [users]
       summary: Update notification, theme and language preferences
+      description: >-
+        Champs absents inchangés. `locale` ∈ `fr` | `en` — les deux langues
+        de la plateforme ; `fr-FR` est ramené à `fr`, autre chose est refusé
+        (422, `fields: ["locale"]`) ; vide = revenir à la langue de
+        l'appareil. `theme` ∈ system | light | dark. `sounds` est accepté
+        mais l'app chauffeur ne l'écrit plus (réglage devenu local).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                order_updates: {type: boolean}
+                chat_messages: {type: boolean}
+                promotions: {type: boolean}
+                tombola: {type: boolean}
+                sounds: {type: boolean}
+                theme: {type: string, enum: [system, light, dark]}
+                locale: {type: string, enum: [fr, en, ""]}
+                payment_provider: {type: string}
       responses:
         "200": {description: Profile}
+        "422": {description: validation_failed}
   /me/addresses:
     get:
       tags: [users]

@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 3.0.0** · 12 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 3.1.0** · 12 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -142,6 +142,34 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 3.1.0 — 12 septembre 2026
+
+**Ajout rétrocompatible** — la remédiation de l'audit de l'app chauffeur
+(`2026-09-12-audit-remediation.md`, §3), côté serveur.
+
+- **Le socket du suivi ferme proprement à l'échéance du jeton** : code
+  **4401 `token_expired`**. Rafraîchir, puis reconnecter — jamais avec le même
+  jeton. Poignée de main : **401** = rafraîchir, **403** = ce rôle n'a pas le
+  droit, ne pas réessayer. Ping serveur toutes les 25 s, fermeture après 60 s
+  de silence.
+- **Durées de vie des jetons écrites** : access **15 min** (staging **10 min**),
+  refresh **30 jours**, consommé à la rotation ; l'ancien access reste valide
+  jusqu'à son échéance (chevauchement socket / REST normal).
+- **La présence sur le profil chauffeur** (`GET /vtc/drivers/me`) :
+  `last_seen_at`, **`tracking_stale`** (90 s sans position : « suivi arrêté »,
+  plus appelé), `offline_at`, `offline_reason` (`driver` · **`stale`** ·
+  `admin`). ⚠️ **5 min sans position = hors ligne par le serveur**, avec la
+  raison — à afficher, pas à deviner.
+- **`GET /vtc/drivers/me/stats?date=&tz=`** — courses, gains et temps en ligne
+  du jour, dans le fuseau du chauffeur ; remplace le calcul local.
+- **L'appel arrive aussi par FCM** (data-only, priorité haute, TTL = temps
+  restant) : `{type: call | call_closed, call_id, ref, expires_at}`. Déclarer
+  le jeton FCM par `POST /me/devices` à la connexion et à chaque rotation ;
+  idempotence par `call_id`.
+- `PATCH /me/preferences` : `locale` ∈ `fr` · `en` (autre : 422).
+- Passerelle : `GET /api/v1/healthz` public, pour distinguer « pas de
+  réseau » de « service en panne ».
 
 ### 3.0.0 — 12 septembre 2026
 
