@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 3.2.0** · 12 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 3.3.0** · 12 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -142,6 +142,19 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 3.3.0 — 12 septembre 2026
+
+**Ajout rétrocompatible** — la zone rouge.
+
+- **Push data-only `type: hot_zone`** (chauffeurs VTC et livreurs, libres et
+  en ligne, à 5 km) quand plusieurs clients n'ont pas trouvé de chauffeur ou
+  de livreur au même endroit en peu de temps : centre, rayon, `polyline` du
+  contour, nombre de clients, `expires_at`. Une information à afficher,
+  **pas un appel** — `VTC-DRIVER.md` §3, `FOOD-DELIVERY.md` §6 bis.
+- **`GET /analytics/zones?vertical=`** — les zones ouvertes, à relire à
+  l'ouverture ou après un message manqué. Nouveau service `dira-analytics`,
+  même jeton, derrière la passerelle.
 
 ### 3.2.0 — 12 septembre 2026
 
