@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 3.3.0** · 12 septembre 2026
+> **Version 3.4.0** · 12 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -154,6 +154,32 @@ GET https://api-staging.dira.llc/api/v1/analytics/zones?vertical=vtc
 La zone est servie **sans les clients qui la font** : l'application n'a rien à
 faire de qui attend où.
 
+
+### 📈 Les ZONES ACTIVES — où est le travail en ce moment (v3.4.0)
+
+À l'ouverture de l'application (et à chaque retour au premier plan), lire :
+
+```
+GET https://api-staging.dira.llc/api/v1/analytics/zones/active?vertical=vtc
+→ { "from", "to", "requested", "cell_km2": 3,
+    "cells": [ { "rank": 1, "label": "N'tifafakomé", "center": [lng, lat],
+                 "polygon": [[lng, lat]…], "polyline": "…",
+                 "requested": 14, "met": 9, "unmet": 5, "share_pct": 38.9 }, … ] }
+```
+
+La ville est découpée en cellules de **3 km²** ; chaque heure, les demandes
+de l'heure écoulée sont comptées par cellule et les **cinq premières** sont
+servies ici. `center` est le **barycentre des demandes** — là où les clients
+appellent, pas le milieu du carré : c'est le point à afficher et vers lequel
+guider. `polygon` / `polyline` dessinent la cellule ; `label` est le quartier
+quand le SIG le connaît (sinon absent : afficher le rang et la carte, pas
+l'identifiant `cell`). `share_pct` est la part de la demande de l'heure.
+`cells` vide = rien à montrer (démarrage, nuit calme) — pas une erreur.
+
+C'est une **lecture**, pas un appel : ne rien sonner, ne rien proposer à
+accepter. À rafraîchir au plus toutes les 5 minutes — le classement ne
+change qu'à l'heure pleine.
+
 **Répondre** — sur le service de SUIVI, avec votre jeton :
 
 ```
@@ -245,6 +271,31 @@ le parcours est une trace, pas une facture.
 > Une course terminée sans tracé n'est pas une erreur du serveur : c'est un
 > `mission_id` absent ou une position jamais poussée. Vérifier le socket avant
 > d'ouvrir un ticket.
+
+---
+
+
+### 🔁 L'ENCHAÎNEMENT — un appel avant l'arrivée (v3.4.0)
+
+Quand l'exploitation l'a activé (`GET /settings/dispatch` →
+`{ "chain_calls": true, "chain_radius_m": 2000 }`), un chauffeur **passager à
+bord** et à moins de `chain_radius_m` de sa destination **reçoit déjà les
+appels** de la course suivante — par le socket et par push, comme un appel
+ordinaire. S'il accepte :
+
+- la course suivante est `accepted` et porte **`chained_from`** = la course en
+  cours. Elle **attend** : ne pas la démarrer, ne pas changer d'écran — la
+  course en cours va jusqu'à `completed`, la suivante devient alors la course
+  active (elle apparaît dans `GET /rides` avec `chained_from`).
+- **une seule** suivante à la fois : pendant qu'elle attend, aucun autre
+  appel n'arrive (`driver_busy` sur toute autre acceptation).
+- `mission_id` des positions reste celui de la course **en cours** jusqu'à
+  son `completed`, puis passe à la suivante.
+
+Afficher « prochaine course : … » sur l'écran de la course en cours quand
+`chained_from` existe, et « enchaînement actif » dans le profil quand le
+réglage l'est — pour que le chauffeur comprenne pourquoi son téléphone sonne
+avant d'avoir déposé. Réglage inactif : rien ne change, une course à la fois.
 
 ---
 

@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 3.3.0** · 12 septembre 2026
+> **Version 3.4.0** · 12 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -285,6 +285,34 @@ GET https://api-staging.dira.llc/api/v1/analytics/zones?vertical=food
 
 La zone est servie **sans les clients qui la font** : l'application n'a rien à
 faire de qui attend où.
+
+---
+
+
+## 6 ter. 📈 Les ZONES ACTIVES — où est le travail en ce moment (v3.4.0)
+
+À l'ouverture de l'application (et à chaque retour au premier plan), lire :
+
+```
+GET https://api-staging.dira.llc/api/v1/analytics/zones/active?vertical=food
+→ { "from", "to", "requested", "cell_km2": 3,
+    "cells": [ { "rank": 1, "label": "N'tifafakomé", "center": [lng, lat],
+                 "polygon": [[lng, lat]…], "polyline": "…",
+                 "requested": 14, "met": 9, "unmet": 5, "share_pct": 38.9 }, … ] }
+```
+
+La ville est découpée en cellules de **3 km²** ; chaque heure, les demandes
+de l'heure écoulée sont comptées par cellule et les **cinq premières** sont
+servies ici. `center` est le **barycentre des demandes** — là où les clients
+appellent, pas le milieu du carré : c'est le point à afficher et vers lequel
+guider. `polygon` / `polyline` dessinent la cellule ; `label` est le quartier
+quand le SIG le connaît (sinon absent : afficher le rang et la carte, pas
+l'identifiant `cell`). `share_pct` est la part de la demande de l'heure.
+`cells` vide = rien à montrer (démarrage, nuit calme) — pas une erreur.
+
+C'est une **lecture**, pas un appel : ne rien sonner, ne rien proposer à
+accepter. À rafraîchir au plus toutes les 5 minutes — le classement ne
+change qu'à l'heure pleine.
 
 ---
 

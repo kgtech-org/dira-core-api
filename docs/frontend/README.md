@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 3.3.0** · 12 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 3.4.0** · 12 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -142,6 +142,22 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 3.4.0 — 12 septembre 2026
+
+**Ajout rétrocompatible** — les zones actives, et l'enchaînement.
+
+- **`GET /analytics/zones/active?vertical=`** — le top 5 des cellules de
+  3 km² les plus demandées de l'heure écoulée, avec le barycentre des
+  demandes, le contour (polygone et polyline), le quartier et la part de la
+  demande. À lire à l'ouverture de l'application ; une lecture, pas un
+  appel (`VTC-DRIVER.md` §3, `FOOD-DELIVERY.md` §6 ter).
+- **L'enchaînement des appels en fin de course** (chauffeurs VTC) : quand
+  `GET /vtc/settings/dispatch` dit `chain_calls: true`, un chauffeur passager
+  à bord, à moins de `chain_radius_m` de sa destination, reçoit déjà l'appel
+  suivant ; la course acceptée porte `chained_from` et attend la fin de la
+  première. Une seule suivante ; `driver_busy` (409) sinon
+  (`VTC-DRIVER.md` §4).
 
 ### 3.3.0 — 12 septembre 2026
 
