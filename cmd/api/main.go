@@ -142,7 +142,8 @@ func run(logger *slog.Logger) error {
 	tokenRepo := token.NewRepository(mongo)
 	tokenSvc := token.NewService(tokenRepo, nil, paymentSvc, nil, nil,
 		token.DefaultTokenPriceXOF, token.DefaultBoostCost, nil)
-	userSvc := user.NewService(user.NewRepository(mongo), tokens, tokenSvc)
+	userRepo := user.NewRepository(mongo)
+	userSvc := user.NewService(userRepo, tokens, tokenSvc)
 
 	// L'opérateur habituel d'un client vient des COMPTES : le proposer d'office
 	// évite de redemander à chaque paiement lequel il utilise.
@@ -269,6 +270,12 @@ func run(logger *slog.Logger) error {
 			httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		})
 		user.NewHandler(userSvc).Mount(r, authMW)
+		// ⚠️ LA GESTION DES COMPTES PAR LA CONSOLE — ouvrir, corriger,
+		// supprimer. Le module existait, ses trois routes aussi, et rien ne
+		// les montait : « + Nouveau client » et « Éditer » répondaient 404
+		// depuis la scission. Un handler écrit et jamais monté se lit, à la
+		// relecture, comme une route qui existe.
+		user.NewAdminUsers(userRepo, tokenSvc, auditRec).Mount(r, authMW)
 		notify.NewHandler(notifySvc).Mount(r, authMW)
 		// LE PORTEFEUILLE : `/wallet` pour la personne, `/admin/wallets/...`
 		// pour l'exploitation. Il n'était monté NULLE PART — ni ici, ni dans
