@@ -1,0 +1,145 @@
+###############################################################################
+# Dira Core — ROUTES PUBLIQUES & AUTHENTIFICATION (tous rôles)
+#
+# Santé, documentation, inscription, connexion, rotation du jeton, notes
+# lisibles sans compte. Les fichiers de parcours (10/20/40/50) refont leur
+# propre connexion pour rester autonomes.
+#
+# Rôles : client · driver · merchant · admin
+#   - inscription publique : client | driver | merchant  (admin REFUSÉ, 422)
+#   - création d'un admin : POST /admin/users (voir 40-admin.rest)
+#
+# ⚠️ Derrière la passerelle, le socle est servi à la RACINE (/api/v1/...),
+# sans préfixe de verticale : même hôte, mêmes chemins. Seules les routes
+# /internal n'y passent pas (404) — voir 50-service.rest.
+###############################################################################
+
+@host = http://localhost:8092
+# @host = http://localhost:8095            # via la passerelle de dev
+# @host = https://api-staging.dira.llc     # staging
+@baseUrl = {{host}}/api/v1
+@lang = fr
+
+# Un nouveau numéro à chaque exécution : le téléphone est unique (409 sinon).
+@newPhone = +2289{{$randomInt 1000000 9999999}}
+@newPassword = dira12345
+
+### 1. Santé — 200 {"status":"ok"}
+GET {{baseUrl}}/health
+
+### 2. Documentation interactive (Scalar) — la spec est servie sur /openapi.yaml
+GET {{host}}/docs
+
+### 3. Le contrat lui-même
+GET {{host}}/openapi.yaml
+
+### 4. Inscription — rôle par défaut : client. 201 + couple de jetons.
+# Un livreur reçoit son portefeuille de JETONS à l'ouverture ; un client son
+# portefeuille d'ARGENT (« Dira Cash »). Un marchand n'en a pas ici : le sien
+# est par POINT DE VENTE, ouvert par la verticale.
+# @name register
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+Accept-Language: {{lang}}
+
+{
+  "phone": "{{newPhone}}",
+  "name": "Nouveau Client",
+  "password": "{{newPassword}}",
+  "role": "client",
+  "email": "nouveau.client+{{$randomInt 100 999}}@example.tg"
+}
+
+### 5. Contrôle négatif — 409 phone_taken (le numéro vient d'être pris)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "phone": "{{newPhone}}",
+  "name": "Doublon",
+  "password": "{{newPassword}}"
+}
+
+### 6. Contrôle négatif — 422 (le rôle admin n'est pas auto-attribuable)
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "phone": "+2289{{$randomInt 1000000 9999999}}",
+  "name": "Faux Admin",
+  "password": "{{newPassword}}",
+  "role": "admin"
+}
+
+### 7. Connexion PAR TÉLÉPHONE — identifiant principal des clients et livreurs
+# @name loginByPhone
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+Accept-Language: {{lang}}
+
+{
+  "phone": "+22890200001",
+  "password": "dira12345"
+}
+
+###
+@token = {{loginByPhone.response.body.$.access_token}}
+@refreshToken = {{loginByPhone.response.body.$.refresh_token}}
+
+### 8. Connexion PAR EMAIL — comptes back-office / administration
+# @name loginByEmail
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+Accept-Language: {{lang}}
+
+{
+  "email": "dev@dira.llc",
+  "password": "{{$dotenv SEED_ADMIN_PASSWORD}}"
+}
+
+### 9. Contrôle négatif — 401 invalid_credentials
+# Un compte SUSPENDU avec le bon mot de passe répond 403 account_suspended.
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "phone": "+22890200001",
+  "password": "mauvais"
+}
+
+### 10. Rotation du couple de jetons (l'accès est court : 15 min)
+# Le refresh token fourni est CONSOMMÉ : le rejouer répond 401.
+# @name refresh
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "{{refreshToken}}"
+}
+
+### 11. Déconnexion — 204, invalide le refresh token fourni
+POST {{baseUrl}}/auth/logout
+Authorization: Bearer {{refresh.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "refresh_token": "{{refresh.response.body.$.refresh_token}}"
+}
+
+### 12. Contrôle négatif — 401 (jeton absent)
+GET {{baseUrl}}/me
+
+# ---------------------------------------------------------------------------
+# Notes — lecture PUBLIQUE. Le dépôt est réservé aux verticales (50-service).
+# Les identifiants viennent des verticales (points de vente, plats) ou de
+# l'annuaire (livreurs) ; une cible sans note rend une liste vide, pas 404.
+# ---------------------------------------------------------------------------
+
+### 13. Avis d'un livreur (id de compte)
+GET {{baseUrl}}/agents/6aa354f982777a391c0d915d/ratings?limit=10
+
+### 14. Avis d'un point de vente (id de la verticale)
+GET {{baseUrl}}/stores/6aa354f682777a391c0d914f/ratings?limit=10
+
+### 15. Avis d'un plat (id de la verticale)
+GET {{baseUrl}}/dishes/000000000000000000000000/ratings

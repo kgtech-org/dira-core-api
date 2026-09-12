@@ -1,0 +1,283 @@
+###############################################################################
+# Dira Core — SURFACE DE SERVICE (/internal/*, secret partagé)
+#
+# Ce qu'une VERTICALE (livraison, courses) est autorisée à demander au socle :
+# ouvrir un compte, résoudre des noms, débiter ou créditer un portefeuille,
+# notifier, initier un paiement, lire les listes financières du back-office,
+# déposer une note. Aucune application ne les appelle.
+#
+# ⚠️ Gardées par CORE_SERVICE_TOKEN (Bearer), PAS par un jeton d'utilisateur :
+# un jeton admin y répond 401. La passerelle ne les expose pas (404) — les
+# jouer contre core-api EN DIRECT (:8092 en dev, réseau interne en prod).
+#
+# ⚠️ Elles ne figurent PAS dans openapi.yaml, par choix : leur liste vit dans
+# internal/serviceapi/, et un test refuse toute route qui s'y ajouterait sans
+# être déclarée.
+#
+# Les identifiants sont ceux du jeu de démonstration (make seed-food ENV=dev).
+###############################################################################
+
+@host = http://localhost:8092
+@baseUrl = {{host}}/api/v1
+@svc = {{$dotenv CORE_SERVICE_TOKEN}}
+
+@clientId = 6aa354f982777a391c0d9171
+@driverId = 6aa354f982777a391c0d915d
+# Une commande fictive : le socle ne vérifie pas qu'elle existe, c'est le
+# rôle de la verticale. Un id hexadécimal de 24 caractères suffit.
+@orderId = 9a906256e59df83a2a460e3b
+
+# ===========================================================================
+# Comptes
+# ===========================================================================
+
+### 1. Nom et téléphone d'un compte — pour appeler ou afficher
+POST {{baseUrl}}/internal/accounts/contact
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "user_id": "{{driverId}}" }
+
+### 2. Des noms par lot (≤ 200) — une jointure côté verticale
+POST {{baseUrl}}/internal/accounts/names
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "ids": ["{{driverId}}", "{{clientId}}"] }
+
+### 3. Des lignes d'annuaire par lot — ce que le back-office affiche
+POST {{baseUrl}}/internal/accounts/rows
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "ids": ["{{driverId}}"] }
+
+### 4. Une fiche complète
+POST {{baseUrl}}/internal/accounts/get
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "user_id": "{{clientId}}" }
+
+### 5. Un compte par téléphone
+POST {{baseUrl}}/internal/accounts/by-phone
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "phone": "+22890300001" }
+
+### 6. Ouvrir (ou retrouver) un compte marchand — {user_id}, idempotent
+# Utilisé quand une enseigne est créée depuis la console de la verticale.
+POST {{baseUrl}}/internal/accounts/ensure-merchant
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{
+  "phone": "+2289{{$randomInt 1000000 9999999}}",
+  "name": "Maquis du Port",
+  "password": "dira12345"
+}
+
+### 7. Ouvrir (ou retrouver) un compte de tout rôle — {user_id}
+# Sert aux seeds des verticales et aux imports de flotte. Un livreur reçoit
+# son portefeuille de jetons.
+# @name ensure
+POST {{baseUrl}}/internal/accounts/ensure
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{
+  "role": "driver",
+  "phone": "+2289{{$randomInt 1000000 9999999}}",
+  "name": "Chauffeur importé",
+  "password": "dira12345"
+}
+
+###
+@ownerId = {{ensure.response.body.$.user_id}}
+
+# ===========================================================================
+# Portefeuilles — 204 en succès ; le CODE MÉTIER traverse tel quel en échec
+# (402 insufficient_tokens / insufficient_funds, 404 wallet_not_found), pour
+# que la verticale le rende au client au lieu d'un « erreur serveur ».
+# `ref_kind` ∈ order | ride, toujours AVEC `ref_id` : c'est le couple qui
+# rend le mouvement idempotent.
+# ===========================================================================
+
+### 8. Ouvrir un portefeuille — type ∈ driver | merchant | client. Idempotent.
+# Pour un marchand, owner_id est le POINT DE VENTE, pas le compte.
+POST {{baseUrl}}/internal/wallets/create
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "owner_id": "{{ownerId}}", "type": "driver", "amount": 1 }
+
+### 9. Créditer des jetons — bienvenue, compensation
+POST {{baseUrl}}/internal/wallets/credit
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "owner_id": "{{ownerId}}", "amount": 3, "reason": "welcome" }
+
+### 10. Débiter des jetons — accepter une course en coûte un
+POST {{baseUrl}}/internal/wallets/consume
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{
+  "owner_id": "{{ownerId}}",
+  "amount": 1,
+  "reason": "accept_delivery",
+  "ref_kind": "order",
+  "ref_id": "{{orderId}}"
+}
+
+### 11. Contrôle négatif — 402 insufficient_tokens
+POST {{baseUrl}}/internal/wallets/consume
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "owner_id": "{{ownerId}}", "amount": 999, "reason": "accept_delivery" }
+
+### 12. Verser de l'ARGENT — le produit d'une livraison, la part d'une course
+POST {{baseUrl}}/internal/wallets/credit-earnings
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{
+  "owner_id": "{{ownerId}}",
+  "amount": 1500,
+  "reason": "delivery_fee",
+  "ref_kind": "order",
+  "ref_id": "{{orderId}}"
+}
+
+### 13. Payer une commande avec le Dira Cash d'un client — promo d'abord, puis argent
+# Un client sans portefeuille en a un vide : 402 insufficient_funds, pas 404.
+# Rejouer avec la même référence ne débite pas deux fois.
+POST {{baseUrl}}/internal/wallets/pay
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "owner_id": "{{clientId}}", "amount": 500, "ref_kind": "order", "ref_id": "{{orderId}}" }
+
+### 14. Rembourser — en ARGENT, même si la commande avait été payée en promo
+POST {{baseUrl}}/internal/wallets/refund
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "owner_id": "{{clientId}}", "amount": 500, "ref_kind": "order", "ref_id": "{{orderId}}" }
+
+# ===========================================================================
+# Notifications & paiements
+# ===========================================================================
+
+### 15. Notifier une personne — 202 ; gabarit + variables (40-admin § 15)
+# `data` voyage avec la notification poussée (navigation dans l'app).
+POST {{baseUrl}}/internal/notifications/send
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{
+  "user_id": "{{clientId}}",
+  "key": "order_delivered",
+  "vars": { "order_ref": "CMD-4212" },
+  "data": { "screen": "order", "order_id": "{{orderId}}" }
+}
+
+### 16. Initier un paiement pour une commande — 201 {payment_url}
+# La verticale ne reçoit que l'URL : la suite arrive par son RAPPEL, quand le
+# prestataire confirme (purpose order → FOOD_CALLBACK_TOKEN, ride → VTC).
+POST {{baseUrl}}/internal/payments/initiate
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{
+  "client_id": "{{clientId}}",
+  "purpose": "order",
+  "ref_id": "{{orderId}}",
+  "amount": 3500
+}
+
+# ===========================================================================
+# Back-office — les LISTES financières, telles quelles, paginées par curseur.
+# ===========================================================================
+
+### 17. Les portefeuilles — type ∈ driver|merchant|client, owner_id, cursor, limit
+# @name wallets
+POST {{baseUrl}}/internal/backoffice/wallets
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "type": "driver", "limit": 20 }
+
+### 18. Le grand livre d'un portefeuille
+POST {{baseUrl}}/internal/backoffice/token-transactions
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "wallet_id": "{{wallets.response.body.$.items[0].id}}", "limit": 20 }
+
+### 19. Les paiements — status ∈ pending|succeeded|failed, purpose ∈ order|ride|token_purchase|wallet_topup
+POST {{baseUrl}}/internal/backoffice/payments
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "status": "succeeded", "purpose": "wallet_topup", "limit": 20 }
+
+### 20. Rembourser le paiement d'une commande — {payment_id} ; 404 si rien d'encaissé
+POST {{baseUrl}}/internal/backoffice/refund-order-payment
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "order_id": "{{orderId}}" }
+
+# ===========================================================================
+# Notes & flottes
+# ===========================================================================
+
+### 21. Déposer des notes DÉJÀ validées par la verticale — 201
+# target_type ∈ driver | store | dish. Unicité (commande, cible) : rejouer ne
+# compte pas deux fois. Lecture publique : 00-public.rest § 13-15.
+POST {{baseUrl}}/internal/ratings
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{
+  "client_id": "{{clientId}}",
+  "order_id": "{{orderId}}",
+  "targets": [
+    { "target_type": "driver", "target_id": "{{driverId}}", "score": 5, "comment": "Rapide et courtois" }
+  ]
+}
+
+### 22. Des noms de flottes — pour afficher « Flotte Sodigaz » à côté d'une plaque
+# Une seule route, et elle ne rend que des NOMS : le contrat et la commission
+# restent au socle.
+POST {{baseUrl}}/internal/fleets/names
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "ids": ["000000000000000000000000"] }
+
+# ===========================================================================
+# Garde-fous
+# ===========================================================================
+
+### 23. Contrôle négatif — 401 (jeton d'utilisateur, même admin)
+POST {{baseUrl}}/internal/accounts/get
+Authorization: Bearer <un access_token d'administrateur>
+Content-Type: application/json
+
+{ "user_id": "{{clientId}}" }
+
+### 24. Contrôle négatif — 404 via la passerelle de dev
+POST http://localhost:8095/api/v1/internal/accounts/get
+Authorization: Bearer {{svc}}
+Content-Type: application/json
+
+{ "user_id": "{{clientId}}" }
+
+### 25. ⚠️ Nettoyage — le compte ouvert au § 7 (jeton admin, 40-admin § 1)
+# DELETE {{baseUrl}}/admin/users/{{ownerId}}
+# Authorization: Bearer <access_token admin>

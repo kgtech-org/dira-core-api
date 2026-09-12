@@ -1,0 +1,154 @@
+###############################################################################
+# Dira Core — PORTEFEUILLES & PAIEMENTS
+#
+# Deux unités dans le même grand livre :
+#   - le LIVREUR porte des JETONS (accepter une course en débite un) ;
+#   - le CLIENT porte de l'ARGENT — « Dira Cash », rechargé en mobile money,
+#     débité à la commande. Son portefeuille s'ouvre à la première lecture.
+#   - le MARCHAND lit le portefeuille d'un POINT DE VENTE (?store_id=…),
+#     ouvert par la verticale.
+#
+# ⚠️ Rien n'est crédité sur la réponse d'une initiation : seul le rappel
+# SIGNÉ du prestataire (§ webhook) — ou, hors production, la confirmation
+# manuelle (§ 10) — fait passer un paiement en `succeeded` et crédite.
+###############################################################################
+
+@host = http://localhost:8092
+@baseUrl = {{host}}/api/v1
+@lang = fr
+
+### 1. Connexion livreur
+# @name driver
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "phone": "+22890100001", "password": "dira12345" }
+
+### 2. Connexion client
+# @name client
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "phone": "+22890200001", "password": "dira12345" }
+
+### 3. Connexion administration (pour la confirmation sandbox, § 10)
+# @name admin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "dev@dira.llc", "password": "{{$dotenv SEED_ADMIN_PASSWORD}}" }
+
+###
+@driverToken = {{driver.response.body.$.access_token}}
+@clientToken = {{client.response.body.$.access_token}}
+@clientId = {{client.response.body.$.user.id}}
+@adminToken = {{admin.response.body.$.access_token}}
+
+# ---------------------------------------------------------------------------
+# Livreur — jetons
+# ---------------------------------------------------------------------------
+
+### 4. Mon portefeuille — {balance, token_price_xof, balance_xof, …}
+GET {{baseUrl}}/wallet
+Authorization: Bearer {{driverToken}}
+
+### 5. Mes mouvements
+GET {{baseUrl}}/wallet/transactions?limit=20
+Authorization: Bearer {{driverToken}}
+
+### 6. Acheter des jetons — 202 {payment_id, tokens, amount_xof}
+# Initie un PAIEMENT ; les jetons arrivent à sa confirmation (§ 9 ou § 10).
+# Un marchand ajoute "store_id" pour désigner le point de vente crédité.
+# @name buyTokens
+POST {{baseUrl}}/wallet/purchase
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{ "tokens": 5 }
+
+### 7. Contrôle négatif — 403 (un administrateur n'a pas de portefeuille)
+GET {{baseUrl}}/wallet
+Authorization: Bearer {{adminToken}}
+
+# ---------------------------------------------------------------------------
+# Client — Dira Cash et mobile money
+# ---------------------------------------------------------------------------
+
+### 8. Mon Dira Cash — s'ouvre vide à la première lecture
+GET {{baseUrl}}/wallet
+Authorization: Bearer {{clientToken}}
+
+### 9. Les opérateurs RÉELLEMENT branchés — à afficher tels quels
+GET {{baseUrl}}/payments/providers
+Authorization: Bearer {{clientToken}}
+
+### 10. Recharger mon Dira Cash — 201 {payment, payment_url}
+# purpose ∈ order | ride | token_purchase | wallet_topup. `ref_id` désigne ce
+# que le paiement règle : pour une recharge, le compte lui-même. `provider`
+# absent → celui des préférences, sinon "mock".
+# @name topup
+POST {{baseUrl}}/payments/initiate
+Authorization: Bearer {{clientToken}}
+Content-Type: application/json
+Accept-Language: {{lang}}
+
+{
+  "purpose": "wallet_topup",
+  "amount": 2000,
+  "ref_id": "{{clientId}}",
+  "provider": "mock"
+}
+
+###
+@paymentId = {{topup.response.body.$.payment.id}}
+@providerRef = {{topup.response.body.$.payment.provider_ref}}
+
+### 11. Statut d'un paiement — `pending` tant que le prestataire n'a rien dit
+GET {{baseUrl}}/payments/{{paymentId}}
+Authorization: Bearer {{clientToken}}
+
+# ---------------------------------------------------------------------------
+# Confirmation — deux voies
+# ---------------------------------------------------------------------------
+
+### 12. [hors production] Confirmer à la main — 204, rejouable
+# Simule l'arrivée du rappel du prestataire. N'existe PAS en production.
+POST {{baseUrl}}/admin/payments/{{paymentId}}/confirm
+Authorization: Bearer {{adminToken}}
+
+### 13. Le webhook du prestataire — POST /webhooks/payment/{provider}
+# Aucun jeton : X-Signature = HMAC-SHA256 hexadécimal du CORPS BRUT, avec le
+# secret du prestataire (mock : MOCK_PAYMENT_SECRET, `mock-secret` en dev).
+# La signature porte sur les octets EXACTS : calculer puis coller.
+#
+#    BODY='{"provider_ref":"mock-XXXXXXXX","status":"succeeded"}'
+#    printf '%s' "$BODY" | openssl dgst -sha256 -hmac 'mock-secret' -r | cut -d' ' -f1
+#
+# Envoi garanti octet pour octet (à préférer en cas de 401) :
+#    curl -X POST http://localhost:8092/api/v1/webhooks/payment/mock \
+#      -H "Content-Type: application/json" -H "X-Signature: $SIG" -d "$BODY"
+#
+# ⚠️ L'unicité de `provider_ref` rend le rappel idempotent : rejoué, il ne
+# crédite pas deux fois.
+@paymentSignature = <coller le HMAC calculé ci-dessus>
+
+POST {{baseUrl}}/webhooks/payment/mock
+Content-Type: application/json
+X-Signature: {{paymentSignature}}
+
+{"provider_ref":"{{providerRef}}","status":"succeeded"}
+
+### 14. Contrôle négatif — 401 (signature invalide)
+POST {{baseUrl}}/webhooks/payment/mock
+Content-Type: application/json
+X-Signature: deadbeef
+
+{"provider_ref":"{{providerRef}}","status":"succeeded"}
+
+### 15. Le Dira Cash après confirmation — balance_xof crédité
+GET {{baseUrl}}/wallet
+Authorization: Bearer {{clientToken}}
+
+### 16. Le mouvement au grand livre — reason "wallet_topup", ref.payment_id
+GET {{baseUrl}}/wallet/transactions?limit=5
+Authorization: Bearer {{clientToken}}

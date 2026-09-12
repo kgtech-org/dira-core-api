@@ -1,0 +1,148 @@
+###############################################################################
+# Dira Core — MON COMPTE (tout rôle connecté)
+#
+# Profil, préférences, carnet d'adresses, appareils joignables, boîte de
+# réception. Le parcours est joué avec un client de démonstration ; les mêmes
+# routes servent un livreur, un marchand ou un administrateur.
+#
+# Ordre : la connexion (1) alimente tout le reste ; les adresses (7 → 10) et
+# les notifications (13 → 15) se suivent.
+###############################################################################
+
+@host = http://localhost:8092
+@baseUrl = {{host}}/api/v1
+@lang = fr
+
+### 1. Connexion
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+Accept-Language: {{lang}}
+
+{
+  "phone": "+22890200001",
+  "password": "dira12345"
+}
+
+###
+@token = {{login.response.body.$.access_token}}
+@userId = {{login.response.body.$.user.id}}
+
+### 2. Profil du porteur du jeton
+GET {{baseUrl}}/me
+Authorization: Bearer {{token}}
+Accept-Language: {{lang}}
+
+### 3. Mise à jour du profil — seuls les champs fournis changent
+# Ni téléphone, ni mot de passe, ni rôle ici : le téléphone est l'identifiant,
+# et le corriger est un geste d'administration (PATCH /admin/users/{id}).
+PATCH {{baseUrl}}/me
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Accept-Language: {{lang}}
+
+{
+  "name": "Ama Kposso",
+  "first_name": "Ama",
+  "last_name": "Kposso",
+  "gender": "female",
+  "birth_date": "1994-05-12",
+  "email": "ama.kposso@example.tg",
+  "avatar_url": "https://example.tg/avatars/ama.png"
+}
+
+### 4. Préférences — notifications, thème, langue, opérateur de paiement
+# `payment_provider` est proposé d'office à l'initiation d'un paiement :
+# le client n'a pas à redire à chaque fois lequel il utilise.
+PATCH {{baseUrl}}/me/preferences
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "order_updates": true,
+  "chat_messages": true,
+  "promotions": false,
+  "tombola": true,
+  "sounds": true,
+  "theme": "dark",
+  "locale": "fr",
+  "payment_provider": "mock"
+}
+
+### 5. Carnet d'adresses
+GET {{baseUrl}}/me/addresses
+Authorization: Bearer {{token}}
+
+### 6. Enregistrer une adresse — 201. `geo` = [lng, lat] (GeoJSON).
+# `is_default: true` retire le défaut aux autres.
+# @name createAddress
+POST {{baseUrl}}/me/addresses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "label": "Maison",
+  "address": "Rue 12, Bè Kpota, Lomé",
+  "geo": [1.2385, 6.1481],
+  "details": "Portail bleu, sonner deux fois",
+  "is_default": true
+}
+
+###
+@addressId = {{createAddress.response.body.$.id}}
+
+### 7. Corriger une adresse — PUT, corps COMPLET (pas de fusion)
+PUT {{baseUrl}}/me/addresses/{{addressId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "label": "Maison",
+  "address": "Rue 12, Bè Kpota, Lomé",
+  "geo": [1.2385, 6.1481],
+  "details": "Portail bleu, 2e étage",
+  "is_default": true
+}
+
+### 8. Supprimer une adresse — 204 (404 si elle n'est pas à moi)
+DELETE {{baseUrl}}/me/addresses/{{addressId}}
+Authorization: Bearer {{token}}
+
+# ---------------------------------------------------------------------------
+# Appareils — le jeton FCM d'un téléphone. Sans lui, pas de notification
+# poussée ; la boîte de réception, elle, garde tout.
+# ---------------------------------------------------------------------------
+
+### 9. Déclarer un téléphone — 201. `locale` = langue de l'APPAREIL, forme libre.
+POST {{baseUrl}}/me/devices
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "token": "fcm-dev-token-ABC123",
+  "platform": "android",
+  "locale": "fr-FR"
+}
+
+### 10. Oublier un téléphone — 204 (déconnexion, désinstallation)
+DELETE {{baseUrl}}/me/devices/fcm-dev-token-ABC123
+Authorization: Bearer {{token}}
+
+# ---------------------------------------------------------------------------
+# Boîte de réception — une notification poussée ne laisse aucune trace ; ici
+# elle en laisse une. Alimentée par les verticales (50-service.rest, § notif).
+# ---------------------------------------------------------------------------
+
+### 11. Mes notifications — {items, unread, next_cursor}
+# @name inbox
+GET {{baseUrl}}/me/notifications?limit=20
+Authorization: Bearer {{token}}
+Accept-Language: {{lang}}
+
+### 12. Marquer UNE notification lue — 200
+POST {{baseUrl}}/me/notifications/{{inbox.response.body.$.items[0].id}}/read
+Authorization: Bearer {{token}}
+
+### 13. Tout marquer lu — 200
+POST {{baseUrl}}/me/notifications/read
+Authorization: Bearer {{token}}

@@ -1,0 +1,283 @@
+###############################################################################
+# Dira Core — ADMINISTRATION (rôle admin)
+#
+# L'annuaire des comptes, les portefeuilles, les gabarits de messages, les
+# flottes privées et le staff. COMMUN aux deux verticales : la console des
+# repas et celle des courses cherchent la même personne, suspendent le même
+# compte, lisent le même portefeuille.
+#
+# ⚠️ Derrière la passerelle, /api/v1/admin/... exige en plus la portée `core`
+# dans le jeton (voir 40-staff). Le compte semé la porte.
+#
+# Chaque section est autonome après la connexion (1). Les requêtes marquées
+# ⚠️ sont destructives.
+###############################################################################
+
+@host = http://localhost:8092
+@baseUrl = {{host}}/api/v1
+@lang = fr
+
+### 1. Connexion administration
+# @name admin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{ "email": "dev@dira.llc", "password": "{{$dotenv SEED_ADMIN_PASSWORD}}" }
+
+###
+@token = {{admin.response.body.$.access_token}}
+@adminId = {{admin.response.body.$.user.id}}
+@newPhone = +2289{{$randomInt 1000000 9999999}}
+
+# ===========================================================================
+# Comptes
+# ===========================================================================
+
+### 2. Annuaire — role ∈ client|driver|merchant|admin · status ∈ active|suspended · q = nom ou téléphone
+GET {{baseUrl}}/admin/users?role=driver&status=active&limit=20
+Authorization: Bearer {{token}}
+
+### 3. Recherche par nom ou téléphone
+GET {{baseUrl}}/admin/users?q=Ama
+Authorization: Bearer {{token}}
+
+### 4. Une fiche
+GET {{baseUrl}}/admin/users/{{adminId}}
+Authorization: Bearer {{token}}
+
+### 5. Ouvrir un compte depuis la console — 201, tout rôle (admin compris)
+# Un livreur reçoit son portefeuille de jetons à l'ouverture. Téléphone
+# unique : 409 phone_taken.
+# @name createUser
+POST {{baseUrl}}/admin/users
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Accept-Language: {{lang}}
+
+{
+  "role": "driver",
+  "name": "Livreur Console",
+  "phone": "{{newPhone}}",
+  "email": "livreur.console@example.tg",
+  "password": "dira12345"
+}
+
+###
+@userId = {{createUser.response.body.$.id}}
+
+### 6. Corriger une fiche — champs absents inchangés
+# `password` remplace le mot de passe SANS exiger l'ancien : geste
+# d'administration, tracé à l'audit. `phone` doit rester unique (409).
+PATCH {{baseUrl}}/admin/users/{{userId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Livreur Console (corrigé)",
+  "email": "livreur.console@example.tg",
+  "password": "nouveau-mdp-123"
+}
+
+### 7. Suspendre — rend l'état AVANT, pour que l'audit dise ce qui a bougé
+# ⚠️ Ne ferme pas les sessions en cours : l'accès expire, le refresh est
+# refusé, la connexion répond 403 account_suspended.
+PATCH {{baseUrl}}/admin/users/{{userId}}/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "status": "suspended" }
+
+### 8. Réactiver
+PATCH {{baseUrl}}/admin/users/{{userId}}/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "status": "active" }
+
+### 9. Le portefeuille de ce compte, quel que soit son type
+GET {{baseUrl}}/admin/wallets/{{userId}}
+Authorization: Bearer {{token}}
+
+### 10. Contrôle négatif — 409 cannot_delete_self
+DELETE {{baseUrl}}/admin/users/{{adminId}}
+Authorization: Bearer {{token}}
+
+### 11. ⚠️ Supprimer un compte — 204, définitif
+# Les écritures qui le citent (commandes, courses, portefeuilles) restent
+# pour la comptabilité. Suspendre est le geste réversible.
+DELETE {{baseUrl}}/admin/users/{{userId}}
+Authorization: Bearer {{token}}
+
+# ===========================================================================
+# Portefeuilles — GÉNÉRIQUES : le propriétaire est un livreur, un chauffeur,
+# un client ou un point de vente ; le socle ne fait pas la différence.
+# ===========================================================================
+
+@driverId = 6aa354f982777a391c0d915d
+
+### 12. Solde d'un portefeuille, prix unitaire compris
+GET {{baseUrl}}/admin/wallets/{{driverId}}
+Authorization: Bearer {{token}}
+
+### 13. Acheter des jetons POUR un propriétaire — 202, initie un vrai paiement
+POST {{baseUrl}}/admin/wallets/{{driverId}}/purchase
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "tokens": 10 }
+
+### 14. Créditer SANS paiement — geste commercial, justificatif OBLIGATOIRE (422 sinon)
+POST {{baseUrl}}/admin/wallets/{{driverId}}/credit
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": 2,
+  "justification": "Geste commercial — panne de l'application du 11/09"
+}
+
+# ===========================================================================
+# Gabarits de messages — les textes qui partent à des milliers de personnes.
+# Clés : chat_message, dispatch_failed, driver_call, merchant_new_order,
+# order_assigned, order_cancelled, order_confirmed, order_delivered,
+# order_preparing, order_ready. Variables entre crochets : [order_ref].
+# ===========================================================================
+
+### 15. Tous les gabarits — {variables, available_variables, customized}
+GET {{baseUrl}}/admin/message-templates
+Authorization: Bearer {{token}}
+
+### 16. Réécrire un gabarit — `fr` OBLIGATOIRE (c'est le repli)
+# ⚠️ Un texte modifié ne suit plus les corrections des versions suivantes.
+# Ne piocher que dans `available_variables` : une variable inconnue part vide.
+PUT {{baseUrl}}/admin/message-templates/order_delivered
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "locales": {
+    "fr": { "title": "Commande livrée", "body": "Bon appétit ! Notez votre commande [order_ref] en quelques secondes." },
+    "en": { "title": "Order delivered", "body": "Enjoy! Rate your order [order_ref] in a few seconds." }
+  },
+  "description": "La commande est livrée.",
+  "enabled": true
+}
+
+### 17. Prévisualiser — le rendu tel qu'il arriverait, et les variables manquantes
+POST {{baseUrl}}/admin/message-templates/order_delivered/preview
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "locale": "fr",
+  "vars": { "order_ref": "CMD-4212" }
+}
+
+# ===========================================================================
+# Flottes privées — les sociétés qui possèdent des véhicules conduits par
+# d'autres. Contrat commercial : AUCUNE route publique.
+# ===========================================================================
+
+### 18. Les flottes — status ∈ active|suspended · q = nom
+GET {{baseUrl}}/admin/fleets?status=active&limit=20
+Authorization: Bearer {{token}}
+
+### 19. Déclarer une flotte — 201 (409 si le nom existe)
+# `commission_bp` ABSENT = suit le taux de la plateforme ; 0 = gratuité
+# négociée. Les deux ne se confondent pas.
+# @name createFleet
+POST {{baseUrl}}/admin/fleets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Flotte Sodigaz {{$randomInt 100 999}}",
+  "owner_user_id": "{{driverId}}",
+  "contact_name": "Koffi Mensah",
+  "contact_phone": "+22890000001",
+  "contact_email": "flotte@sodigaz.tg",
+  "contract_ref": "CTR-2026-001",
+  "commission_bp": 1500,
+  "notes": "Douze motos, deux berlines"
+}
+
+###
+@fleetId = {{createFleet.response.body.$.id}}
+
+### 20. Une flotte
+GET {{baseUrl}}/admin/fleets/{{fleetId}}
+Authorization: Bearer {{token}}
+
+### 21. Corriger — seul ce qui est envoyé change
+# Suspendre une flotte ne suspend PAS ses conducteurs.
+PATCH {{baseUrl}}/admin/fleets/{{fleetId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "commission_bp": 1200,
+  "status": "suspended",
+  "notes": "Contrat en renégociation"
+}
+
+# ===========================================================================
+# Staff — un membre EST un compte admin, avec une FONCTION et un PÉRIMÈTRE.
+# Le périmètre est inscrit dans le jeton à la connexion et vérifié par chaque
+# verticale. ⚠️ `scopes` VIDE n'accorde RIEN.
+# ===========================================================================
+
+### 22. Le vocabulaire — exactement ce que le serveur accepte
+# functions : ops · support · finance · content · admin — scopes : core · food · vtc
+GET {{baseUrl}}/admin/staff/vocabulary
+Authorization: Bearer {{token}}
+
+### 23. L'équipe — function=, scope=, status=
+GET {{baseUrl}}/admin/staff?scope=core&limit=20
+Authorization: Bearer {{token}}
+
+### 24. Un compte admin pour la fiche qui suit
+# @name createAdmin
+POST {{baseUrl}}/admin/users
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "role": "admin",
+  "name": "Ops Console",
+  "phone": "+2289{{$randomInt 1000000 9999999}}",
+  "password": "dira12345"
+}
+
+### 25. Rattacher une fiche staff — 201. Le compte doit être admin (422 sinon), une portée au moins.
+# @name createStaff
+POST {{baseUrl}}/admin/staff
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "user_id": "{{createAdmin.response.body.$.id}}",
+  "function": "ops",
+  "title": "Responsable flotte",
+  "scopes": ["core", "food"]
+}
+
+###
+@staffId = {{createStaff.response.body.$.id}}
+
+### 26. Corriger — fonction, titre, portées, statut
+PATCH {{baseUrl}}/admin/staff/{{staffId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Direction des opérations",
+  "scopes": ["core", "food", "vtc"]
+}
+
+### 27. ⚠️ Retirer la FICHE — 204. Le COMPTE reste, l'audit garde ses actions.
+DELETE {{baseUrl}}/admin/staff/{{staffId}}
+Authorization: Bearer {{token}}
+
+### 28. ⚠️ Et le compte de test
+DELETE {{baseUrl}}/admin/users/{{createAdmin.response.body.$.id}}
+Authorization: Bearer {{token}}
