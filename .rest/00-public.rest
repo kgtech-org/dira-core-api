@@ -45,9 +45,26 @@ Accept-Language: {{lang}}
 {
   "phone": "{{newPhone}}",
   "name": "Nouveau Client",
+  "first_name": "Nouveau",
+  "last_name": "Client",
   "password": "{{newPassword}}",
   "role": "client",
   "email": "nouveau.client+{{$randomInt 100 999}}@example.tg"
+}
+
+### 4b. Contrôle négatif — 422 : `fields` nomme les clés en cause
+# Une clé inconnue est REFUSÉE (reason: unknown_field), pas ignorée ; un
+# numéro sans `+` est refusé (fields: ["phone"]) — le serveur ne devine pas
+# de pays. Les espaces et tirets dans le numéro, eux, sont tolérés.
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+Accept-Language: {{lang}}
+
+{
+  "phone": "22899000001",
+  "name": "",
+  "password": "court",
+  "surnom": "inconnu"
 }
 
 ### 5. Contrôle négatif — 409 phone_taken (le numéro vient d'être pris)

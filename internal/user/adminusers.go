@@ -50,6 +50,11 @@ type AdminUpdateUserRequest struct {
 
 // Create adds an account; drivers get their token wallet.
 func (a *AdminUsers) Create(ctx context.Context, req AdminCreateUserRequest) (UserResponse, error) {
+	phoneNumber, err := canonPhone(req.Phone)
+	if err != nil {
+		return UserResponse{}, err
+	}
+	req.Phone = phoneNumber
 	hash, err := HashPassword(req.Password)
 	if err != nil {
 		return UserResponse{}, apperr.Internal(err)
@@ -101,7 +106,11 @@ func (a *AdminUsers) Update(ctx context.Context, id string, req AdminUpdateUserR
 		u.Email = strings.ToLower(*req.Email)
 	}
 	if req.Phone != nil {
-		u.Phone = *req.Phone
+		phoneNumber, err := canonPhone(*req.Phone)
+		if err != nil {
+			return UserResponse{}, err
+		}
+		u.Phone = phoneNumber
 	}
 	if req.AvatarURL != nil {
 		u.AvatarURL = *req.AvatarURL

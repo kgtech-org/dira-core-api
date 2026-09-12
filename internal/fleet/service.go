@@ -9,6 +9,7 @@ import (
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
+	"github.com/kgtech-org/dira-core-api/pkg/phone"
 )
 
 // Auditor enregistre les gestes sensibles. Facultatif.
@@ -105,7 +106,7 @@ func (s *Service) Create(ctx context.Context, actorID string, req CreateRequest)
 	}
 	f := &Fleet{
 		Name: name, ContactName: strings.TrimSpace(req.ContactName),
-		ContactPhone: req.ContactPhone, ContactEmail: strings.ToLower(strings.TrimSpace(req.ContactEmail)),
+		ContactPhone: canonPhone(req.ContactPhone), ContactEmail: strings.ToLower(strings.TrimSpace(req.ContactEmail)),
 		ContractRef: strings.TrimSpace(req.ContractRef), CommissionBp: req.CommissionBp,
 		Status: StatusActive, Notes: req.Notes,
 	}
@@ -224,7 +225,7 @@ func (s *Service) Update(ctx context.Context, actorID, id string, req UpdateRequ
 		set["contact_name"] = strings.TrimSpace(*req.ContactName)
 	}
 	if req.ContactPhone != nil {
-		set["contact_phone"] = *req.ContactPhone
+		set["contact_phone"] = canonPhone(*req.ContactPhone)
 	}
 	if req.ContactEmail != nil {
 		set["contact_email"] = strings.ToLower(strings.TrimSpace(*req.ContactEmail))
@@ -285,4 +286,16 @@ func wrap(err error) error {
 		return err
 	}
 	return apperr.Internal(err)
+}
+
+// canonPhone met un numéro de contact sous sa forme canonique. Le tag `e164`
+// a déjà validé la valeur ; vide reste vide (le contact est facultatif).
+func canonPhone(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	if p, err := phone.Normalize(raw); err == nil {
+		return p
+	}
+	return strings.TrimSpace(raw)
 }

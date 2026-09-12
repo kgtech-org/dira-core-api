@@ -15,6 +15,7 @@ import (
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
+	"github.com/kgtech-org/dira-core-api/pkg/phone"
 )
 
 // Repo abstracts persistence for the user service. Implemented by
@@ -132,11 +133,17 @@ func (s *Service) register(ctx context.Context, req RegisterRequest, role string
 		return AuthResponse{}, apperr.Internal(err)
 	}
 
+	phoneNumber, err := canonPhone(req.Phone)
+	if err != nil {
+		return AuthResponse{}, err
+	}
 	now := time.Now().UTC()
 	u := &User{
 		Role:         role,
-		Phone:        req.Phone,
+		Phone:        phoneNumber,
 		Name:         req.Name,
+		FirstName:    strings.TrimSpace(req.FirstName),
+		LastName:     strings.TrimSpace(req.LastName),
 		Email:        strings.ToLower(req.Email),
 		PasswordHash: hash,
 		Status:       StatusActive,
@@ -189,7 +196,13 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 	if req.Email != "" {
 		u, err = s.repo.FindByEmail(ctx, req.Email)
 	} else {
-		u, err = s.repo.FindByPhone(ctx, req.Phone)
+		// Sous sa forme canonique : « +228 99 00 00 01 » tapé à la connexion
+		// doit retrouver le compte ouvert avec « +22899000001 ».
+		phoneNumber, perr := canonPhone(req.Phone)
+		if perr != nil {
+			return AuthResponse{}, errInvalidCredentials
+		}
+		u, err = s.repo.FindByPhone(ctx, phoneNumber)
 	}
 	if err != nil {
 		return AuthResponse{}, apperr.Internal(err)
@@ -533,6 +546,10 @@ func newNonce() (string, error) {
 // membre du personnel lui donnerait le rôle marchand et casserait son
 // application : c'est refusé plutôt que silencieusement accepté.
 func (s *Service) EnsureMerchantAccount(ctx context.Context, phone, name, password string) (string, error) {
+	phone, err := canonPhone(phone)
+	if err != nil {
+		return "", err
+	}
 	existing, err := s.repo.FindByPhone(ctx, phone)
 	if err != nil {
 		return "", apperr.Internal(err)
@@ -591,6 +608,10 @@ func (s *Service) UserNames(ctx context.Context, ids []string) (map[string]strin
 // C'est voulu : le provisionnement rejoue le même jeu de données, et échouer
 // parce qu'un compte existe déjà en ferait un outil à usage unique.
 func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, email, password string) (string, error) {
+	phone, err := canonPhone(phone)
+	if err != nil {
+		return "", err
+	}
 	// ⚠️ `admin` est admis ICI, et nulle part ailleurs. C'est un pouvoir plus
 	// large que le reste de la surface de service, gardé par le même secret :
 	// un service qui peut créer un administrateur peut tout.
@@ -675,4 +696,15 @@ func (s *Service) SetAccountStatus(ctx context.Context, id, status string) (*Acc
 		return nil, apperr.Validation("status must be active or suspended")
 	}
 	return s.repo.SetAccountStatus(ctx, id, status)
+}
+
+// canonPhone applique la règle de pkg/phone et, en cas d'échec, nomme le
+// champ : c'est `phone` que l'application doit souligner.
+func canonPhone(raw string) (string, error) {
+	p, err := phone.Normalize(raw)
+	if err != nil {
+		return "", apperr.Validation("phone must be an E.164 number, with its country code").
+			WithMeta(map[string]any{"fields": []string{"phone"}}).WithCause(err)
+	}
+	return p, nil
 }
