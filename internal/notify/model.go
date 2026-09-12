@@ -248,10 +248,15 @@ var provided = map[string][]string{
 	// ⚠️ `body` et RIEN d'autre. Le canal existe pour que le client et le
 	// livreur se parlent sans échanger leurs coordonnées : offrir un
 	// `sender_name` ici défairait cela sur l'écran verrouillé.
-	KeyChatMessage:      {"body"},
-	KeyDriverCall:       {"distance_km", "token_cost", "cash_line"},
-	KeyDispatchFailed:   {"order_ref"},
-	KeyMerchantNewOrder: {"order_ref", "items", "amount"},
+	KeyChatMessage:    {"body"},
+	KeyDriverCall:     {"distance_km", "token_cost", "cash_line"},
+	KeyDispatchFailed: {"order_ref"},
+	// Les courses programmées : le lieu de départ, l'heure locale, les
+	// minutes avant l'appel, et la raison d'un échec.
+	KeyRideScheduledSoon:    {"pickup", "time", "minutes"},
+	KeyRideScheduledStarted: {"pickup", "time"},
+	KeyRideScheduledFailed:  {"pickup", "time", "reason"},
+	KeyMerchantNewOrder:     {"order_ref", "items", "amount"},
 }
 
 // Provided rend les variables que la plateforme remplit pour une clé.
