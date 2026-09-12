@@ -93,6 +93,13 @@ const (
 	// gabarits visent le client ou le livreur, et il fallait qu'il regarde
 	// son écran pour s'en apercevoir.
 	KeyMerchantNewOrder = "merchant_new_order"
+	// Les COURSES PROGRAMMÉES (dira-vtc-api) : le passager est prévenu
+	// avant que l'appel ne parte, quand il part, et quand il n'a pas pu
+	// partir — une course qui devait partir à 7 h et qui ne part pas est
+	// pire qu'une course jamais programmée.
+	KeyRideScheduledSoon    = "ride_scheduled_soon"
+	KeyRideScheduledStarted = "ride_scheduled_started"
+	KeyRideScheduledFailed  = "ride_scheduled_failed"
 )
 
 // defaults sont les gabarits COMPILÉS, servis tant que la base n'en porte pas.
@@ -186,6 +193,33 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "New order", Body: "Order [order_ref] · [items] item(s) · [amount] FCFA for you."},
 		},
 	},
+	KeyRideScheduledSoon: {
+		Key:         KeyRideScheduledSoon,
+		Description: "Course programmée : l'appel du chauffeur part dans quelques minutes — message au PASSAGER.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Votre course part bientôt", Body: "Départ de [pickup] à [time] : nous appelons un chauffeur dans [minutes] min. Soyez prêt."},
+			LocaleEN: {Title: "Your ride is coming up", Body: "Pickup at [pickup] at [time]: we will call a driver in [minutes] min. Please be ready."},
+		},
+	},
+	KeyRideScheduledStarted: {
+		Key:         KeyRideScheduledStarted,
+		Description: "Course programmée : l'appel du chauffeur est parti — message au PASSAGER.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Nous cherchons votre chauffeur", Body: "Votre course de [time] depuis [pickup] est lancée : un chauffeur arrive bientôt."},
+			LocaleEN: {Title: "Finding your driver", Body: "Your [time] ride from [pickup] has started: a driver will be on the way shortly."},
+		},
+	},
+	KeyRideScheduledFailed: {
+		Key:         KeyRideScheduledFailed,
+		Description: "Course programmée : l'appel n'a pas pu partir (paiement, itinéraire) — message au PASSAGER.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Course non lancée", Body: "Votre course de [time] depuis [pickup] n'a pas pu partir : [reason]. Commandez-la à la main."},
+			LocaleEN: {Title: "Ride not started", Body: "Your [time] ride from [pickup] could not start: [reason]. Please order it manually."},
+		},
+	},
 	KeyDispatchFailed: {
 		Key:         KeyDispatchFailed,
 		Description: "Aucun livreur n'a pris la course — message au CLIENT.",
@@ -214,10 +248,15 @@ var provided = map[string][]string{
 	// ⚠️ `body` et RIEN d'autre. Le canal existe pour que le client et le
 	// livreur se parlent sans échanger leurs coordonnées : offrir un
 	// `sender_name` ici défairait cela sur l'écran verrouillé.
-	KeyChatMessage:      {"body"},
-	KeyDriverCall:       {"distance_km", "token_cost", "cash_line"},
-	KeyDispatchFailed:   {"order_ref"},
-	KeyMerchantNewOrder: {"order_ref", "items", "amount"},
+	KeyChatMessage:    {"body"},
+	KeyDriverCall:     {"distance_km", "token_cost", "cash_line"},
+	KeyDispatchFailed: {"order_ref"},
+	// Les courses programmées : le lieu de départ, l'heure locale, les
+	// minutes avant l'appel, et la raison d'un échec.
+	KeyRideScheduledSoon:    {"pickup", "time", "minutes"},
+	KeyRideScheduledStarted: {"pickup", "time"},
+	KeyRideScheduledFailed:  {"pickup", "time", "reason"},
+	KeyMerchantNewOrder:     {"order_ref", "items", "amount"},
 }
 
 // Provided rend les variables que la plateforme remplit pour une clé.
