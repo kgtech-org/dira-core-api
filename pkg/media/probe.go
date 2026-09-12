@@ -101,7 +101,11 @@ func isoDuration(r io.ReadSeeker) (time.Duration, error) {
 		if d, err := fragmentedDuration(r, moovOffset, moovSize); err == nil {
 			duration = d
 		} else {
-			return 0, ErrUnknownDuration
+			// Et sans `mehd` non plus — l'encodeur ne connaissait pas la fin
+			// en écrivant l'entête — il reste les fragments eux-mêmes : on les
+			// additionne. C'est le cas des exports en flux (ffmpeg
+			// `frag_keyframe+empty_moov`, plusieurs applications de capture).
+			return fragmentsDuration(r, moovOffset, moovSize)
 		}
 	}
 	return time.Duration(float64(duration) / float64(timescale) * float64(time.Second)), nil
