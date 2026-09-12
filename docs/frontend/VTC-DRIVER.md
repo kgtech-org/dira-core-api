@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 3.0.0** · 12 septembre 2026
+> **Version 3.1.0** · 12 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -28,6 +28,7 @@ Conventions communes : voir [`FOOD-CLIENT.md` §1](FOOD-CLIENT.md).
 
 ```
 GET   /drivers/me                   → crée le profil au premier appel
+GET   /drivers/me/stats?date=YYYY-MM-DD&tz=Africa/Lome   → { rides, driver_xof, online_s }   (v3.1.0)
 PATCH /drivers/me/online            { "online": true | false }
 GET   /drivers/me/vehicles
 POST  /drivers/me/vehicles          { class_key, brand, model, license_plate, color, seats, photo_url }
@@ -38,8 +39,26 @@ PATCH /drivers/me/active-vehicle    { "vehicle_id": "…" }
 ```json
 { "id": "…", "user_id": "…", "active_vehicle_id": "…", "zone": "Lomé Centre",
   "online": true, "status": "active",
+  "last_seen_at": "2026-09-12T10:41:23Z", "tracking_stale": false,
+  "offline_at": null, "offline_reason": "",
   "rating_avg": 4.7, "rating_count": 132, "rides_count": 418 }
 ```
+
+> **La présence — v3.1.0.** `last_seen_at` est la dernière position que le
+> suivi a vue de votre véhicule (lue à l'instant) ; **`tracking_stale`** est
+> vrai après **90 s** sans position, ou jamais vu — c'est « suivi arrêté » :
+> vous êtes encore en ligne, mais **vous n'êtes plus appelé**. Affichez-le
+> comme le widget. ⚠️ Après **5 min** sans position, **le serveur vous met hors
+> ligne** : `online: false`, `offline_reason: "stale"`, `offline_at`. Dites-le
+> (« Vous avez été mis hors ligne : position non reçue depuis 5 min »), au lieu
+> d'afficher un état incohérent. `offline_reason` vaut `driver` quand c'est
+> vous qui vous êtes retiré, `admin` sinon.
+
+> **La journée — `GET /drivers/me/stats`.** `rides` et `driver_xof` comptent
+> les courses **terminées** du jour (`date`, défaut aujourd'hui) dans **votre
+> fuseau** (`tz`, défaut `Africa/Lome`) ; `online_s` est le temps en ligne du
+> jour, période en cours comprise. Remplace le calcul depuis
+> `GET /rides?limit=50` et le compteur local du téléphone.
 
 > ⚠️ **`online` et `status` sont DEUX AXES, et ils doivent le rester.**
 > `status` est ce que l'administration a décidé (`pending`, `active`,
@@ -86,6 +105,18 @@ WS wss://tracking-staging.dira.llc/track/agent
 ```
 
 Puis, à la fermeture : `{ "type": "call_closed", "call_id": "…", "reason": "…" }`.
+
+> **Le même appel arrive AUSSI par FCM — v3.1.0.** Un socket meurt (jeton
+> périmé, réseau, service tué, veille profonde) et l'appel n'arrive pas. Le
+> suivi envoie donc, pour chaque `call` et `call_closed`, un message FCM
+> **data-only, priorité haute**, aux appareils déclarés par `POST /me/devices`
+> (socle) : `{ "type": "call" | "call_closed", "call_id", "ref", "expires_at",
+> "attempt", "reason" }`. Pas de `notification` : c'est l'application qui sonne
+> et ouvre son écran plein. À réception : reconnecter le socket si besoin, puis
+> traiter comme une trame socket. **Idempotence par `call_id`** — reçue deux fois
+> (socket + push), une trame ne sonne qu'une fois. Le message a un TTL FCM égal
+> au temps restant de l'appel : un appel fermé n'est jamais livré en retard.
+> ⚠️ Déclarez le jeton FCM à la connexion **et à chaque rotation**.
 
 **Répondre** — sur le service de SUIVI, avec votre jeton :
 
@@ -209,12 +240,14 @@ comparaison que chaque application refait à sa façon.
 |---|---|
 | `POST /auth/login` · `/auth/refresh` · `/auth/logout` | la session |
 | `GET · PATCH /me` | le profil |
+| `PATCH /me/preferences` | `locale` ∈ `fr` · `en` (autre : 422), `theme` |
 | `POST /uploads?kind=vehicle` · `?kind=avatar` | les photos — **v3.0.0** : les courses n'avaient **aucune** porte d'envoi, c'est désormais celle du socle, pour tout le monde |
 | `GET /wallet` · `/wallet/transactions` | le portefeuille Dira |
 | `GET /me/notifications` · `POST /me/devices` | les notifications |
 | `GET /agents/{id}/ratings` | vos avis |
 
 - **Téléphone en E.164 avec le `+`** ; sans indicatif, `422` avec `fields: ["phone"]`. `account_suspended` (403) à la connexion : le dire tel quel.
+- **Durées de vie des jetons — v3.1.0.** Access token **15 min** (staging : **10 min**), refresh token **30 jours**, consommé à la rotation (le rejouer → 401 → revenir à la connexion). ⚠️ Le socket du suivi est ouvert avec l'access token et **vit plus longtemps que lui** : à l'échéance, le suivi le ferme avec le code **4401 `token_expired`** — rafraîchir (`POST /auth/refresh`) **puis** reconnecter, jamais reconnecter avec le même jeton. Poignée de main : **401** = rafraîchir et revenir ; **403** = ce rôle ne peut pas pousser de positions, ne pas réessayer. L'ancien access token reste valide jusqu'à son échéance après une rotation : un court chevauchement socket / REST est normal.
 - **Un `422` nomme ses champs** (`fields`, `reason`) — voir la liste de contrôle du `README`.
 
 ---

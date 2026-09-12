@@ -371,7 +371,16 @@ func (s *Service) UpdatePreferences(ctx context.Context, userID string, req Upda
 		p.Theme = *req.Theme
 	}
 	if req.Locale != nil {
-		p.Locale = normalizeLocale(*req.Locale)
+		// Les DEUX langues de la plateforme, et rien d'autre. Une langue
+		// inconnue serait acceptée puis ignorée par chaque gabarit — le
+		// client croirait avoir choisi, et lirait le repli. Vide = revenir
+		// à la langue de l'appareil.
+		loc := normalizeLocale(*req.Locale)
+		if loc != "" && loc != "fr" && loc != "en" {
+			return UserResponse{}, apperr.Validation("locale must be fr or en").
+				WithMeta(map[string]any{"fields": []string{"locale"}})
+		}
+		p.Locale = loc
 	}
 	if req.PaymentProvider != nil {
 		p.PaymentProvider = strings.TrimSpace(*req.PaymentProvider)

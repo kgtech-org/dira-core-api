@@ -105,6 +105,15 @@ type Message struct {
 	// bonne commande plutôt que l'écran d'accueil. Toutes les valeurs sont
 	// des CHAÎNES — FCM refuse le reste.
 	Data map[string]string
+	// DataOnly : AUCUNE notification n'est jointe, seulement `Data`. Le
+	// système n'affiche rien ; c'est l'application, réveillée, qui décide —
+	// un appel de course construit son propre écran plein, avec sa sonnerie.
+	// Une notification système par-dessus ferait deux alertes pour un appel.
+	DataOnly bool
+	// TTL borne la durée pendant laquelle FCM garde le message si l'appareil
+	// est injoignable. Un appel de 30 s reçu deux minutes plus tard est un
+	// appel fermé : mieux vaut qu'il n'arrive jamais. Zéro = défaut FCM.
+	TTL time.Duration
 }
 
 // Result dit ce qu'il est advenu d'un envoi.
@@ -140,20 +149,28 @@ func (c *Client) Send(ctx context.Context, msgs []Message) ([]Result, error) {
 }
 
 func (c *Client) sendOne(ctx context.Context, accessToken string, m Message) Result {
-	payload := map[string]any{
-		"message": map[string]any{
-			"token":        m.Token,
-			"notification": map[string]any{"title": m.Title, "body": m.Body},
-			"data":         m.Data,
-			// Priorité haute sur Android : sur un réseau ouest-africain, une
-			// notification différée par le mode économie d'énergie arrive
-			// après la livraison qu'elle annonçait.
-			"android": map[string]any{"priority": "high"},
-			"apns": map[string]any{
-				"headers": map[string]string{"apns-priority": "10"},
-			},
-		},
+	// Priorité haute sur Android : sur un réseau ouest-africain, une
+	// notification différée par le mode économie d'énergie arrive après la
+	// livraison qu'elle annonçait.
+	android := map[string]any{"priority": "high"}
+	if m.TTL > 0 {
+		android["ttl"] = fmt.Sprintf("%ds", int(m.TTL.Seconds()))
 	}
+	apns := map[string]any{"headers": map[string]string{"apns-priority": "10"}}
+	message := map[string]any{
+		"token":   m.Token,
+		"data":    m.Data,
+		"android": android,
+		"apns":    apns,
+	}
+	if !m.DataOnly {
+		message["notification"] = map[string]any{"title": m.Title, "body": m.Body}
+	} else {
+		// iOS ne réveille une application sur un message silencieux que s'il
+		// est déclaré comme tel.
+		apns["payload"] = map[string]any{"aps": map[string]any{"content-available": 1}}
+	}
+	payload := map[string]any{"message": message}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return Result{Token: m.Token, Err: err}

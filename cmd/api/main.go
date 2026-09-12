@@ -428,7 +428,7 @@ type fcmPusher struct{ client *fcm.Client }
 func (p fcmPusher) Push(ctx context.Context, msgs []notify.PushMessage) ([]notify.PushResult, error) {
 	out := make([]fcm.Message, 0, len(msgs))
 	for _, m := range msgs {
-		out = append(out, fcm.Message{Token: m.Token, Title: m.Title, Body: m.Body, Data: m.Data})
+		out = append(out, fcm.Message{Token: m.Token, Title: m.Title, Body: m.Body, Data: m.Data, DataOnly: m.DataOnly, TTL: m.TTL})
 	}
 	res, err := p.client.Send(ctx, out)
 	if err != nil {

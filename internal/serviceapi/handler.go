@@ -14,6 +14,7 @@ package serviceapi
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -104,6 +105,10 @@ type BackOffice interface {
 // Notifier sends one templated message to one person.
 type Notifier interface {
 	Notify(ctx context.Context, userID, key string, vars map[string]string, data map[string]string)
+	// Signal réveille les appareils d'une personne avec des données seules —
+	// le signal d'un appel de course quand le socket est mort. Rend le nombre
+	// d'appareils atteints.
+	Signal(ctx context.Context, userID string, data map[string]string, ttl time.Duration) (int, error)
 }
 
 // Handler exposes the service-to-service routes.
@@ -140,6 +145,7 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/wallets/credit-earnings", h.creditEarnings)
 
 		g.Post("/internal/notifications/send", h.notify)
+		g.Post("/internal/push/data", h.signal)
 		g.Post("/internal/payments/initiate", h.initiatePayment)
 
 		g.Post("/internal/backoffice/wallets", h.listWallets)
@@ -323,6 +329,30 @@ func (h *Handler) move(w http.ResponseWriter, r *http.Request, do func(context.C
 }
 
 // --- notifications ---
+
+// POST /internal/push/data — un signal data-only, priorité haute, borné dans
+// le temps. Appelé par le SUIVI pour chaque `call` et `call_closed` : si le
+// socket du chauffeur est mort, c'est ce message qui réveille l'application.
+// Sans gabarit ni boîte de réception — ce n'est pas une notification.
+func (h *Handler) signal(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID string            `json:"user_id" validate:"required,len=24,hexadecimal"`
+		Data   map[string]string `json:"data" validate:"required,min=1"`
+		// TTLSeconds borne la vie du message chez FCM : un appel de 30 s
+		// livré deux minutes plus tard est un appel fermé.
+		TTLSeconds int `json:"ttl_s" validate:"omitempty,min=1,max=3600"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	sent, err := h.notifier.Signal(r.Context(), req.UserID, req.Data, time.Duration(req.TTLSeconds)*time.Second)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]int{"devices": sent})
+}
 
 func (h *Handler) notify(w http.ResponseWriter, r *http.Request) {
 	var req struct {

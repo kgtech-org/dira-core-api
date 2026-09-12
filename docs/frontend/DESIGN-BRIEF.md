@@ -1,6 +1,6 @@
 # Brief de design — ce qui manque aux maquettes
 
-> **Version 1.6** · 10 septembre 2026 · pour `.resources/dira-mobile-apps` (maquette du 10/09) · contrat **v3.0.0**
+> **Version 1.6** · 10 septembre 2026 · pour `.resources/dira-mobile-apps` (maquette du 10/09) · contrat **v3.1.0**
 
 > ⚠️ **v2.0.0 — deux bases d'URL.** Les routes de la livraison prennent le préfixe `/food` ; celles du socle (connexion, profil, portefeuille, paiements, notifications, **envoi de fichiers depuis la v3.0.0**) restent à la racine. Rien d'autre ne change : mêmes champs, mêmes codes, mêmes écrans. Voir [`README.md`](README.md).
 > À lire avec [`FOOD-CLIENT.md`](FOOD-CLIENT.md), [`FOOD-MERCHANT.md`](FOOD-MERCHANT.md), [`FOOD-DELIVERY.md`](FOOD-DELIVERY.md), qui portent les contrats.

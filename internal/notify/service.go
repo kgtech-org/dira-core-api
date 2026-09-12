@@ -25,6 +25,10 @@ type PushMessage struct {
 	Title string
 	Body  string
 	Data  map[string]string
+	// DataOnly : pas de notification système, seulement des données — voir
+	// Signal. TTL borne la vie du message chez FCM.
+	DataOnly bool
+	TTL      time.Duration
 }
 
 // PushResult dit ce qu'il est advenu d'un envoi.
@@ -393,4 +397,56 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// Signal réveille les appareils d'une personne avec des DONNÉES, sans
+// notification.
+//
+// Le SIGNAL d'un appel de course : quand le socket du chauffeur est mort —
+// jeton périmé, réseau coupé, service tué, veille profonde — la trame
+// `call` n'arrive pas, et il ne sait même pas qu'il a raté quelque chose.
+// Ce message-ci passe par FCM, réveille l'application, qui reconnecte son
+// socket et traite la trame comme si elle en venait. Rien ne s'affiche par
+// le système : c'est l'application qui sonne et ouvre son écran plein.
+//
+// Pas de gabarit, pas de boîte de réception, pas de préférence : ce n'est
+// pas une notification, c'est un signal d'infrastructure. Un chauffeur qui
+// aurait coupé « les notifications » doit quand même recevoir ses appels.
+func (s *Service) Signal(ctx context.Context, userID string, data map[string]string, ttl time.Duration) (int, error) {
+	uid, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return 0, apperr.Validation("invalid user id").WithCause(err)
+	}
+	if s.pusher == nil {
+		return 0, nil
+	}
+	devices, err := s.repo.ActiveDevices(ctx, uid)
+	if err != nil {
+		return 0, apperr.Internal(err)
+	}
+	if len(devices) == 0 {
+		return 0, nil
+	}
+	msgs := make([]PushMessage, 0, len(devices))
+	for _, d := range devices {
+		msgs = append(msgs, PushMessage{Token: d.Token, Data: data, DataOnly: true, TTL: ttl})
+	}
+	results, err := s.pusher.Push(ctx, msgs)
+	if err != nil {
+		return 0, apperr.New("push_unavailable", "the push service did not answer", 502).WithCause(err)
+	}
+	sent := 0
+	for _, r := range results {
+		switch {
+		case r.Unregistered:
+			if err := s.repo.DisableDevice(ctx, r.Token, "unregistered"); err != nil {
+				slog.WarnContext(ctx, "notify: device not disabled", "error", err)
+			}
+		case r.Err != nil:
+			slog.WarnContext(ctx, "notify: signal rejected", "error", r.Err)
+		default:
+			sent++
+		}
+	}
+	return sent, nil
 }
