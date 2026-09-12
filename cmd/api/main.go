@@ -222,7 +222,11 @@ func run(logger *slog.Logger) error {
 		} else {
 			notifySvc.SetPusher(fcmPusher{client: client})
 		}
-	} else {
+	} else if cfg.FCMServiceAccountFile == "" && cfg.FCMServiceAccount == "" {
+		// Uniquement quand AUCUNE source n'est configurée. Une clé configurée
+		// mais illisible a déjà produit une erreur juste au-dessus, qui dit
+		// laquelle et pourquoi ; ajouter « aucune » ensuite contredit ce
+		// message et envoie vérifier une variable qu'on a pourtant renseignée.
 		logger.Warn("core: no FCM service account, push notifications disabled")
 	}
 
@@ -371,7 +375,14 @@ func fcmServiceAccount(cfg *config.Config, logger *slog.Logger) string {
 	if cfg.FCMServiceAccountFile != "" {
 		data, err := os.ReadFile(cfg.FCMServiceAccountFile)
 		if err != nil {
-			logger.Error("FCM: compte de service illisible", "path", cfg.FCMServiceAccountFile, "error", err)
+			// Le cas de très loin le plus fréquent est un droit de lecture : le
+			// conteneur tourne sous l'utilisateur `app` (UID 10001), pas root,
+			// et une clé déposée en 600 root:root lui est fermée. Sans cette
+			// indication on cherche du côté de Firebase, où il n'y a rien.
+			logger.Error("FCM: compte de service illisible",
+				"path", cfg.FCMServiceAccountFile,
+				"conseil", "le conteneur lit sous l'UID 10001 : chown 10001:10001 sur le fichier hôte",
+				"error", err)
 			return ""
 		}
 		return string(data)
