@@ -97,6 +97,20 @@ func Language(next http.Handler) http.Handler {
 func RateLimit(rdb *redis.Client, perMinute int) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// ⚠️ LA SURFACE DE SERVICE N'EST PAS LIMITÉE. Ces routes sont
+			// appelées par les verticales, depuis UNE adresse chacune, à un
+			// rythme proportionnel au trafic de toute la plateforme : nommer
+			// un chauffeur, débiter un portefeuille, notifier — pour chaque
+			// commande. Les compter contre le quota d'une adresse revenait à
+			// plafonner la livraison à 120 gestes par minute, et la console
+			// des courses, qui rafraîchit ses appels toutes les quatre
+			// secondes, épuisait ce quota à elle seule : les noms
+			// disparaissaient des écrans en 429. Ces routes sont gardées par
+			// le secret partagé, pas par un compteur.
+			if strings.HasPrefix(r.URL.Path, "/api/v1/internal/") {
+				next.ServeHTTP(w, r)
+				return
+			}
 			key := clientKey(r)
 			window := time.Now().UTC().Format("200601021504") // minute bucket
 			redisKey := "ratelimit:" + key + ":" + window
