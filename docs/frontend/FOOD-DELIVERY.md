@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 3.2.0** · 12 septembre 2026
+> **Version 3.3.0** · 12 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -247,6 +247,44 @@ wss://tracking-staging.dira.llc/track/agent
 - Émission **écran éteint** pendant une course.
 - Une coupure ne doit perdre aucune position : rejouez-les avec leur `ts` d'origine.
 - Un jeton expiré doit mener à une reconnexion après refresh, pas à une boucle d'échecs.
+
+---
+
+
+## 6 bis. 🔥 La ZONE ROUGE — forte demande non servie (v3.3.0)
+
+Quand **plusieurs clients** n'ont pas trouvé de livreur au même endroit en peu de
+temps (par défaut : cinq en un quart d'heure dans un rayon d'un kilomètre),
+la plateforme prévient les livreurs **libres et en ligne** à portée (5 km) par un
+message FCM **data-only**, sur les mêmes appareils que l'appel :
+
+```json
+{ "type": "hot_zone", "signal_id": "…", "vertical": "food",
+  "lng": "1.238500", "lat": "6.148100", "radius_m": "420", "count": "7",
+  "distance_m": "2630", "polyline": "…", "expires_at": "1789238520000" }
+```
+
+- Ce n'est **pas un appel** : rien à accepter, personne n'attend une réponse.
+  C'est une information — « il y a du travail là-bas » — à afficher comme
+  une bannière ou une zone sur la carte, jamais comme une sonnerie.
+- `polyline` est le **contour** de la zone, encodé comme un parcours de course
+  (Google, précision 5) : ce qui sait dessiner un trajet sait dessiner ce
+  contour. `lng`/`lat`/`radius_m` suffisent pour un simple cercle.
+- `expires_at` (ms) : passé, ne plus l'afficher. Le message a le même TTL
+  chez FCM. `count` est le nombre de clients non servis dans la fenêtre.
+- **Idempotence par `signal_id`** : la même zone peut être rappelée (au plus
+  toutes les 10 min, 3 fois) — mettre à jour, pas empiler.
+- Les zones ouvertes se relisent à tout moment, par exemple à l'ouverture de
+  l'application ou après un message manqué :
+
+```
+GET https://api-staging.dira.llc/api/v1/analytics/zones?vertical=food
+→ { "items": [ { "id", "vertical", "center": [lng, lat], "radius_m", "polygon": [[lng, lat]…],
+                 "polyline", "count", "opened_at", "updated_at" } ] }
+```
+
+La zone est servie **sans les clients qui la font** : l'application n'a rien à
+faire de qui attend où.
 
 ---
 
