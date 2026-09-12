@@ -95,20 +95,31 @@ func (r *Repository) UpdateUser(ctx context.Context, u *User) error {
 	// ⚠️ Cette liste doit couvrir TOUT ce que le service sait modifier.
 	// `avatar_url` y manquait : le service posait la nouvelle photo en
 	// mémoire, la réponse la montrait, et rien n'était écrit — l'utilisateur
-	// la voyait changer puis revenir au rechargement suivant.
+	// la voyait changer puis revenir au rechargement suivant. Puis `phone` et
+	// `password_hash`, le jour où la console a su corriger un compte : un
+	// mot de passe « remplacé » en 200 avec lequel personne ne pouvait se
+	// connecter. Les tests du service passent par un dépôt en mémoire et ne
+	// voient pas cette liste — c'est un parcours réel qui l'a montré.
 	res, err := r.users.UpdateOne(ctx, bson.M{"_id": u.ID}, bson.M{"$set": bson.M{
-		"name":        u.Name,
-		"first_name":  u.FirstName,
-		"last_name":   u.LastName,
-		"birth_date":  u.BirthDate,
-		"gender":      u.Gender,
-		"email":       u.Email,
-		"avatar_url":  u.AvatarURL,
-		"preferences": u.Preferences,
-		"status":      u.Status,
-		"updated_at":  u.UpdatedAt,
+		"name":          u.Name,
+		"first_name":    u.FirstName,
+		"last_name":     u.LastName,
+		"birth_date":    u.BirthDate,
+		"gender":        u.Gender,
+		"email":         u.Email,
+		"phone":         u.Phone,
+		"password_hash": u.PasswordHash,
+		"avatar_url":    u.AvatarURL,
+		"preferences":   u.Preferences,
+		"status":        u.Status,
+		"updated_at":    u.UpdatedAt,
 	}})
 	if err != nil {
+		// Le téléphone est unique : le donner à un compte qui l'a déjà est
+		// le même conflit qu'à l'inscription, et se lit pareil (409).
+		if mongo.IsDuplicateKeyError(err) {
+			return ErrDuplicatePhone
+		}
 		return fmt.Errorf("user: update: %w", err)
 	}
 	if res.MatchedCount == 0 {

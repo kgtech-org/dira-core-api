@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -114,6 +115,9 @@ func (a *AdminUsers) Update(ctx context.Context, id string, req AdminUpdateUserR
 	}
 	u.UpdatedAt = time.Now().UTC()
 	if err := a.repo.UpdateUser(ctx, u); err != nil {
+		if errors.Is(err, ErrDuplicatePhone) {
+			return UserResponse{}, errPhoneTaken
+		}
 		return UserResponse{}, apperr.Internal(err)
 	}
 	if a.auditor != nil {
