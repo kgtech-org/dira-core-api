@@ -1,1 +1,4 @@
 tmp/
+
+# Identifiants locaux des collections .rest (jamais versionnés)
+.rest/.env

@@ -102,11 +102,21 @@ func NewService(repo Repo, auditRec *audit.Recorder, payments PurchaseInitiator,
 
 // --- Provider contract (cross-module) ---
 
-// CreateWallet creates a wallet for an owner (user id for "driver", store id
-// for "merchant"). Idempotent: a duplicate owner is not an error.
+// CreateWallet creates a wallet for an owner (user id for "driver" and
+// "client", store id for "merchant"). Idempotent: a duplicate owner is not an
+// error.
+//
+// ⚠️ Le type `client` était REFUSÉ ici alors que `CreateClientWallet`, la
+// surface de service et l'inscription le passaient tous : aucun client n'a
+// jamais eu de « Dira Cash ». `GET /wallet` répondait 404 à tout client, et
+// la confirmation d'une recharge — paiement déjà marqué `succeeded` —
+// échouait en 500 sans rien créditer. Une garde qui contredit ses appelants
+// ne protège rien : elle perd de l'argent en silence.
 func (s *Service) CreateWallet(ctx context.Context, ownerID, walletType string) error {
-	if walletType != WalletTypeDriver && walletType != WalletTypeMerchant {
-		return apperr.Validation("wallet type must be driver or merchant")
+	switch walletType {
+	case WalletTypeDriver, WalletTypeMerchant, WalletTypeClient:
+	default:
+		return apperr.Validation("wallet type must be driver, merchant or client")
 	}
 	oid, err := primitive.ObjectIDFromHex(ownerID)
 	if err != nil {
@@ -235,7 +245,7 @@ func (s *Service) GetWallet(ctx context.Context, userID, role, storeID string) (
 	if err != nil {
 		return WalletResponse{}, err
 	}
-	wallet, err := s.findWallet(ctx, ownerID)
+	wallet, err := s.walletFor(ctx, ownerID, role)
 	if err != nil {
 		return WalletResponse{}, err
 	}
@@ -259,7 +269,7 @@ func (s *Service) ListTransactions(ctx context.Context, userID, role, storeID st
 	if err != nil {
 		return nil, "", err
 	}
-	wallet, err := s.findWallet(ctx, ownerID)
+	wallet, err := s.walletFor(ctx, ownerID, role)
 	if err != nil {
 		return nil, "", err
 	}
@@ -410,6 +420,17 @@ func (s *Service) requireStoreAccess(ctx context.Context, userID, role, storeID 
 		return apperr.Forbidden("forbidden", "you do not own this store")
 	}
 	return nil
+}
+
+// walletFor rend le portefeuille d'un propriétaire tel que le rôle le lit :
+// celui d'un client s'ouvre à la première lecture (voir ensureClientWallet),
+// ceux d'un livreur ou d'un point de vente doivent exister — ils ont été
+// ouverts à l'inscription, et leur absence est une anomalie à voir.
+func (s *Service) walletFor(ctx context.Context, ownerID, role string) (*Wallet, error) {
+	if role == auth.RoleClient {
+		return s.ensureClientWallet(ctx, ownerID)
+	}
+	return s.findWallet(ctx, ownerID)
 }
 
 func (s *Service) findWallet(ctx context.Context, ownerID string) (*Wallet, error) {
