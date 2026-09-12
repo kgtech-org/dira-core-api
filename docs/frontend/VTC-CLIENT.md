@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 2.1.0** · 10 septembre 2026
+> **Version 3.0.0** · 12 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -215,11 +215,16 @@ modèle, mêmes règles, même paquet côté serveur.
 |---|---|
 | `POST /auth/register` · `/auth/login` · `/auth/refresh` · `/auth/logout` | la session |
 | `GET · PATCH /me` · `PATCH /me/preferences` | le profil |
+| `POST /uploads?kind=avatar` | la photo de profil — **v3.0.0**, une seule porte pour toute la plateforme |
 | `GET · POST /me/addresses` · `PUT · DELETE /me/addresses/{id}` | le carnet d'adresses |
 | `GET /wallet` · `/wallet/transactions` · `POST /wallet/purchase` | le solde Dira |
 | `GET /payments/providers` · `POST /payments/initiate` · `GET /payments/{id}` | mobile money |
 | `GET /me/notifications` · `POST /me/devices` | les notifications |
 | `GET /agents/{id}/ratings` | les avis d'un chauffeur |
+
+- **Inscription** : `{ phone (E.164, avec le +), name, password, role: "client", email?, first_name?, last_name? }`. Sans `+`, `422` avec `fields: ["phone"]` ; `phone_taken` (409) → proposer la connexion ; `account_suspended` (403) → le dire tel quel.
+- **Un `422` nomme ses champs** (`fields`, `reason`) — voir la liste de contrôle du `README`.
+- `GET /wallet` répond toujours `200` à un client : le Dira Cash s'ouvre à la première lecture.
 
 ---
 

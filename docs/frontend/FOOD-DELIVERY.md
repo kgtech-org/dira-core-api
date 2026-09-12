@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 2.1.0** · 10 septembre 2026
+> **Version 3.0.0** · 12 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -52,7 +52,7 @@ Conventions communes (erreurs, pagination, montants, dates) : voir [`FOOD-CLIENT
 > Le **compte** (`/me`, `/auth/*`) est au **socle**, base `…/api/v1/` sans `/food`. Les **véhicules**, eux, sont à la livraison : `…/api/v1/food/agent/vehicles`.
 
 ```
-POST   /auth/register       { phone, name, password, role: "driver" }
+POST   /auth/register       { phone (E.164, avec le +), name, password, role: "driver", first_name?, last_name? }
 GET    /me · PATCH /me · PATCH /me/preferences
 POST   /agent/vehicles      { type, brand?, model?, license_plate?, color?, photo_url?, capacity? }
 GET    /agent/vehicles
@@ -61,6 +61,9 @@ PATCH  /agent/active-vehicle   { vehicle_id }
 PATCH  /agent/availability     { available }
 ```
 
+- ⚠️ **Le téléphone porte son indicatif** : `+22890100001`. Sans `+`, `422` avec `fields: ["phone"]` — le socle ne devine pas de pays. Espaces et tirets tolérés. `phone_taken` (409) : le numéro a déjà un compte → proposer la connexion.
+- **Un `422` nomme ses champs — v3.0.0.** `fields` liste les clés JSON en cause : soulignez ces cases. `reason: unknown_field` signifie que l'app envoie une clé que la route ne connaît pas — c'est refusé, pas ignoré, et c'est un bug à corriger côté app. `first_name` / `last_name` sont désormais **acceptés** à l'inscription.
+- **`account_suspended` (403)** à la connexion : le compte est suspendu, le mot de passe est bon — le dire tel quel.
 - `type` ∈ `moto` · `velo` · `voiture` · `pieton` · `tricycle`. `capacity` = courses simultanées.
 - Photo : téléverser d'abord (`POST /api/v1/uploads?kind=vehicle&entity={id}` — au **socle**, sans `/food` : la même porte sert les courses), rattacher l'URL par `PATCH`. L'étape est séparée pour qu'une photo qui échoue ne fasse pas perdre la saisie.
 - **Mettre hors service ≠ supprimer** : `PATCH { "is_active": false }`. Un véhicule ayant servi doit rester lisible dans l'historique.

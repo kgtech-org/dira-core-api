@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 2.1.0** · 10 septembre 2026
+> **Version 3.0.0** · 12 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -287,6 +287,8 @@ PATCH  /stores/{id}/videos/{video_id}/schedule   { published_at }
 
 La **génération de vidéo par IA** débite le portefeuille **de ce point de vente**.
 
+Une vidéo **fournie** se téléverse d'abord — `POST /api/v1/uploads?kind=feed&entity={store_id}`, au **socle** (v3.0.0) — puis se déclare avec `source: "upload"`, `video_url` et le `duration_seconds` rendu par l'envoi. `feed` est le seul `kind` qui accepte une vidéo (mp4, webm, mov ; ≤ 60 MiB **et ≤ 60 s**, lus dans le fichier : `422 video_too_long` ou `video_unreadable` sinon). Le serveur réencode ensuite en arrière-plan et pose la vignette.
+
 **Publication programmée** : `published_at` porte une date **et une heure**. Une vidéo dont `published_at` est dans le futur n'apparaît pas dans le feed — elle est **filtrée**, pas classée en dernier.
 
 Le feed public et ses interactions :
@@ -322,7 +324,9 @@ POST /me/devices · GET /me/notifications           (SOCLE, sans /food)
 POST /tickets · POST /bug-reports
 ```
 
-`kind` ∈ `dish` · `store` · `brand` · `vehicle` · `avatar` · `feed` · `banner`. Le plafond de taille **dépend du kind** : une vidéo de feed pèse bien plus qu'une photo de plat, et rien d'autre ne profite de ce plafond.
+⚠️ **`POST /uploads` est au socle — v3.0.0** : `…/api/v1/uploads`, plus `/food/uploads` (404). Multipart, champ `file`, le **type déclaré** de la part fait foi.
+
+`kind` ∈ `dish` · `store` · `brand` · `vehicle` · `avatar` · `feed` · `banner`. Images (jpeg, png, webp, svg) ≤ 5 MiB pour tout `kind` ; `feed` accepte **aussi** des vidéos ≤ 60 MiB — une vidéo pèse bien plus qu'une photo de plat, et rien d'autre ne profite de ce plafond. Au-delà de 64 MiB, la passerelle répond `413 payload_too_large`.
 
 Téléversez **d'abord**, rattachez l'URL ensuite : une image qui échoue ne doit pas faire perdre la saisie.
 
@@ -384,7 +388,10 @@ Inchangé depuis la v1.3.0, et toujours présent dans le prototype (`urgentCd: 3
 | `insufficient_tokens` | **402** | proposer la recharge du portefeuille **de cette boutique** |
 | `*_not_found` | 404 | `store_`, `dish_`, `merchant_`, `order_` |
 | `invalid_transition` | 409 | transition de statut interdite |
-| `validation_failed` | 422 | `store_id` manquant, bornes d'un groupe d'options, prix ≤ 0 |
+| `validation_failed` | 422 | **`fields`** nomme les clés JSON fautives (`store_id`, bornes d'un groupe d'options, prix ≤ 0) ; `reason: unknown_field` = bug de l'app |
+| `video_too_long` · `video_unreadable` | 422 | vidéo de feed > 60 s, ou conteneur illisible → réexporter en MP4 (H.264) |
+| `payload_too_large` | **413** | la passerelle : corps > 64 MiB — vérifier le poids **avant** d'envoyer |
+| `storage_unavailable` | 503 | le stockage de fichiers n'a pas démarré → réessayer, ne pas perdre la saisie |
 
 ---
 

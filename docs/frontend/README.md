@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 2.1.0** · 10 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 3.0.0** · 12 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -27,7 +27,7 @@ La plateforme s'est scindée. Une seule chose change pour une application, mais 
 
 | Ce que vous appelez | Servi par | Base |
 |---|---|---|
-| connexion, profil, adresses, portefeuille, paiements, notifications, **lecture** des avis | `dira-core-api` | `…/api/v1/…` — **inchangé** |
+| connexion, profil, adresses, **envoi de fichiers**, portefeuille, paiements, notifications, **lecture** des avis | `dira-core-api` | `…/api/v1/…` — **inchangé** |
 | commandes, catalogue, livraison, feed, nutrition, support | `dira-food-api` | `…/api/v1/food/…` — **nouveau préfixe** |
 | courses (VTC) | `dira-vtc-api` | `…/api/v1/vtc/…` — **servi** |
 
@@ -84,6 +84,9 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] Pagination par curseur générique (`items` / `next_cursor`)
 - [ ] Montants en **entiers** — aucun flottant, formatage XOF à l'affichage seulement
 - [ ] Rôles : masquer les parcours non autorisés **avant** l'appel
+- [ ] ⚠️ Téléphones en **E.164 avec le `+`** (`+22890000000`). Sans indicatif, le socle **refuse** (`422`, `fields: ["phone"]`) — il ne devine pas de pays. Pré-remplissez `+228` là où la personne le voit ; espaces et tirets sont tolérés
+- [ ] Un `422` se lit par **`fields`** : souligner **la** case nommée, jamais une bannière « vérifiez vos informations » sous un formulaire correct. `reason: unknown_field` est un **bug de l'application** — une clé que la route ne connaît pas, refusée pour que rien ne soit cru enregistré
+- [ ] Fichiers : **une seule porte**, `POST /api/v1/uploads` au **socle** — `/api/v1/food/uploads` n'existe plus (404)
 
 **Client**
 
@@ -139,6 +142,51 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 3.0.0 — 12 septembre 2026
+
+**Rupture — deux choses à faire tout de suite**, le reste est rétrocompatible.
+
+- ⚠️ **`POST /uploads` est au SOCLE** : `…/api/v1/uploads`, plus
+  `…/api/v1/food/uploads`, qui répond **404**. Mêmes `kind`, mêmes règles,
+  même réponse. Une seule variable à changer par application.
+
+  **Pourquoi.** L'envoi vivait dans la livraison par accident d'histoire — écrit
+  dans le monolithe, resté là à la scission. Un avatar est un objet du profil,
+  une photo de véhicule ou un permis servent aux deux métiers, et **les courses
+  n'avaient aucune porte d'envoi** : un chauffeur VTC photographiait sa berline
+  via `/food/uploads`. Une porte, une règle de poids, un bucket.
+- ⚠️ **Le `+` est obligatoire dans un téléphone.** `22899000001` était
+  accepté et **stocké tel quel**, à côté de `+22899000001` — deux comptes pour
+  une personne, qui ne retrouvait plus le sien à la connexion. Désormais `422`
+  avec `fields: ["phone"]`. Espaces, points, tirets et le `00` international
+  sont tolérés et retirés : `+228 99 00 00 01` retrouve `+22899000001`.
+
+**Ajouts.**
+
+- **Un `422` nomme ses champs.** L'enveloppe d'erreur porte `fields` — les
+  **clés JSON** en cause (`["name","password"]`) — et, quand ce n'est pas la
+  valeur d'un champ, `reason` : `unknown_field` (une clé que la route ne
+  connaît pas, avec son nom dans `fields`) ou `invalid_json`. Une clé inconnue
+  reste **refusée**, pas ignorée : une application ne doit pas croire avoir
+  enregistré ce qui a été jeté — mais elle sait maintenant laquelle. Jusqu'ici
+  le message était « Requête invalide », sans plus, et l'app livreur affichait
+  une bannière générique sous un formulaire correct.
+- **`first_name` / `last_name` à l'inscription**, facultatifs — l'app les
+  envoyait, le socle les refusait. `name` reste le nom d'affichage.
+- **Le Dira Cash d'un client s'ouvre à la première lecture.** `GET /wallet`
+  répond `200` (vide au besoin) à tout client — il répondait `404` à tous
+  jusqu'ici, et une recharge confirmée pouvait échouer faute de portefeuille
+  où la poser. Corrigé côté socle, y compris pour les comptes existants.
+- **Un compte suspendu** se connecte en `403 account_suspended`, pas en
+  `401` : dites-le, ne renvoyez pas vers « mot de passe oublié ».
+- **Les envois de fichiers** : images ≤ 5 MiB, vidéos de feed ≤ 60 MiB et
+  ≤ 60 s, `duration_seconds` rendu ; au-delà de 64 MiB la **passerelle**
+  répond `413 payload_too_large`, en JSON, au même format ; `503
+  storage_unavailable` si le stockage n'a pas démarré.
+- **Console** : ouvrir, corriger et supprimer un compte (`POST /admin/users`,
+  `PATCH · DELETE /admin/users/{id}`) — sans objet pour les applications
+  mobiles.
 
 ### 2.1.0 — 10 septembre 2026
 
