@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 3.4.0** · 12 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 3.5.0** · 12 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -142,6 +142,17 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 3.5.0 — 12 septembre 2026
+
+**Ajout rétrocompatible** — les courses programmées.
+
+- **`POST /vtc/scheduled-rides`** — ponctuelle (`at`) ou récurrente
+  (`recurrence` hebdomadaire, heure locale) ; `pause` / `resume` / `cancel` ;
+  `runs` par occurrence. Le passager est **prévenu 5 min avant l'appel**
+  (`ride_scheduled_soon`), puis `ride_scheduled_started` ou
+  `ride_scheduled_failed`. La course lancée porte `schedule_id`
+  (`VTC-CLIENT.md` §4 bis).
 
 ### 3.4.0 — 12 septembre 2026
 

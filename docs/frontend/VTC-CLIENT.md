@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 3.4.0** · 12 septembre 2026
+> **Version 3.5.0** · 12 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -125,6 +125,54 @@ POST /rides
 > besoin de savoir si la plateforme a encaissé.
 
 La réponse est la course, en `searching`.
+
+---
+
+## 4 bis. Programmer une course — ponctuelle ou récurrente (v3.5.0)
+
+Une programmation est une **intention datée**, pas une course. À l'heure
+dite, la plateforme fait ce que le passager aurait fait — un devis **au prix
+du moment**, une commande, l'appel d'un chauffeur — et la course qui en sort
+est une course ordinaire, avec `schedule_id`.
+
+```
+POST /scheduled-rides
+{ "stops": [ { "kind": "pickup", "label": "Maison", "geo": [lng, lat] },
+             { "kind": "dest",   "label": "Bureau", "geo": [lng, lat] } ],
+  "class_key": "eco", "payment_method": "cash",
+  "kind": "once",      "at": "2026-09-15T07:30:00Z",              # ponctuelle
+  — ou —
+  "kind": "recurring", "recurrence": { "days": [1,2,3,4,5], "time": "07:30",
+                                       "tz": "Africa/Lome", "until": "2026-12-31T00:00:00Z" },
+  "alert_lead_min": 5, "note": "…" }
+→ 201 { "id", "kind", "status": "active", "at": <prochaine occurrence>, "alert_at",
+        "recurrence", "describe": "lun, mar, mer, jeu, ven à 07:30", "alert_lead_min", "runs": [] }
+
+GET  /scheduled-rides            # les actives et en pause ; ?all=1 pour tout
+GET  /scheduled-rides/{id}       # avec `runs` : chaque lancement
+POST /scheduled-rides/{id}/pause · /resume · /cancel
+```
+
+- `at` est l'heure du **lancement de l'appel** — pas une heure d'arrivée du
+  chauffeur. Une ponctuelle doit être au moins `alert_lead_min` minutes dans
+  le futur (sinon `422` : commander tout de suite). Les jours de la
+  récurrence sont ISO (1 = lundi … 7 = dimanche), l'heure est **locale** au
+  fuseau donné (`Africa/Lome` par défaut).
+- ⚠️ **Le passager est PRÉVENU avant que l'appel ne parte** :
+  `ride_scheduled_soon` (« nous appelons un chauffeur dans 5 min ») à
+  `alert_at` ; puis `ride_scheduled_started` quand la course existe (data :
+  `ride_id` — ouvrir l'écran de la course, elle est `searching`) ; ou
+  `ride_scheduled_failed` avec la raison (solde insuffisant, itinéraire,
+  plateforme indisponible à l'heure dite). Data commun :
+  `{ "type": "scheduled_ride", "schedule_id", "at" }`.
+- `runs[]` : `launched` (avec `ride_id`), `failed` (avec `reason`),
+  `skipped` (occurrence passée en pause). Une occurrence manquée de plus de
+  15 min n'est **pas** lancée en retard.
+- `pause` suspend ; `resume` reprend à la prochaine occurrence — une
+  ponctuelle dont l'heure est passée ne reprend pas (`409 schedule_passed`).
+  `cancel` met fin ; les courses déjà lancées continuent.
+- Statuts : `active` · `paused` · `done` (ponctuelle lancée, ou récurrence
+  arrivée à `until`) · `cancelled`.
 
 ---
 
