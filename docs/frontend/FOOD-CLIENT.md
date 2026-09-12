@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 2.1.0** · 10 septembre 2026
+> **Version 3.0.0** · 12 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -33,7 +33,7 @@
 | | |
 |---|---|
 | Auth | `Authorization: Bearer <access_token>` |
-| Erreurs | `{ "error": { "code": "snake_case", "message": "…", "meta": {…} } }` |
+| Erreurs | `{ "error": { "code": "snake_case", "message": "…", "fields"?: ["…"], "reason"?: "…" } }` |
 | Pagination | `?limit=20&cursor=<id>` → `{ "items": [...], "next_cursor": "…" }` |
 | Montants | **entiers**, en XOF. Jamais de flottant. |
 | Dates | ISO 8601 UTC. Une **date seule** s'écrit `YYYY-MM-DD` (naissance, plan de repas). |
@@ -41,12 +41,14 @@
 
 **Traitez le `code`, pas le message.** Le message est traduit et peut changer ; le code est le contrat.
 
+**Un `422 validation_failed` nomme ses champs — v3.0.0.** `fields` liste les **clés JSON** en cause : soulignez **ces** cases, pas une bannière sous tout le formulaire. `reason` précise, quand ce n'est pas la valeur d'un champ : `unknown_field` (une clé que la route ne connaît pas — **refusée, pas ignorée**, son nom est dans `fields` ; c'est un bug de l'application) ou `invalid_json`.
+
 ---
 
 ## 2. Compte — **SOCLE** (base `…/api/v1/`, sans `/food`)
 
 ```
-POST   /auth/register        { phone (E.164), name, password, role: "client", email? }
+POST   /auth/register        { phone (E.164, avec le +), name, password, role: "client", email?, first_name?, last_name? }
 POST   /auth/login           { phone | email, password }
 POST   /auth/refresh         { refresh_token }
 POST   /auth/logout          { refresh_token }
@@ -58,6 +60,9 @@ PATCH  /me                   { name?, first_name?, last_name?, birth_date?, gend
 - `gender` ∈ `female` · `male` · `other`. Facultatif — personne n'est forcé de répondre.
 - **`name` reste le nom d'affichage.** `first_name` / `last_name` servent le formulaire d'état civil : ne les déduisez pas de `name`, et n'affichez pas leur concaténation là où `name` existe.
 - Le refresh est **sérialisé** : deux requêtes concurrentes avec le même refresh token en invalident un.
+- ⚠️ **Le téléphone porte son indicatif** : `+22890200001`. Sans `+`, `422` avec `fields: ["phone"]` — le socle ne devine pas de pays. Espaces, points, tirets et `00` sont tolérés et retirés ; c'est la forme canonique qui est stockée et qui sert à se connecter. Pré-remplissez `+228` là où la personne le voit.
+- **`phone_taken` (409)** à l'inscription : le numéro a déjà un compte → proposer la connexion, pas « une erreur est survenue ».
+- **`account_suspended` (403)** à la connexion, mot de passe correct : le dire tel quel — ce n'est ni un mauvais mot de passe, ni une panne.
 
 ### Préférences
 
@@ -346,6 +351,7 @@ POST /payments/initiate   { purpose: "wallet_topup", ref_id: <user_id>, amount, 
 - Le promotionnel se dépense **en premier**.
 - ⚠️ **Un client n'a pas de jetons.** `balance` reste à zéro, et `POST /wallet/purchase` lui est **refusé** (`403`) : les jetons sont le droit d'entrée d'un livreur et l'outil de promotion d'un marchand.
 - La recharge n'est créditée qu'à la **confirmation** du prestataire.
+- **Le portefeuille s'ouvre à la première lecture — v3.0.0.** `GET /wallet` répond toujours `200` à un client, vide au besoin ; il n'y a pas de « pas encore de portefeuille » à gérer.
 
 ---
 
@@ -421,6 +427,8 @@ POST /tickets · GET /tickets · POST /tickets/{id}/messages
 POST /bug-reports
 POST /uploads?kind=avatar&entity={id}    (SOCLE, sans /food — kind ∈ avatar|vehicle|dish|store|brand|feed|banner)
 ```
+
+⚠️ **`POST /uploads` est au socle — v3.0.0** : `…/api/v1/uploads`, plus `/food/uploads` (404). Multipart, champ `file`, le **type déclaré** de la part fait foi (jpeg, png, webp, svg ; ≤ 5 MiB). Réponse `201 { url }` : téléversez **d'abord**, rattachez l'URL ensuite (`PATCH /me { avatar_url }`) — un envoi qui échoue ne doit pas faire perdre la saisie.
 
 Un crédit tombola en attente est appliqué **automatiquement** en remise à la commande suivante — il apparaît dans `discount`.
 
@@ -528,7 +536,11 @@ L'écran de portefeuille dérive ce chiffre du **panier moyen réel** du client.
 | `already_rated` | 409 | cible déjà notée |
 | `too_many_addresses` | 409 | 20 au maximum |
 | `wallet_unavailable` | 409 | paiement au portefeuille indisponible |
-| `validation_failed` | 422 | détail du champ fautif dans `message` |
+| `phone_taken` | 409 | le numéro a déjà un compte → **proposer la connexion** |
+| `account_suspended` | 403 | compte suspendu, mot de passe correct → le dire tel quel |
+| `validation_failed` | 422 | **`fields`** nomme les clés JSON fautives ; `reason: unknown_field` = bug de l'app |
+| `payload_too_large` | **413** | la passerelle : corps > 64 MiB — vérifier le poids **avant** d'envoyer |
+| `storage_unavailable` | 503 | le stockage de fichiers n'a pas démarré → réessayer plus tard, ne pas perdre la saisie |
 
 > ⚠️ **`no_store_nearby` et `dish_unavailable_nearby` ne se traitent pas pareil.** Le premier dit que l'enseigne entière est hors de portée : proposer un autre plat de cette enseigne enverrait le client réessayer indéfiniment. Le second dit que l'enseigne livre bien ici — c'est ce plat-ci qui manque, et le reste de la carte est commandable.
 

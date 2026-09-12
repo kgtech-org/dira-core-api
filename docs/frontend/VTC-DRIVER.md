@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 2.1.0** · 10 septembre 2026
+> **Version 3.0.0** · 12 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -31,6 +31,7 @@ GET   /drivers/me                   → crée le profil au premier appel
 PATCH /drivers/me/online            { "online": true | false }
 GET   /drivers/me/vehicles
 POST  /drivers/me/vehicles          { class_key, brand, model, license_plate, color, seats, photo_url }
+                                    photo_url : téléverser d'abord — POST /api/v1/uploads?kind=vehicle (SOCLE, v3.0.0)
 PATCH /drivers/me/active-vehicle    { "vehicle_id": "…" }
 ```
 
@@ -208,9 +209,13 @@ comparaison que chaque application refait à sa façon.
 |---|---|
 | `POST /auth/login` · `/auth/refresh` · `/auth/logout` | la session |
 | `GET · PATCH /me` | le profil |
+| `POST /uploads?kind=vehicle` · `?kind=avatar` | les photos — **v3.0.0** : les courses n'avaient **aucune** porte d'envoi, c'est désormais celle du socle, pour tout le monde |
 | `GET /wallet` · `/wallet/transactions` | le portefeuille Dira |
 | `GET /me/notifications` · `POST /me/devices` | les notifications |
 | `GET /agents/{id}/ratings` | vos avis |
+
+- **Téléphone en E.164 avec le `+`** ; sans indicatif, `422` avec `fields: ["phone"]`. `account_suspended` (403) à la connexion : le dire tel quel.
+- **Un `422` nomme ses champs** (`fields`, `reason`) — voir la liste de contrôle du `README`.
 
 ---
 
