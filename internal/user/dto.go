@@ -10,6 +10,12 @@ type RegisterRequest struct {
 	Password string `json:"password" validate:"required,min=8,max=128"`
 	Role     string `json:"role,omitempty" validate:"omitempty,oneof=client driver merchant"`
 	Email    string `json:"email,omitempty" validate:"omitempty,email"`
+	// Prénom et nom, FACULTATIFS : `name` reste le nom d'affichage. Les
+	// applications les demandent à l'inscription (spécification projet
+	// §4.4) et la fiche les porte déjà (`PATCH /me`) ; les refuser ici
+	// obligeait à un second appel — ou, pire, à les taire.
+	FirstName string `json:"first_name,omitempty" validate:"omitempty,max=80"`
+	LastName  string `json:"last_name,omitempty" validate:"omitempty,max=80"`
 }
 
 // LoginRequest authenticates by phone (clients/drivers — the primary

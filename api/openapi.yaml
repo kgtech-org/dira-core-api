@@ -19,6 +19,21 @@ info:
     gardées par un secret partagé, et ne sont appelées par aucune application.
     Leur liste vit dans `internal/serviceapi/`, et un test refuse toute route
     qui s'y ajouterait sans être déclarée.
+
+
+    **Erreurs.** Une seule enveloppe : `{"error":{"code","message"}}`, le
+    message dans la langue de `Accept-Language`. Un `validation_failed`
+    (422) ajoute `fields` — les clés JSON en cause — et, quand la valeur
+    d'un champ n'est pas en cause, `reason` : `unknown_field` (une clé que
+    la route ne connaît pas : elle est REFUSÉE, pas ignorée, pour qu'une
+    application ne croie pas avoir enregistré ce qui a été jeté) ou
+    `invalid_json`.
+
+
+    **Téléphones.** Toujours en E.164 avec le `+` et l'indicatif ; les
+    séparateurs (espaces, points, tirets) sont tolérés et retirés. Le
+    numéro est l'identifiant du compte : « 22899000001 » sans `+` est
+    refusé (`fields: ["phone"]`), il ne devine pas un pays.
 servers:
   - url: /api/v1
 tags:
@@ -41,8 +56,30 @@ paths:
     post:
       tags: [auth]
       summary: Create an account
+      description: >-
+        `role` ∈ client | driver | merchant (défaut client ; `admin` refusé,
+        422). `first_name` / `last_name` sont facultatifs — `name` reste le
+        nom d'affichage. Un livreur reçoit son portefeuille de jetons, un
+        client son Dira Cash.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, name, password]
+              properties:
+                phone: {type: string, description: E.164 avec le +}
+                name: {type: string, maxLength: 120}
+                password: {type: string, minLength: 8, maxLength: 128}
+                role: {type: string, enum: [client, driver, merchant]}
+                email: {type: string, format: email}
+                first_name: {type: string, maxLength: 80}
+                last_name: {type: string, maxLength: 80}
       responses:
         "201": {description: Account created with a token pair}
+        "409": {description: phone_taken}
+        "422": {description: "validation_failed — `fields` names the keys"}
   /auth/login:
     post:
       tags: [auth]
