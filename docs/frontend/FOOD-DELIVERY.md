@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 3.7.1** · 13 septembre 2026
+> **Version 3.8.0** · 13 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -408,9 +408,19 @@ Ne réécrivez ni la conversion de coordonnées, ni le cache de tournée, ni le 
 
 ```
 available ──accept──▶ assigned ──1re collecte──▶ picking_up ──toutes collectes──▶ delivering ──complete──▶ delivered
+    │                    │                          │
+    └────────────────────┴──────────────────────────┴── commande annulée ──▶ cancelled
 ```
 
 L'application ne pilote pas ces états : ils découlent des actions. Elle les **lit** dans la réponse de chaque appel. Le passage par `picking_up` a lieu même pour une collecte unique, pour que les deux machines à états restent linéaires.
+
+> **`cancelled` — v3.8.0.** Une commande annulée (par le client, par le
+> refus du marchand, par l'exploitation) **ferme sa course** : elle quitte le
+> pot commun, l'appel en cours est clos (`call_closed`, `reason: cancelled`),
+> et si vous la portiez, elle disparaît de vos courses en cours — vous êtes
+> libre. Avant, elle restait `available` et l'accepter rendait « le statut a
+> déjà changé ». Une course `cancelled` ne s'accepte pas (`409`) ; l'écran
+> doit la retirer, pas réessayer.
 
 ---
 

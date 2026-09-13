@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 3.7.1** · 13 septembre 2026
+> **Version 3.8.0** · 13 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -101,8 +101,14 @@ WS wss://tracking-staging.dira.llc/track/agent
   "pickup": { "lng": 1.2255, "lat": 6.1319 },
   "dropoff": { "lng": 1.2545, "lat": 6.1656 },
   "distance_m": 15.8,
-  "meta": { "fare_xof": 2250, "class": "eco", "stops": 2, "distance_m": 6141 } }
+  "meta": { "fare_xof": 2250, "class": "eco", "stops": 2, "distance_m": 6141,
+            "rider_rating_avg": 4.6, "rider_rating_count": 12 } }
 ```
+
+> **La note du passager — v3.8.0.** `meta.rider_rating_avg` /
+> `rider_rating_count` sont ce que les chauffeurs précédents ont dit de ce
+> passager (§4 bis). **Absents** = jamais noté : n'affichez rien, pas un
+> « 0 ». Et jamais la moyenne sans le nombre.
 
 Puis, à la fermeture : `{ "type": "call_closed", "call_id": "…", "reason": "…" }`.
 
@@ -250,6 +256,34 @@ d'une livraison.
 **Ce que vous voyez et que le passager ne voit pas** : `commission_xof` et
 `driver_xof`. C'est votre part, et elle n'est servie qu'à vous.
 
+### 4 bis. Après la course — noter le passager, recevoir un pourboire (v3.8.0)
+
+```
+POST /rides/{id}/rating   { "score": 1..5, "comment": "…" }   // comment facultatif
+```
+
+**Vous notez le passager**, et c'est utile : un passager qui ne vient pas au
+point de rendez-vous, qui fait attendre, qui salit la voiture — c'est le
+chauffeur suivant qui le subit, sauf si vous l'avez dit. Votre note nourrit
+`rider_rating_avg` que les chauffeurs voient **à l'appel** (§3), et
+l'exploitation la lit. Une fois par course, dans les **7 jours** ; la
+réponse (`201`) rend la course avec `rating` = **votre** note. Le passager
+vous note aussi : vous ne lisez jamais sa note sur une course donnée, seule
+votre **moyenne** bouge (`rating_avg` / `rating_count` du profil, §2).
+
+**Le pourboire** ne se demande pas : le passager le laisse depuis son solde
+Dira, et vous recevez **`ride_tip_received`** (push, `{ type:
+"ride_tip_received", ride_id, amount_xof }`). La course porte alors
+`tip_xof` / `tipped_at`, et votre relevé une écriture **`tip`** (§6) —
+**sans commission**.
+
+| Refus | Quand |
+|---|---|
+| `409 ride_not_completed` | la course n'est pas terminée |
+| `409 already_rated` | déjà notée |
+| `409 rating_window_closed` | plus de 7 jours |
+| `403 forbidden` | pas votre course |
+
 ### Émettre sa position PENDANT la course — `mission_id` (v3.2.0)
 
 Les positions poussées sur le socket du suivi portent **`mission_id`** dès
@@ -329,7 +363,8 @@ GET /drivers/me/statement?limit=50
 >
 > Une course en **espèces** vous laisse l'argent en poche et vous fait devoir la
 > **commission** à la plateforme : `amount_xof` négatif. Une course payée en
-> ligne vous **crédite** votre part : positif.
+> ligne vous **crédite** votre part : positif. Un **pourboire** (`kind: "tip"`,
+> v3.8.0) est positif et entier — la plateforme n'en prend rien.
 >
 > `balance_xof` **négatif** = vous devez. Au-delà de `max_debt_xof`,
 > `over_limit` passe à `true` et **vous ne recevez plus aucun appel**.
@@ -353,7 +388,7 @@ comparaison que chaque application refait à sa façon.
 | `POST /uploads?kind=vehicle` · `?kind=avatar` | les photos — **v3.0.0** : les courses n'avaient **aucune** porte d'envoi, c'est désormais celle du socle, pour tout le monde |
 | `GET /wallet` · `/wallet/transactions` | le portefeuille Dira |
 | `GET /me/notifications` · `POST /me/devices` | les notifications |
-| `GET /agents/{id}/ratings` | vos avis |
+| `GET /agents/{id}/ratings` | vos avis — `id` = votre **profil** (`GET /drivers/me` → `id`) |
 
 - **Téléphone en E.164 avec le `+`** ; sans indicatif, `422` avec `fields: ["phone"]`. `account_suspended` (403) à la connexion : le dire tel quel.
 - **Durées de vie des jetons — v3.1.0.** Access token **15 min** (staging : **10 min**), refresh token **30 jours**, consommé à la rotation (le rejouer → 401 → revenir à la connexion). ⚠️ Le socket du suivi est ouvert avec l'access token et **vit plus longtemps que lui** : à l'échéance, le suivi le ferme avec le code **4401 `token_expired`** — rafraîchir (`POST /auth/refresh`) **puis** reconnecter, jamais reconnecter avec le même jeton. Poignée de main : **401** = rafraîchir et revenir ; **403** = ce rôle ne peut pas pousser de positions, ne pas réessayer. L'ancien access token reste valide jusqu'à son échéance après une rotation : un court chevauchement socket / REST est normal.
@@ -371,7 +406,8 @@ n'a rien derrière côté courses. La livraison a l'équivalent
 
 ### ❌ Les statistiques « depuis », « taux d'acceptation », « heures en ligne »
 
-`rides_count` existe. Le reste, non.
+`rides_count` existe — et compte réellement depuis la v3.8.0 (il restait à
+zéro). Le reste, non.
 
 ### ❌ Le partage de trajet et le bouton d'urgence
 

@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 3.7.1** · 13 septembre 2026
+> **Version 3.8.0** · 13 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -209,7 +209,7 @@ searching → accepted → approach → onboard → completed
 | Statut | Ce que voit le passager |
 |---|---|
 | `searching` | « nous cherchons un chauffeur » — `driver_id` est vide |
-| `accepted` | un chauffeur a pris la course |
+| `accepted` | un chauffeur a pris la course — `driver` dit qui (v3.8.0) |
 | `approach` | il roule vers le point de départ |
 | `onboard` | le passager est à bord |
 | `completed` | terminée |
@@ -228,6 +228,14 @@ aucune position — la distance est alors celle du devis et il n'y a rien à
 dessiner. Les trois champs sont absents avant la fin de la course et sur une
 course annulée. **Le prix ne dépend pas de ce tracé** : `fare_xof` vient du
 devis, le parcours est ce qu'on montre dans le détail et le reçu.
+
+**La carte du chauffeur (v3.8.0).** Dès `accepted`, `GET /rides/{id}` porte
+`driver` : `{ id, name, rating_avg, rating_count, rides_count,
+vehicle: { class_key, brand, model, license_plate, color } }` — qui vient,
+dans quelle voiture, avec quelle note. `id` est le **profil** du chauffeur,
+celui dont `GET /agents/{id}/ratings` liste les avis. Absente sur la liste
+`GET /rides` : c'est le détail qui la porte. Pas de téléphone : la mise en
+relation passe par la conversation (§7).
 
 `stop_index` est l'étape **atteinte** — zéro tant que le départ n'est pas fait.
 Chaque `stops[i].reached_at` porte l'instant.
@@ -289,6 +297,48 @@ modèle, mêmes règles, même paquet côté serveur.
 
 ---
 
+## 7 bis. Noter et remercier — après la course (v3.8.0)
+
+À `completed`, le passager reçoit **`ride_rate_prompt`** (push, données
+`{ type: "ride_rate_prompt", ride_id }`) : ouvrir l'écran de fin de course
+dessus, avec les deux gestes.
+
+```
+POST /rides/{id}/rating   { "score": 5, "comment": "…" }      // comment facultatif, 1000 car. max
+POST /rides/{id}/tip      { "amount_xof": 500 }               // 100 ≤ montant ≤ 50 000
+```
+
+Les deux rendent la **course** (`201`) : `rating` porte la note que **vous**
+venez de laisser, `tip_xof` / `tipped_at` le pourboire passé. Sur
+`GET /rides/{id}` et l'historique, `rating` absent = **pas encore notée** —
+c'est ce qui affiche « notez votre course » ; `tip_xof` absent = pas de
+pourboire.
+
+**La note** va au **profil du chauffeur** (`driver.rating_avg`,
+`driver.rating_count`, ses avis sur `GET /agents/{driver.id}/ratings`). Une
+fois par course, dans les **7 jours** qui suivent l'arrivée. Le chauffeur note
+aussi le passager — vous ne lisez jamais sa note, il ne lit jamais la vôtre :
+`rating` est toujours **la vôtre**.
+
+**Le pourboire** part du **solde Dira** (`GET /wallet`) et arrive au chauffeur
+**sans commission**, en une fois par course. Il est prévenu à l'instant.
+
+| Refus | Quand |
+|---|---|
+| `409 ride_not_completed` | la course n'est pas terminée — masquer les deux gestes avant |
+| `409 already_rated` · `409 already_tipped` | déjà fait : afficher ce qui a été laissé, pas le formulaire |
+| `409 rating_window_closed` · `409 tip_window_closed` | plus de 7 jours |
+| `409 no_driver` | course sans chauffeur (annulée en recherche) |
+| `402 insufficient_funds` | solde Dira insuffisant — **la course reste sans pourboire** : proposer la recharge (`POST /wallet/purchase`), puis réessayer |
+| `422` | note hors de 1..5, montant hors de 100..50 000 |
+
+> ⚠️ **Pas de pourboire en espèces ni par mobile money ici.** Un pourboire en
+> espèces se donne dans la voiture et ne regarde pas la plateforme ; un
+> pourboire par opérateur attendrait le rappel pour un geste qui doit être
+> immédiat. L'écran propose le solde Dira, et la recharge s'il manque.
+
+---
+
 ## 8. Ce que le SOCLE sert (sans `/vtc`)
 
 | | |
@@ -300,7 +350,7 @@ modèle, mêmes règles, même paquet côté serveur.
 | `GET /wallet` · `/wallet/transactions` · `POST /wallet/purchase` | le solde Dira |
 | `GET /payments/providers` · `POST /payments/initiate` · `GET /payments/{id}` | mobile money |
 | `GET /me/notifications` · `POST /me/devices` | les notifications |
-| `GET /agents/{id}/ratings` | les avis d'un chauffeur |
+| `GET /agents/{id}/ratings` | les avis d'un chauffeur — `id` = `driver.id` de la course (le profil) |
 
 - **Inscription** : `{ phone (E.164, avec le +), name, password, role: "client", email?, first_name?, last_name? }`. Sans `+`, `422` avec `fields: ["phone"]` ; `phone_taken` (409) → proposer la connexion ; `account_suspended` (403) → le dire tel quel.
 - **Un `422` nomme ses champs** (`fields`, `reason`) — voir la liste de contrôle du `README`.
@@ -312,11 +362,10 @@ modèle, mêmes règles, même paquet côté serveur.
 
 Écrit ici pour être découvert **maintenant**, pas à l'intégration.
 
-### ❌ Noter une course
+### ✅ Noter une course, laisser un pourboire — SERVIS (v3.8.0)
 
-Aucune route. Le dépôt d'une note existe pour la livraison
-(`/food/orders/{id}/rating`) et **pas encore pour les courses**. L'écran
-d'évaluation de fin de course n'a rien derrière.
+`POST /rides/{id}/rating` et `POST /rides/{id}/tip` — §7 bis. L'écran de fin
+de course a tout ce qu'il lui faut, y compris la carte du chauffeur (§5).
 
 ### ✅ Les adresses enregistrées « Maison » / « Travail » — SERVIES
 

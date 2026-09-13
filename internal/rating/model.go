@@ -24,6 +24,13 @@ const (
 	// qui l'a apporté. Un plat raté chez un bon restaurant se dit, et c'est
 	// ce que lit le client suivant devant la carte.
 	TargetDish = "dish"
+	// TargetRider note le PASSAGER d'une course, par son chauffeur. La note
+	// va dans les DEUX sens sur une course : un chauffeur qui attend un
+	// passager qui ne vient pas, ou qui salit la voiture, le dit — et c'est
+	// ce qui permet à l'exploitation de voir un passager à problèmes avant
+	// que trois chauffeurs ne l'aient subi. L'auteur est alors le chauffeur,
+	// et `client_id` porte SON compte : le champ nomme celui qui note.
+	TargetRider = "rider"
 )
 
 // Bornes de la note. Cinq crans, entiers : une demi-étoile n'ajoute pas
@@ -33,7 +40,9 @@ const (
 	MaxScore = 5
 )
 
-// Rating is one score left by a client on one target of one order.
+// Rating is one score left by a client on one target of one order — or, on a
+// ride, by the driver on the rider (`ClientID` is then the driver's account:
+// it names the AUTHOR).
 //
 // UNE note par (commande, cible) — l'unicité est portée par un index, pas par
 // une lecture préalable : deux envois simultanés passeraient tous les deux le
@@ -42,7 +51,7 @@ type Rating struct {
 	ID         primitive.ObjectID `bson:"_id,omitempty"`
 	OrderID    primitive.ObjectID `bson:"order_id"`
 	ClientID   primitive.ObjectID `bson:"client_id"`
-	TargetType string             `bson:"target_type"` // "driver" | "store"
+	TargetType string             `bson:"target_type"` // driver | store | dish | rider
 	TargetID   primitive.ObjectID `bson:"target_id"`
 	Score      int                `bson:"score"`
 	Comment    string             `bson:"comment,omitempty"`

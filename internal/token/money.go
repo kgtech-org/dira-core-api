@@ -195,7 +195,7 @@ func (s *Service) Pay(ctx context.Context, userID string, amountXOF int, refKind
 			if err := s.repo.InsertTransaction(txCtx, &Transaction{
 				WalletID:  wallet.ID,
 				Kind:      KindConsume,
-				Reason:    ReasonPayment,
+				Reason:    reasonOfPayment(refKind),
 				Amount:    mv.amount,
 				Unit:      UnitXOF,
 				RefID:     oid,
@@ -243,6 +243,15 @@ func (s *Service) Refund(ctx context.Context, userID string, amountXOF int, refK
 		refundKey(refKind, refID), nil)
 }
 
+// reasonOfPayment nomme un débit d'après ce qu'il paie : un pourboire n'est
+// pas un « paiement » au relevé du passager, même s'il en a la mécanique.
+func reasonOfPayment(refKind string) string {
+	if refKind == RefTip {
+		return ReasonTip
+	}
+	return ReasonPayment
+}
+
 // parseRef valide le couple (genre, identifiant) d'une référence.
 //
 // Les deux vont ENSEMBLE : un identifiant sans genre ne dit pas ce qu'il
@@ -257,9 +266,9 @@ func parseRef(refKind, refID string) (*primitive.ObjectID, error) {
 		return nil, apperr.Validation("a reference needs both a kind and an id")
 	}
 	switch refKind {
-	case RefOrder, RefRide:
+	case RefOrder, RefRide, RefTip:
 	default:
-		return nil, apperr.Validation("reference kind must be order or ride")
+		return nil, apperr.Validation("reference kind must be order, ride or tip")
 	}
 	oid, err := primitive.ObjectIDFromHex(refID)
 	if err != nil {

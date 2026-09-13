@@ -57,7 +57,7 @@ func (r *Repository) AggregateOf(ctx context.Context, targetType string, targetI
 
 // RecordTarget is one validated score a vertical asks the core to store.
 type RecordTarget struct {
-	TargetType string `json:"target_type" validate:"required,oneof=driver store dish"`
+	TargetType string `json:"target_type" validate:"required,oneof=driver store dish rider"`
 	TargetID   string `json:"target_id" validate:"required,len=24,hexadecimal"`
 	Score      int    `json:"score" validate:"required,min=1,max=5"`
 	Comment    string `json:"comment" validate:"omitempty,max=1000"`

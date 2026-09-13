@@ -540,6 +540,33 @@ func TestPayOrderStillDebitsDifferentOrders(t *testing.T) {
 	assert.Equal(t, 5_000, balance)
 }
 
+// Le pourboire d'une course est un SECOND mouvement sur la même référence :
+// sa propre clé (il ne se confond pas avec le paiement de la course, déjà
+// passé), sa propre unicité (rejoué, il ne débite pas deux fois), et son
+// propre motif au relevé — « pourboire », pas « paiement ».
+func TestATipIsItsOwnMovementOnAPaidRide(t *testing.T) {
+	repo := newFakeRepo()
+	svc, _, _, _ := newTestService(repo)
+	owner := seedMoneyWallet(t, repo, 10_000, 0)
+	rideID := primitive.NewObjectID().Hex()
+
+	require.NoError(t, svc.Pay(context.Background(), owner, 3_000, RefRide, rideID))
+	require.NoError(t, svc.Pay(context.Background(), owner, 500, RefTip, rideID), "le pourboire passe après la course")
+	require.NoError(t, svc.Pay(context.Background(), owner, 500, RefTip, rideID), "rejoué : succès, sans second débit")
+
+	oid, err := primitive.ObjectIDFromHex(owner)
+	require.NoError(t, err)
+	repo.mu.Lock()
+	balance := repo.wallets[repo.byOwner[oid]].BalanceXOF
+	var reasons []string
+	for _, tx := range repo.transactions {
+		reasons = append(reasons, tx.Reason+":"+tx.RefKind)
+	}
+	repo.mu.Unlock()
+	assert.Equal(t, 6_500, balance)
+	assert.Equal(t, []string{"payment:ride", "tip:tip"}, reasons)
+}
+
 func TestRefundOrderReplayDoesNotCreditTwice(t *testing.T) {
 	repo := newFakeRepo()
 	svc, _, _, _ := newTestService(repo)

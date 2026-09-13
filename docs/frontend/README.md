@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 3.7.1** · 13 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 3.8.0** · 13 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -142,6 +142,32 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 3.8.0 — 13 septembre 2026
+
+**Ajout rétrocompatible** — la note et le pourboire d'une course.
+
+- **Noter** : `POST /vtc/rides/{id}/rating` `{ score 1..5, comment? }`, la
+  même route pour les deux rôles — le passager note le chauffeur, le
+  chauffeur note le passager. Une fois par partie, dans les **7 jours** ;
+  chacun ne lit que **sa** note sur la course (`rating`). La moyenne du
+  chauffeur est sur son profil (`rating_avg` / `rating_count`, ses avis sur
+  `GET /agents/{id}/ratings`) ; celle du passager arrive aux chauffeurs
+  **à l'appel** (`meta.rider_rating_avg` / `rider_rating_count`). Le passager
+  reçoit `ride_rate_prompt` à l'arrivée (`VTC-CLIENT.md` §7 bis,
+  `VTC-DRIVER.md` §4 bis).
+- **Pourboire** : `POST /vtc/rides/{id}/tip` `{ amount_xof 100..50 000 }`,
+  du **solde Dira** du passager au grand livre du chauffeur, sans commission,
+  une fois par course ; `402 insufficient_funds` laisse la course sans
+  pourboire (recharger, réessayer). Le chauffeur est prévenu
+  (`ride_tip_received`) et le relevé porte une écriture `tip`
+  (`VTC-DRIVER.md` §6). `Ride` gagne `tip_xof` / `tipped_at`.
+- `GET /vtc/rides/{id}` sert au passager la **carte du chauffeur** (`driver` :
+  nom, note, voiture) une fois la course prise — elle manquait.
+- `rides_count` du profil chauffeur compte désormais réellement les courses
+  terminées (il restait à zéro).
+- **Livraison** : une course de commande **annulée** passe `cancelled` et
+  quitte le pot commun (`FOOD-DELIVERY.md` §11).
 
 ### 3.7.1 — 13 septembre 2026
 
