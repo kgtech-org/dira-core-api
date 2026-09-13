@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 3.7.0** · 13 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 3.7.1** · 13 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -142,6 +142,12 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 3.7.1 — 13 septembre 2026
+
+**Précision** — un livreur ne voit une course qu'une fois la commande
+prête (`409 order_not_ready` avant). La course existe dès la confirmation
+pour le direct, pas pour le pot commun (`FOOD-DELIVERY.md` §3).
 
 ### 3.7.0 — 13 septembre 2026
 

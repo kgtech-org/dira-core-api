@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 3.7.0** · 13 septembre 2026
+> **Version 3.7.1** · 13 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -85,6 +85,11 @@ Quand le marchand valide sa préparation, les **5 livreurs libres les plus proch
 > `409 delivery_expired`. Elle revient si le marchand relance (nouvel
 > appel). Une course vue dans la liste puis refusée à l'acceptation n'est
 > donc pas un bug : rafraîchir la liste.
+
+> **v3.7.1 — et elle n'y entre qu'une fois le repas prêt.** Une commande
+> en préparation n'est pas dans `/deliveries/available` ; l'accepter
+> répondrait `409 order_not_ready`. La liste ne montre que ce qui est à
+> prendre maintenant — pas ce qu'on attendrait au comptoir.
 
 L'appel arrive sur le socket de suivi **déjà ouvert**, en sens inverse des positions :
 
