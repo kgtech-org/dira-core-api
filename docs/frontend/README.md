@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 3.5.0** · 12 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 3.6.0** · 13 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -142,6 +142,17 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 3.6.0 — 13 septembre 2026
+
+**Ajout rétrocompatible** — la borne géographique d'une course.
+
+- Le départ et l'arrivée d'une course doivent être dans la **même ville
+  desservie**, à 50 km près de sa limite. Refus **au devis** :
+  `422 out_of_service_area` (ville la plus proche, distance, maximum dans le
+  message) · `422 different_cities`. `GET /vtc/cities` (public) donne les
+  villes (centre, rayon, tolérance) pour prévenir avant le devis
+  (`VTC-CLIENT.md` §3 bis).
 
 ### 3.5.0 — 12 septembre 2026
 
