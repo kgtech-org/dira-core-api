@@ -20,7 +20,33 @@
 
 > **Le jeton est le même partout.** Une seule connexion, au socle.
 
-Conventions communes : voir [`FOOD-CLIENT.md` §1](FOOD-CLIENT.md).
+---
+
+## 1 bis. Conventions
+
+| | |
+|---|---|
+| Auth | `Authorization: Bearer <access_token>` — le même jeton pour le socle et pour les courses |
+| Erreurs | `{ "error": { "code": "snake_case", "message": "…", "fields"?: ["…"], "reason"?: "…" } }` |
+| Pagination | `?limit=20&cursor=<id>` → `{ "items": [...], "next_cursor": "…" }` — `next_cursor` absent = dernière page |
+| Montants | **entiers**, en XOF (`…_xof`). Jamais de flottant. |
+| Dates | ISO 8601 UTC (`2026-09-13T10:41:23Z`). Une **date seule** s'écrit `YYYY-MM-DD`. |
+| Coordonnées | `[lng, lat]`, dans cet ordre, partout |
+| Langue | `Accept-Language: fr` ou `en` — les messages d'erreur et les notifications suivent |
+
+**Traitez le `code`, pas le message.** Le message est traduit et peut changer ;
+le code est le contrat.
+
+**Un `422 validation_failed` nomme ses champs.** `fields` liste les **clés
+JSON** en cause : soulignez **ces** cases, pas une bannière sous tout le
+formulaire. `reason` précise, quand ce n'est pas la valeur d'un champ :
+`unknown_field` (une clé que la route ne connaît pas — **refusée, pas
+ignorée**, son nom est dans `fields` ; c'est un bug de l'application) ou
+`invalid_json`.
+
+**`401`** = jeton expiré ou invalide : `POST /auth/refresh`, puis rejouer la
+requête ; si le refresh échoue, revenir à la connexion. **`403`** = ce rôle,
+ou cette personne, n'a pas accès — ne pas réessayer.
 
 ---
 
@@ -248,8 +274,21 @@ accepted → picking_up → in_transit → completed
 > **v4.0.0 — le vocabulaire commun.** `approach` est devenu **`picking_up`**
 > (« je roule vers le passager »), `onboard` est devenu **`in_transit`**
 > (« il est à bord ») : ce sont les mots d'une course de livraison aussi, et
-> le `PATCH` ne prend plus les anciens (`422`). Voir le `README`, « UN
-> vocabulaire d'état ».
+> le `PATCH` ne prend plus les anciens (`422`).
+
+```
+searching → accepted → picking_up → in_transit → completed
+                                            ↘ cancelled   (tout état avant completed)
+```
+
+| Statut | Ce que ça veut dire | Course de livraison | Course VTC |
+|---|---|---|---|
+| `searching` | on cherche quelqu'un | la course attend un livreur — proposée dès que le repas est **prêt** | on appelle des chauffeurs |
+| `accepted` | quelqu'un a pris l'opération | un livreur l'a acceptée, il part vers le restaurant | un chauffeur l'a prise |
+| `picking_up` | il est au point de départ | la **première collecte** est faite, il en reste | il **roule vers le passager** |
+| `in_transit` | le colis / le passager est à bord | toutes les collectes faites, en route vers le client | le passager est monté |
+| `completed` | livré / déposé | remise au client | passager déposé |
+| `cancelled` | fini sans être fait | commande annulée (client, marchand, exploitation) | par le passager, le chauffeur ou la plateforme |
 
 > ⚠️ **Une course `in_transit` ne s'annule plus.** Le passager est dans la
 > voiture ; l'interrompre demanderait de décider où on le dépose. Le bouton
@@ -271,8 +310,34 @@ et, si votre écran est ouvert, rien d'autre ne vous le dira : **relisez
 `GET /rides/{id}` à chaque push**, et à chaque retour au premier plan.
 `cancelled` = fermer l'écran de course, vous êtes de nouveau appelable.
 Une action sur une course annulée répond `409 invalid_transition` :
-c'est le signal de relire, pas de réessayer. Flux complet : `README`,
-« Temps réel ».
+c'est le signal de relire, pas de réessayer.
+
+**Le flux, dans l'ordre — un signal, un `GET` :**
+
+1. **À l'ouverture d'un écran** : `GET /rides/{id}`. C'est l'état de référence —
+   jamais ce que dit le socket.
+2. **Socket ouvert** : sur une trame d'état, comparez à ce que vous affichez ;
+   si ça diffère, `GET /rides/{id}` et redessinez. La trame porte le statut : vous
+   pouvez changer le badge **avant** la réponse. Une trame qui « recule »
+   (un `from` qui n'est pas votre état) signale une trame manquée — relisez.
+3. **Push reçu** (application en arrière-plan) : `data.type` dit quoi ouvrir,
+   l'identifiant sur quoi, `data.status` ce qui a changé. Même geste : ouvrir
+   l'écran, `GET /rides/{id}`.
+4. **Reconnexion** du socket (back-off 1 s → 2 s → 4 s … 30 s) :
+   `GET /rides/{id}` **immédiatement**, avant d'appliquer la moindre trame — tout
+   ce qui s'est passé pendant la coupure n'est que dans la base.
+5. **Sans socket** (refusé, réseau captif, batterie) : **sondez** `GET /rides/{id}`
+   toutes les **10 s** tant que l'opération n'est ni `completed` ni
+   `cancelled`, en comparant `updated_at` ; passez à 30 s au bout de cinq
+   minutes sans changement. Ne sondez **jamais** une opération terminée.
+6. **Retour au premier plan** : `GET /rides?limit=5` et repérer une course
+   `accepted`, `picking_up` ou `in_transit` qui est la vôtre — c'est ce qui
+   remet l'écran de course en place après un redémarrage de l'application.
+
+**Ce qu'aucun canal ne garantit** : l'ordre, l'unicité, la livraison. Deux
+trames pour le même passage (socket **et** push) sont normales — le second
+`GET` répond la même chose. Une application qui ferait du socket sa source
+de vérité verrait, un jour, une course « en route » qu'un `GET` dit terminée.
 
 ### 4 bis. Après la course — noter le passager, recevoir un pourboire (v3.8.0)
 
@@ -410,7 +475,7 @@ comparaison que chaque application refait à sa façon.
 
 - **Téléphone en E.164 avec le `+`** ; sans indicatif, `422` avec `fields: ["phone"]`. `account_suspended` (403) à la connexion : le dire tel quel.
 - **Durées de vie des jetons — v3.1.0.** Access token **15 min** (staging : **10 min**), refresh token **30 jours**, consommé à la rotation (le rejouer → 401 → revenir à la connexion). ⚠️ Le socket du suivi est ouvert avec l'access token et **vit plus longtemps que lui** : à l'échéance, le suivi le ferme avec le code **4401 `token_expired`** — rafraîchir (`POST /auth/refresh`) **puis** reconnecter, jamais reconnecter avec le même jeton. Poignée de main : **401** = rafraîchir et revenir ; **403** = ce rôle ne peut pas pousser de positions, ne pas réessayer. L'ancien access token reste valide jusqu'à son échéance après une rotation : un court chevauchement socket / REST est normal.
-- **Un `422` nomme ses champs** (`fields`, `reason`) — voir la liste de contrôle du `README`.
+- **Un `422` nomme ses champs** (`fields`, `reason`) — §1 bis.
 
 ---
 

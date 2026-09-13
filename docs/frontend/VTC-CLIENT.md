@@ -13,8 +13,35 @@
 > | tout le reste de ce document | **courses** | `…/api/v1/vtc/…` |
 >
 > Le **jeton est le même** des deux côtés : même secret, même session. On ne se
-> connecte pas deux fois. Conventions communes (erreurs, pagination, montants,
-> dates) : voir [`FOOD-CLIENT.md` §1](FOOD-CLIENT.md).
+> connecte pas deux fois.
+
+---
+
+## 0. Conventions
+
+| | |
+|---|---|
+| Auth | `Authorization: Bearer <access_token>` — le même jeton pour le socle et pour les courses |
+| Erreurs | `{ "error": { "code": "snake_case", "message": "…", "fields"?: ["…"], "reason"?: "…" } }` |
+| Pagination | `?limit=20&cursor=<id>` → `{ "items": [...], "next_cursor": "…" }` — `next_cursor` absent = dernière page |
+| Montants | **entiers**, en XOF (`…_xof`). Jamais de flottant. |
+| Dates | ISO 8601 UTC (`2026-09-13T10:41:23Z`). Une **date seule** s'écrit `YYYY-MM-DD`. |
+| Coordonnées | `[lng, lat]`, dans cet ordre, partout |
+| Langue | `Accept-Language: fr` ou `en` — les messages d'erreur et les notifications suivent |
+
+**Traitez le `code`, pas le message.** Le message est traduit et peut changer ;
+le code est le contrat.
+
+**Un `422 validation_failed` nomme ses champs.** `fields` liste les **clés
+JSON** en cause : soulignez **ces** cases, pas une bannière sous tout le
+formulaire. `reason` précise, quand ce n'est pas la valeur d'un champ :
+`unknown_field` (une clé que la route ne connaît pas — **refusée, pas
+ignorée**, son nom est dans `fields` ; c'est un bug de l'application) ou
+`invalid_json`.
+
+**`401`** = jeton expiré ou invalide : `POST /auth/refresh`, puis rejouer la
+requête ; si le refresh échoue, revenir à la connexion. **`403`** = ce rôle,
+ou cette personne, n'a pas accès — ne pas réessayer.
 
 ---
 
@@ -207,10 +234,39 @@ searching → accepted → picking_up → in_transit → completed
 ```
 
 > **v4.0.0 — le vocabulaire commun.** Ce sont les **mêmes mots** que pour une
-> course de livraison (`Delivery`) et que la fin d'une commande de repas
-> (`Order`) : un seul écran d'état pour toute l'application. `approach` est
-> devenu `picking_up`, `onboard` est devenu `in_transit` — voir le `README`,
-> « UN vocabulaire d'état ».
+> course de livraison et que la fin d'une commande de repas : une application
+> qui suit les deux n'a qu'un seul écran d'état à écrire.
+
+```
+searching → accepted → picking_up → in_transit → completed
+                                            ↘ cancelled   (tout état avant completed)
+```
+
+| Statut | Ce que ça veut dire | Course de livraison | Course VTC |
+|---|---|---|---|
+| `searching` | on cherche quelqu'un | la course attend un livreur — proposée dès que le repas est **prêt** | on appelle des chauffeurs |
+| `accepted` | quelqu'un a pris l'opération | un livreur l'a acceptée, il part vers le restaurant | un chauffeur l'a prise |
+| `picking_up` | il est au point de départ | la **première collecte** est faite, il en reste | il **roule vers le passager** |
+| `in_transit` | le colis / le passager est à bord | toutes les collectes faites, en route vers le client | le passager est monté |
+| `completed` | livré / déposé | remise au client | passager déposé |
+| `cancelled` | fini sans être fait | commande annulée (client, marchand, exploitation) | par le passager, le chauffeur ou la plateforme |
+
+La **commande de repas** garde ce qui n'existe que pour un repas —
+`pending_payment → paid → preparing → ready` — puis reprend **mot pour mot** le
+cycle de sa course : `accepted → picking_up → in_transit → completed`.
+`ready` côté commande = `searching` côté course.
+
+Ce qui a été **renommé** en v4.0.0 (les anciens mots n'existent plus dans
+aucune réponse, et sont refusés en entrée) :
+
+| Avant | Après | Où |
+|---|---|---|
+| `available` | `searching` | course de livraison |
+| `assigned` | `accepted` | course de livraison, commande |
+| `delivering` | `in_transit` | course de livraison, commande |
+| `delivered` | `completed` | course de livraison, commande |
+| `approach` | `picking_up` | course VTC |
+| `onboard` | `in_transit` | course VTC |
 
 | Statut | Ce que voit le passager |
 |---|---|
@@ -280,8 +336,25 @@ WS wss://tracking-staging.dira.llc/track/subscribe/{ride_id}
 { "type": "status",   "status": "picking_up", "ts": 1757… }
 ```
 
-L'identifiant de course sert d'identifiant de mission. Reconnexion + repli REST
-comme pour la livraison : voir [`FOOD-CLIENT.md` §5](FOOD-CLIENT.md).
+L'identifiant de course sert d'identifiant de mission (`mission_id` =
+`ride_id`). Le jeton d'accès passe dans l'URL (`?token=`) — un WebSocket de
+navigateur ne porte pas d'en-tête.
+
+- **Reconnexion avec back-off** (1 s, 2 s, 4 s … 30 s) : le socket tombe
+  quand le téléphone change de réseau ; ne laissez pas une voiture figée sur
+  la carte.
+- **Interpolation** entre deux positions : une position toutes les quelques
+  secondes, un marqueur qui glisse — pas qui saute.
+- **Repli REST** : sans socket, `GET /rides/{id}` toutes les 10 s donne
+  l'état ; la position, elle, ne se lit que sur le socket.
+- **Échéance du jeton** : le suivi ferme le socket avec le code **4401
+  `token_expired`** — rafraîchir (`POST /auth/refresh`) **puis** reconnecter,
+  jamais reconnecter avec le même jeton.
+- Poignée de main : **401** = rafraîchir et revenir ; **403** = ce rôle ne
+  peut pas suivre cette course, ne pas réessayer.
+
+⚠️ **La base d'URL du suivi est distincte de celle de l'API** : deux variables
+d'environnement.
 
 ### Suivre l'état — socket, push, et `GET` (v4.0.0)
 
@@ -307,10 +380,29 @@ avant la réponse.
 À réception : ouvrir la course, `GET /rides/{id}`. Une trame reçue deux fois
 (socket **et** push) est normale — le second `GET` répond la même chose.
 
-**Sans socket** : sondez `GET /rides/{id}` toutes les **10 s** tant que la
-course n'est ni `completed` ni `cancelled`, en comparant `updated_at`.
-Jamais sur une course terminée. Le flux complet, commun à toutes les
-applications, est dans le `README`, « Temps réel ».
+**Le flux, dans l'ordre — un signal, un `GET` :**
+
+1. **À l'ouverture d'un écran** : `GET /rides/{id}`. C'est l'état de référence —
+   jamais ce que dit le socket.
+2. **Socket ouvert** : sur une trame d'état, comparez à ce que vous affichez ;
+   si ça diffère, `GET /rides/{id}` et redessinez. La trame porte le statut : vous
+   pouvez changer le badge **avant** la réponse. Une trame qui « recule »
+   (un `from` qui n'est pas votre état) signale une trame manquée — relisez.
+3. **Push reçu** (application en arrière-plan) : `data.type` dit quoi ouvrir,
+   l'identifiant sur quoi, `data.status` ce qui a changé. Même geste : ouvrir
+   l'écran, `GET /rides/{id}`.
+4. **Reconnexion** du socket (back-off 1 s → 2 s → 4 s … 30 s) :
+   `GET /rides/{id}` **immédiatement**, avant d'appliquer la moindre trame — tout
+   ce qui s'est passé pendant la coupure n'est que dans la base.
+5. **Sans socket** (refusé, réseau captif, batterie) : **sondez** `GET /rides/{id}`
+   toutes les **10 s** tant que l'opération n'est ni `completed` ni
+   `cancelled`, en comparant `updated_at` ; passez à 30 s au bout de cinq
+   minutes sans changement. Ne sondez **jamais** une opération terminée.
+
+**Ce qu'aucun canal ne garantit** : l'ordre, l'unicité, la livraison. Deux
+trames pour le même passage (socket **et** push) sont normales — le second
+`GET` répond la même chose. Une application qui ferait du socket sa source
+de vérité verrait, un jour, une course « en route » qu'un `GET` dit terminée.
 
 ---
 
@@ -322,8 +414,10 @@ POST /rides/{id}/messages          { "body": "je suis au portail bleu" }
 POST /rides/{id}/messages/read
 ```
 
-**Exactement la même mécanique que la conversation de commande** — même
-modèle, mêmes règles, même paquet côté serveur.
+Une conversation par course, entre ses deux parties, sans téléphone échangé.
+`items` sont les messages du plus ancien au plus récent (`from`: `client` |
+`driver`, `body`, `created_at`) ; `unread` compte ceux que vous n'avez pas
+encore marqués lus. `body` : 1 à 1000 caractères.
 
 | Refus | Quand |
 |---|---|
@@ -393,7 +487,7 @@ aussi le passager — vous ne lisez jamais sa note, il ne lit jamais la vôtre :
 | `GET /agents/{id}/ratings` | les avis d'un chauffeur — `id` = `driver.id` de la course (le profil) |
 
 - **Inscription** : `{ phone (E.164, avec le +), name, password, role: "client", email?, first_name?, last_name? }`. Sans `+`, `422` avec `fields: ["phone"]` ; `phone_taken` (409) → proposer la connexion ; `account_suspended` (403) → le dire tel quel.
-- **Un `422` nomme ses champs** (`fields`, `reason`) — voir la liste de contrôle du `README`.
+- **Un `422` nomme ses champs** (`fields`, `reason`) — §0.
 - `GET /wallet` répond toujours `200` à un client : le Dira Cash s'ouvre à la première lecture.
 
 ---

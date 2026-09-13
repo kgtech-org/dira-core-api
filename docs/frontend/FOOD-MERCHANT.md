@@ -36,7 +36,31 @@ Une **enseigne** (`merchant`) possède plusieurs **points de vente** (`store`). 
 
 Un sélecteur de boutique en tête d'écran fixe le point de vente courant : tableau de bord, portefeuille et carte en dépendent tous.
 
-Conventions communes (erreurs, pagination, montants, dates) : voir [`FOOD-CLIENT.md` §1](FOOD-CLIENT.md).
+### Conventions
+
+| | |
+|---|---|
+| Auth | `Authorization: Bearer <access_token>` — le même jeton pour le socle et pour la livraison |
+| Erreurs | `{ "error": { "code": "snake_case", "message": "…", "fields"?: ["…"], "reason"?: "…" } }` |
+| Pagination | `?limit=20&cursor=<id>` → `{ "items": [...], "next_cursor": "…" }` — `next_cursor` absent = dernière page |
+| Montants | **entiers**, en XOF (`…_xof`). Jamais de flottant. |
+| Dates | ISO 8601 UTC (`2026-09-13T10:41:23Z`). Une **date seule** s'écrit `YYYY-MM-DD`. |
+| Coordonnées | `[lng, lat]`, dans cet ordre, partout |
+| Langue | `Accept-Language: fr` ou `en` — les messages d'erreur et les notifications suivent |
+
+**Traitez le `code`, pas le message.** Le message est traduit et peut changer ;
+le code est le contrat.
+
+**Un `422 validation_failed` nomme ses champs.** `fields` liste les **clés
+JSON** en cause : soulignez **ces** cases, pas une bannière sous tout le
+formulaire. `reason` précise, quand ce n'est pas la valeur d'un champ :
+`unknown_field` (une clé que la route ne connaît pas — **refusée, pas
+ignorée**, son nom est dans `fields` ; c'est un bug de l'application) ou
+`invalid_json`.
+
+**`401`** = jeton expiré ou invalide : `POST /auth/refresh`, puis rejouer la
+requête ; si le refresh échoue, revenir à la connexion. **`403`** = ce rôle,
+ou cette personne, n'a pas accès — ne pas réessayer.
 
 ---
 
@@ -183,8 +207,50 @@ nouvelle est en tête) ; `order_status` → relire la commande, ou la liste de
 l'onglet. **Une annulation par le client arrive ici aussi**
 (`status: cancelled`) — avant la v4.0.0, elle ne se voyait qu'en
 rafraîchissant. Le push `merchant_new_order` (ci-dessous) fait la même chose
-quand l'application est fermée. Sans socket : sonder la liste de l'onglet
-« Nouvelle » toutes les **10 s**. Flux complet : `README`, « Temps réel ».
+quand l'application est fermée.
+
+**Le flux, dans l'ordre — un signal, un `GET` :**
+
+1. **À l'ouverture d'un écran** : `GET /stores/{id}/orders/{order_id}`. C'est l'état de référence —
+   jamais ce que dit le socket.
+2. **Socket ouvert** : sur une trame d'état, comparez à ce que vous affichez ;
+   si ça diffère, `GET /stores/{id}/orders/{order_id}` et redessinez. La trame porte le statut : vous
+   pouvez changer le badge **avant** la réponse. Une trame qui « recule »
+   (un `from` qui n'est pas votre état) signale une trame manquée — relisez.
+3. **Push reçu** (application en arrière-plan) : `data.type` dit quoi ouvrir,
+   l'identifiant sur quoi, `data.status` ce qui a changé. Même geste : ouvrir
+   l'écran, `GET /stores/{id}/orders/{order_id}`.
+4. **Reconnexion** du socket (back-off 1 s → 2 s → 4 s … 30 s) :
+   `GET /stores/{id}/orders/{order_id}` **immédiatement**, avant d'appliquer la moindre trame — tout
+   ce qui s'est passé pendant la coupure n'est que dans la base.
+5. **Sans socket** (refusé, réseau captif, batterie) : **sondez** `GET /stores/{id}/orders/{order_id}`
+   toutes les **10 s** tant que l'opération n'est ni `completed` ni
+   `cancelled`, en comparant `updated_at` ; passez à 30 s au bout de cinq
+   minutes sans changement. Ne sondez **jamais** une opération terminée.
+6. **La liste** : `order_created` → `GET /stores/{id}/orders?status=paid`
+   (la nouvelle est en tête) plutôt qu'une commande à la fois ; le socket
+   dit « il y a du nouveau », la liste dit quoi.
+
+**Ce qu'aucun canal ne garantit** : l'ordre, l'unicité, la livraison. Deux
+trames pour le même passage (socket **et** push) sont normales — le second
+`GET` répond la même chose. Une application qui ferait du socket sa source
+de vérité verrait, un jour, une course « en route » qu'un `GET` dit terminée.
+
+**Les neuf statuts d'une commande**, dans l'ordre — les quatre derniers sont
+ceux de la course de livraison, mot pour mot, et ceux d'une course VTC :
+
+| Statut | Qui l'écrit | Ce que le marchand fait |
+|---|---|---|
+| `pending_payment` | le paiement | rien — n'est pas encore une commande |
+| `paid` | le paiement | **la préparer** (`preparing`) ou la refuser |
+| `preparing` | vous | la finir (`ready`) |
+| `ready` | vous | attendre le livreur — la course est proposée aux livreurs à cet instant |
+| `accepted` | le livreur | un livreur arrive |
+| `picking_up` | le livreur | il retire |
+| `in_transit` | le livreur | en route vers le client |
+| `completed` | le livreur | livrée — la vente est acquise |
+| `cancelled` | le client, vous (refus), l'exploitation | rien à préparer, ou arrêter |
+
 
 ### ⚠️ Aucun livreur en 15 minutes : la course expire, le marchand relance — v3.7.0
 

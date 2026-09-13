@@ -43,7 +43,33 @@ Ce parcours parle à **quatre serveurs** depuis la v2.0.0 — le socle et la liv
 
 > **dira-maps ne fournit aucune vue de carte.** Le fond de carte vient du composant natif du téléphone. Passer par une `WebView` est à proscrire.
 
-Conventions communes (erreurs, pagination, montants, dates) : voir [`FOOD-CLIENT.md` §1](FOOD-CLIENT.md).
+---
+
+## 1 bis. Conventions
+
+| | |
+|---|---|
+| Auth | `Authorization: Bearer <access_token>` — le même jeton pour le socle et pour la livraison |
+| Erreurs | `{ "error": { "code": "snake_case", "message": "…", "fields"?: ["…"], "reason"?: "…" } }` |
+| Pagination | `?limit=20&cursor=<id>` → `{ "items": [...], "next_cursor": "…" }` — `next_cursor` absent = dernière page |
+| Montants | **entiers**, en XOF (`…_xof`). Jamais de flottant. |
+| Dates | ISO 8601 UTC (`2026-09-13T10:41:23Z`). Une **date seule** s'écrit `YYYY-MM-DD`. |
+| Coordonnées | `[lng, lat]`, dans cet ordre, partout |
+| Langue | `Accept-Language: fr` ou `en` — les messages d'erreur et les notifications suivent |
+
+**Traitez le `code`, pas le message.** Le message est traduit et peut changer ;
+le code est le contrat.
+
+**Un `422 validation_failed` nomme ses champs.** `fields` liste les **clés
+JSON** en cause : soulignez **ces** cases, pas une bannière sous tout le
+formulaire. `reason` précise, quand ce n'est pas la valeur d'un champ :
+`unknown_field` (une clé que la route ne connaît pas — **refusée, pas
+ignorée**, son nom est dans `fields` ; c'est un bug de l'application) ou
+`invalid_json`.
+
+**`401`** = jeton expiré ou invalide : `POST /auth/refresh`, puis rejouer la
+requête ; si le refresh échoue, revenir à la connexion. **`403`** = ce rôle,
+ou cette personne, n'a pas accès — ne pas réessayer.
 
 ---
 
@@ -423,7 +449,16 @@ searching ──accept──▶ accepted ──1re collecte──▶ picking_up 
 > `assigned` → **`accepted`**, `delivering` → **`in_transit`**, `delivered` →
 > **`completed`** : les mots d'une course VTC, et ceux de la commande elle-même
 > à partir de `accepted`. La route `/deliveries/available` garde son nom — c'est
-> une liste, pas un état. Tableau complet : `README`, « UN vocabulaire d'état ».
+> une liste, pas un état.
+
+| Statut | Ce que ça veut dire | Pour vous | La commande dit |
+|---|---|---|---|
+| `searching` | on cherche un livreur | dans `/deliveries/available` une fois le repas prêt ; appelée par vagues | `ready` |
+| `accepted` | vous l'avez prise | partez au restaurant | `accepted` |
+| `picking_up` | première collecte faite, il en reste | les suivantes, dans l'ordre | `picking_up` |
+| `in_transit` | tout est retiré | en route vers le client ; `complete` est possible | `in_transit` |
+| `completed` | remis au client | terminé — la distance rémunère | `completed` |
+| `cancelled` | commande annulée sous la course | fermer, vous êtes libre | `cancelled` |
 
 L'application ne pilote pas ces états : ils découlent des actions. Elle les **lit** dans la réponse de chaque appel. Le passage par `picking_up` a lieu même pour une collecte unique, pour que les deux machines à états restent linéaires.
 
@@ -443,7 +478,33 @@ de deux façons, et il faut tenir les deux :
 Dans les deux cas : **`GET /deliveries/{id}`**, et si elle est `cancelled`,
 fermer la course — vous êtes libre, aucune capacité n'est retenue. Une
 collecte ou une remise sur une course annulée répond `409` : relire, pas
-réessayer. Flux complet : `README`, « Temps réel ».
+réessayer.
+
+**Le flux, dans l'ordre — un signal, un `GET` :**
+
+1. **À l'ouverture d'un écran** : `GET /deliveries/{id}`. C'est l'état de référence —
+   jamais ce que dit le socket.
+2. **Socket ouvert** : sur une trame d'état, comparez à ce que vous affichez ;
+   si ça diffère, `GET /deliveries/{id}` et redessinez. La trame porte le statut : vous
+   pouvez changer le badge **avant** la réponse. Une trame qui « recule »
+   (un `from` qui n'est pas votre état) signale une trame manquée — relisez.
+3. **Push reçu** (application en arrière-plan) : `data.type` dit quoi ouvrir,
+   l'identifiant sur quoi, `data.status` ce qui a changé. Même geste : ouvrir
+   l'écran, `GET /deliveries/{id}`.
+4. **Reconnexion** du socket (back-off 1 s → 2 s → 4 s … 30 s) :
+   `GET /deliveries/{id}` **immédiatement**, avant d'appliquer la moindre trame — tout
+   ce qui s'est passé pendant la coupure n'est que dans la base.
+5. **Sans socket** (refusé, réseau captif, batterie) : **sondez** `GET /deliveries/{id}`
+   toutes les **10 s** tant que l'opération n'est ni `completed` ni
+   `cancelled`, en comparant `updated_at` ; passez à 30 s au bout de cinq
+   minutes sans changement. Ne sondez **jamais** une opération terminée.
+6. **Retour au premier plan** : relire vos courses en cours — c'est ce qui
+   remet l'écran de course en place après un redémarrage de l'application.
+
+**Ce qu'aucun canal ne garantit** : l'ordre, l'unicité, la livraison. Deux
+trames pour le même passage (socket **et** push) sont normales — le second
+`GET` répond la même chose. Une application qui ferait du socket sa source
+de vérité verrait, un jour, une course « en route » qu'un `GET` dit terminée.
 
 > **`cancelled` — v3.8.0.** Une commande annulée (par le client, par le
 > refus du marchand, par l'exploitation) **ferme sa course** : elle quitte le
