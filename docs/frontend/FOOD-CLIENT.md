@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 3.8.0** · 13 septembre 2026
+> **Version 4.0.0** · 13 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -237,9 +237,29 @@ POST /orders/{id}/cancel
 Les neuf statuts :
 
 ```
-pending_payment → paid → preparing → ready → assigned → picking_up → delivering → delivered
-                                     (tout état avant delivering → cancelled)
+pending_payment → paid → preparing → ready → accepted → picking_up → in_transit → completed
+                                     (tout état avant in_transit → cancelled)
 ```
+
+> **v4.0.0 — le vocabulaire commun.** De `accepted` à `completed`, la
+> commande reprend **mot pour mot** le cycle de sa course de livraison — et
+> celui d'une course VTC : `accepted → picking_up → in_transit → completed`.
+> `assigned`, `delivering`, `delivered` n'existent plus (un filtre
+> `?status=delivered` répond `422`). Un seul écran d'état pour les repas et
+> les courses ; le tableau complet est dans le `README`, « UN vocabulaire
+> d'état ».
+
+| Statut | Ce que voit le client |
+|---|---|
+| `pending_payment` | en attente du paiement mobile money |
+| `paid` | payée, le restaurant est prévenu |
+| `preparing` | en préparation |
+| `ready` | prête — on cherche un livreur |
+| `accepted` | un livreur a pris la course, il part au restaurant |
+| `picking_up` | il retire les plats (plusieurs boutiques : collecte en cours) |
+| `in_transit` | en route vers vous |
+| `completed` | livrée — noter (§7) |
+| `cancelled` | annulée — remboursée si elle était payée |
 
 L'annulation est possible jusqu'à `picking_up` inclus. Au-delà → `409 cannot_cancel`.
 
@@ -259,10 +279,15 @@ wss://tracking-staging.dira.llc/track/subscribe/{delivery_id}
 { "type": "hello",    "mission_id": "…" }
 { "type": "position", "vehicle_id": "…", "vehicle_type": "moto", "plate": "…",
   "lng": 1.2255, "lat": 6.1319, "heading": 122.5, "speed": 8.3, "ts": 1757… }
-{ "type": "status",   "status": "completed", "ts": 1757… }
+{ "type": "status",   "status": "in_transit", "ts": 1757… }
 ```
 
 > **`mission_id` du suivi = `delivery_id` de l'API.** C'est la clé de jointure.
+
+La trame `status` arrive à **chaque changement d'état de la course**
+(`accepted`, `picking_up`, `in_transit`, `completed`, `cancelled`) — les mots
+du vocabulaire commun. Elle ne porte que le mot : relisez `GET /orders/{id}`
+(la commande porte le même état) et redessinez.
 
 Attentes : reconnexion avec back-off, **interpolation** entre deux positions, et repli sur `GET /deliveries/{id}` si le socket est indisponible.
 
@@ -285,7 +310,7 @@ POST /orders/{id}/messages/read
 ```
 
 - **Une bulle ne porte que `from`.** Ni identifiant, ni nom, ni téléphone : l'API n'en rend aucun, et il ne faut pas en inventer.
-- Le bouton n'apparaît **qu'à partir de `assigned`**. Avant → `409 no_driver_yet`.
+- Le bouton n'apparaît **qu'à partir de `accepted`**. Avant → `409 no_driver_yet`.
 - La conversation se ferme **2 h après la livraison** → `409 conversation_closed`. **Désactivez la saisie sur ce refus** ; l'historique reste lisible.
 - L'accusé de lecture part **après** l'affichage : marquer lu sans montrer effacerait un non-lu que personne n'a vu.
 
@@ -331,6 +356,27 @@ wss://api-staging.dira.llc/api/v1/food/ws/orders?token=<access_token>
 - La trame de message **porte le texte** : affichez-la sans relire la conversation.
 - ⚠️ **Deux sockets, deux services** : celui-ci (API) et celui du suivi. Cycles de vie indépendants, bases d'URL distinctes. Ne les factorisez pas sous prétexte que ce sont deux WebSockets.
 - Diffusion **au mieux**, rien n'est rejoué : relisez la ressource REST à la reconnexion.
+
+### Détecter, relire — le flux (v4.0.0)
+
+`order_status` ne porte **pas** la commande : `from` et `status`, rien
+d'autre. Le geste est toujours le même — **un signal, un `GET`** :
+
+1. écran ouvert → `GET /orders/{id}` (ou la liste) : l'état de référence ;
+2. `order_status` reçu → si `status` ≠ ce que vous affichez, `GET` et
+   redessinez ; si `from` ≠ votre état, une trame vous a échappé — `GET` ;
+3. **push** reçu, application en arrière-plan (`data.type: "order_status"`,
+   `order_id`, **`status`**) → ouvrir la commande, `GET` ;
+4. reconnexion du socket → `GET` **avant** d'appliquer quoi que ce soit ;
+5. **sans socket** : sonder la commande toutes les **10 s** tant qu'elle
+   n'est ni `completed` ni `cancelled` (`updated_at`), 30 s au bout de cinq
+   minutes sans changement.
+
+Les pushs par statut : `order_confirmed` (`paid`), `order_preparing`,
+`order_ready`, `order_assigned` (`accepted` — la clé garde son nom, l'état
+non), `order_delivered` (`completed`), `order_cancelled`. Tous portent
+`data.status`. Le détail du flux, commun aux cinq applications : `README`,
+« Temps réel ».
 
 ---
 

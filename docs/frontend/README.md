@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 3.8.0** · 13 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.0.0** · 13 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -55,6 +55,99 @@ La maquette de septembre 2026 porte **cinq** rôles : client, livreur, marchand,
 
 Le partage de tokens de design et de composants entre les deux familles reste une bonne idée — c'est le **réseau** qui diffère, pas l'habillage.
 
+## ⚠️ v4.0.0 — UN vocabulaire d'état pour toute la plateforme
+
+Une application qui suit **une commande de repas et une course VTC** avait
+deux écrans d'état à écrire : `assigned / delivering / delivered` d'un côté,
+`accepted / approach / onboard / completed` de l'autre — pour dire, mot pour
+mot, la même chose. Depuis la v4.0.0, **une opération** (une course de
+livraison, une course VTC) vit dans **un seul cycle**, servi à l'identique
+par les deux verticales, par le socket du suivi et par les notifications :
+
+```
+searching → accepted → picking_up → in_transit → completed
+                                            ↘ cancelled   (tout état avant completed)
+```
+
+| Statut | Ce que ça veut dire | Livraison (`Delivery`) | Course VTC (`Ride`) |
+|---|---|---|---|
+| `searching` | on cherche quelqu'un | la course attend un livreur — proposée dès que le repas est **prêt** | on appelle des chauffeurs |
+| `accepted` | quelqu'un a pris l'opération | un livreur l'a acceptée, il part vers le restaurant | un chauffeur l'a prise |
+| `picking_up` | il est au point de départ | la **première collecte** est faite, il en reste | il **roule vers le passager** |
+| `in_transit` | le colis / le passager est à bord | toutes les collectes faites, en route vers le client | le passager est monté |
+| `completed` | livré / déposé | remise au client | passager déposé |
+| `cancelled` | fini sans être fait | commande annulée (client, marchand, exploitation) | par le passager, le chauffeur ou la plateforme |
+
+**La commande de repas** (`Order`) garde ce qui n'existe que pour un repas —
+`pending_payment → paid → preparing → ready` — puis **reprend mot pour mot**
+le cycle de sa course : `accepted → picking_up → in_transit → completed`.
+`ready` côté commande = `searching` côté course.
+
+Ce qui a été **renommé** (rupture, d'où la version majeure) :
+
+| Avant | Après | Où |
+|---|---|---|
+| `available` | `searching` | course de livraison |
+| `assigned` | `accepted` | course de livraison, commande |
+| `delivering` | `in_transit` | course de livraison, commande |
+| `delivered` | `completed` | course de livraison, commande |
+| `approach` | `picking_up` | course VTC |
+| `onboard` | `in_transit` | course VTC |
+
+Les **routes** n'ont pas bougé (`/deliveries/available` reste la liste des
+courses à prendre), ni les **clés de gabarit** (`order_assigned`,
+`order_delivered`) — ce sont des noms d'écran, pas des états. Les filtres
+`?status=` prennent les nouveaux mots ; un ancien mot est **refusé** (`422`),
+pas rendu vide.
+
+> Les données déjà en base ont été **migrées** (staging) : vous ne verrez
+> jamais un ancien mot dans une réponse.
+
+## ⚠️ v4.0.0 — Temps réel : DÉTECTER un changement, RELIRE par HTTP
+
+Aucune trame ne porte la commande ni la course entière, et c'est voulu : une
+trame perdue — socket fermé, téléphone en veille — ne doit rien casser. Le
+temps réel **prévient**, HTTP **fait foi**. Le même mécanisme pour les cinq
+applications :
+
+```
+signal (socket ou push)  →  GET /food/orders/{id}  ·  GET /food/deliveries/{id}  ·  GET /vtc/rides/{id}
+```
+
+Trois canaux, et chaque application en tient deux :
+
+| Canal | Qui | Ce qui arrive | Portée |
+|---|---|---|---|
+| **Socket du suivi** `wss://tracking…/track/subscribe/{mission_id}` | client (commande **et** course), exploitation | `{ "type": "position", … }` et **`{ "type": "status", "status": "…" }`** à chaque changement d'état de l'opération | application ouverte, une opération à la fois — `mission_id` = `delivery_id` ou `ride_id` |
+| **Socket des commandes** `wss://api…/api/v1/food/ws/orders?token=` | client, marchand, livreur, exploitation | `order_created`, `order_status { from, status }`, `order_message` | application ouverte, **toutes** les commandes qui vous concernent — le livreur y reçoit désormais l'état des commandes qu'il **porte** |
+| **Push FCM** (socle, `POST /me/devices`) | tout le monde | un gabarit **et des données** : `type` (`order_status`, `ride_status`, `delivery_status`, `driver_call`, …), l'identifiant, le `status` | application fermée ou en arrière-plan |
+
+**Le flux, dans l'ordre :**
+
+1. **À l'ouverture d'un écran** : `GET` de la ressource. C'est l'état de
+   référence — jamais ce que dit le socket.
+2. **Socket ouvert** : sur `status` (suivi) ou `order_status` (commandes),
+   comparez à ce que vous affichez ; si ça diffère, **`GET`** et redessinez.
+   La trame porte `from` et `status` : une trame déjà appliquée s'ignore, une
+   trame qui « recule » (`from` ≠ votre état) signale une trame manquée —
+   relisez. Vous pouvez mettre le badge à jour **avant** la réponse, c'est
+   ce que `status` est là pour permettre.
+3. **Push reçu** (application en arrière-plan) : `data.type` dit quoi
+   ouvrir, `data.order_id` / `ride_id` / `delivery_id` sur quoi, `data.status`
+   ce qui a changé. Même geste : ouvrir l'écran, `GET`.
+4. **Reconnexion** du socket (back-off 1 s → 30 s) : `GET` **immédiatement**,
+   avant d'appliquer la moindre trame — tout ce qui s'est passé pendant la
+   coupure n'est que dans la base.
+5. **Sans socket** (refusé, réseau captif, batterie) : **sondez** la ressource
+   toutes les **10 s** tant que l'opération n'est pas `completed` ou
+   `cancelled`, en comparant `updated_at` ; passez à 30 s au-delà de cinq
+   minutes sans changement. Ne sondez **jamais** une opération terminée.
+
+**Ce qu'aucun canal ne garantit** : l'ordre, l'unicité, la livraison. Deux
+trames pour le même passage (socket + push) sont normales — la seconde
+`GET` répond la même chose. Une application qui ferait du socket sa source de
+vérité verrait, un jour, une course « en route » qu'un `GET` dit terminée.
+
 ## Ce que ces documents remplacent
 
 `docs/specs/*.md` reste la référence **du backend** : un module par fichier, avec ses raisons de conception. Ces trois-ci sont la référence **du frontend** : un rôle par fichier, avec les contrats.
@@ -90,18 +183,20 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 
 **Client**
 
-- [ ] Machine à états de la commande alignée sur les statuts servis, pas sur une liste recopiée
+- [ ] Machine à états de la commande alignée sur les statuts servis — le **vocabulaire commun** v4.0.0, le même que pour une course VTC
+- [ ] Temps réel : socket **prévient**, `GET` **fait foi** — sur `order_status` / `status` / push, relire la commande (README, « Temps réel »)
 - [ ] Paiement : ne **jamais** conclure sans confirmation serveur
 - [ ] `store_id` omis à la commande ⇒ `delivery.geo` **obligatoire**, et le `store_id` de la **réponse** fait foi
 - [ ] Carte d'enseigne (`/merchants/:id/menu`) lue avec la position de **livraison**, pas celle du téléphone
 - [ ] `no_store_nearby` et `dish_unavailable_nearby` traités **différemment** (changer d'enseigne · changer de plat)
-- [ ] Suivi : WebSocket de tracking, reconnexion + repli REST ; `mission_id = delivery_id`
+- [ ] Suivi : WebSocket de tracking (positions **et** `status`), reconnexion + repli REST ; `mission_id = delivery_id`
 - [ ] Conversation : saisie désactivée sur `no_driver_yet` et `conversation_closed`, historique toujours lisible
 - [ ] Compteurs d'engagement appelés **sans `await`**, sans jamais afficher d'erreur
 
 **Livreur**
 
 - [ ] Position émise **dès l'entrée dans le parcours** — sans elle, aucun appel n'arrive
+- [ ] Socket des commandes ouvert pendant une course : `order_status: cancelled` sur une commande portée = **arrêter et relire** ; le push `delivery_cancelled` dit la même chose (v4.0.0)
 - [ ] Écran d'appel monté sur la trame `call`, fermé sur `call_closed`
 - [ ] Compte à rebours rendu depuis **`expires_at`**, jamais depuis une horloge locale
 - [ ] Refuser **explicitement** plutôt que laisser expirer : la vague suivante part plus tôt
@@ -115,6 +210,7 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] `capabilities` **lues**, jamais recalculées depuis le rôle
 - [ ] Bouton « Refuser » masqué au-delà de `ready`, et confirmation disant que **toute** la commande est annulée
 - [ ] `cash_to_collect` affiché **au moment de la validation**, pas après le retrait
+- [ ] Socket des commandes ouvert sur l'écran des commandes : `order_created` = nouvelle commande, `order_status` = relire ; sinon sonder toutes les 10 s (v4.0.0)
 
 **Passager (VTC)**
 
@@ -122,7 +218,8 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] Compte à rebours du devis rendu depuis **`expires_at`** ; expiré, on **redemande**, on ne commande pas
 - [ ] ⚠️ Majoration (`surge_bp`) **affichée avant** la commande — découverte au paiement, elle se lit comme une arnaque
 - [ ] ⚠️ Le passager est **débité à la commande**, pas à l'arrivée : `402 insufficient_funds` routé vers la recharge
-- [ ] Suivi par le socket de **`dira-tracking`**, `mission_id = ride_id`, repli REST
+- [ ] Suivi par le socket de **`dira-tracking`**, `mission_id = ride_id` : positions **et** `status` ; sur `status` → `GET /rides/{id}` (v4.0.0, « Temps réel »)
+- [ ] Un seul écran d'état pour la course et la commande : le **vocabulaire commun** (v4.0.0)
 - [ ] Conversation : mêmes refus que la livraison (`no_driver_yet`, `conversation_closed`)
 - [ ] Aucun écran ne promet ce que l'API ne sert pas — notation d'une course, sécurité (voir `VTC-CLIENT.md` §9)
 - [ ] Adresses « Maison » / « Bureau » câblées sur `/me/addresses` du **socle** — `is_default` est unique, ne le doublez pas en local
@@ -135,6 +232,7 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] L'appel arrive sur le socket du **suivi**, pas sur un troisième socket
 - [ ] Compte à rebours de 30 s rendu depuis **`expires_at`**
 - [ ] Les **quatre refus** de prise de course distingués, chacun avec son geste (voir `VTC-DRIVER.md` §4)
+- [ ] Une course en cours peut être **annulée sous vous** : push `ride_cancelled_by_rider` → relire `GET /rides/{id}`, libérer l'écran (v4.0.0)
 - [ ] Course en **espèces** : ce qu'il encaisse n'est pas ce qu'il gagne — la commission part en dette
 
 **Exploitation**

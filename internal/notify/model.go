@@ -114,6 +114,20 @@ const (
 	// un passager qui a rangé son téléphone en descendant ne note jamais
 	// sans ce rappel.
 	KeyRideRatePrompt = "ride_rate_prompt"
+	// Les CHANGEMENTS D'ÉTAT d'une course, au passager — ce qui réveille une
+	// application en arrière-plan quand le socket du suivi ne l'atteint
+	// plus. Chacun porte en données `type: ride_status`, `ride_id`, `status`
+	// pour que l'application relise la course par HTTP.
+	KeyRideAccepted       = "ride_accepted"
+	KeyRideDriverOnTheWay = "ride_driver_on_the_way"
+	KeyRideCancelled      = "ride_cancelled"
+	// KeyRideCancelledByRider va au CHAUFFEUR : il roulait peut-être déjà
+	// vers le point de départ.
+	KeyRideCancelledByRider = "ride_cancelled_by_rider"
+	// KeyDeliveryCancelled va au LIVREUR qui portait la course d'une commande
+	// annulée : il est libre, et doit l'apprendre avant d'arriver au
+	// restaurant.
+	KeyDeliveryCancelled = "delivery_cancelled"
 )
 
 // defaults sont les gabarits COMPILÉS, servis tant que la base n'en porte pas.
@@ -252,6 +266,51 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "How was your ride?", Body: "Rate [driver] and, if you like, leave a tip."},
 		},
 	},
+	KeyRideAccepted: {
+		Key:         KeyRideAccepted,
+		Description: "Un chauffeur a pris la course — message au PASSAGER, avec le nom et la voiture.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Chauffeur trouvé", Body: "[driver] a pris votre course · [vehicle]."},
+			LocaleEN: {Title: "Driver found", Body: "[driver] took your ride · [vehicle]."},
+		},
+	},
+	KeyRideDriverOnTheWay: {
+		Key:         KeyRideDriverOnTheWay,
+		Description: "Le chauffeur roule vers le point de départ — message au PASSAGER.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Votre chauffeur arrive", Body: "[driver] est en route vers vous."},
+			LocaleEN: {Title: "Your driver is coming", Body: "[driver] is on the way to you."},
+		},
+	},
+	KeyRideCancelled: {
+		Key:         KeyRideCancelled,
+		Description: "La course a été annulée par le chauffeur ou la plateforme — message au PASSAGER.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Course annulée", Body: "Votre course a été annulée ([reason]). Commandez-en une autre."},
+			LocaleEN: {Title: "Ride cancelled", Body: "Your ride was cancelled ([reason]). Please order another one."},
+		},
+	},
+	KeyRideCancelledByRider: {
+		Key:         KeyRideCancelledByRider,
+		Description: "Le passager a annulé — message au CHAUFFEUR, qui roulait peut-être déjà.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Course annulée par le passager", Body: "Le passager a annulé la course ([reason]). Vous êtes de nouveau disponible."},
+			LocaleEN: {Title: "Ride cancelled by the rider", Body: "The rider cancelled the ride ([reason]). You are available again."},
+		},
+	},
+	KeyDeliveryCancelled: {
+		Key:         KeyDeliveryCancelled,
+		Description: "La commande a été annulée sous le livreur qui la portait — message au LIVREUR.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Course annulée", Body: "La commande [order_ref] a été annulée. Vous êtes libre pour une autre course."},
+			LocaleEN: {Title: "Delivery cancelled", Body: "Order [order_ref] was cancelled. You are free for another delivery."},
+		},
+	},
 	KeyDeliveryExpired: {
 		Key:         KeyDeliveryExpired,
 		Description: "Aucun livreur en N minutes : la recherche est arrêtée — message au MARCHAND, qui doit relancer.",
@@ -300,6 +359,11 @@ var provided = map[string][]string{
 	KeyDeliveryExpired:      {"order_ref", "minutes"},
 	KeyRideTipReceived:      {"rider", "amount"},
 	KeyRideRatePrompt:       {"driver"},
+	KeyRideAccepted:         {"driver", "vehicle"},
+	KeyRideDriverOnTheWay:   {"driver"},
+	KeyRideCancelled:        {"reason"},
+	KeyRideCancelledByRider: {"reason"},
+	KeyDeliveryCancelled:    {"order_ref"},
 	KeyMerchantNewOrder:     {"order_ref", "items", "amount"},
 }
 

@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 3.8.0** · 13 septembre 2026
+> **Version 4.0.0** · 13 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -233,7 +233,7 @@ POST https://tracking-staging.dira.llc/track/calls/{call_id}/decline  { "vehicle
 ## 4. Conduire
 
 ```
-PATCH /rides/{id}/status                   { "status": "approach" | "onboard" | "completed" }
+PATCH /rides/{id}/status                   { "status": "picking_up" | "in_transit" | "completed" }
 POST  /rides/{id}/stops/{index}/reached
 POST  /rides/{id}/decline                  { "reason": "…" }
 GET   /rides/{id}
@@ -241,11 +241,17 @@ GET   /rides?cursor=…                      # l'historique de VOS courses
 ```
 
 ```
-accepted → approach → onboard → completed
+accepted → picking_up → in_transit → completed
         ↘ cancelled
 ```
 
-> ⚠️ **Une course `onboard` ne s'annule plus.** Le passager est dans la
+> **v4.0.0 — le vocabulaire commun.** `approach` est devenu **`picking_up`**
+> (« je roule vers le passager »), `onboard` est devenu **`in_transit`**
+> (« il est à bord ») : ce sont les mots d'une course de livraison aussi, et
+> le `PATCH` ne prend plus les anciens (`422`). Voir le `README`, « UN
+> vocabulaire d'état ».
+
+> ⚠️ **Une course `in_transit` ne s'annule plus.** Le passager est dans la
 > voiture ; l'interrompre demanderait de décider où on le dépose. Le bouton
 > doit disparaître à ce statut, pas échouer.
 
@@ -255,6 +261,18 @@ d'une livraison.
 
 **Ce que vous voyez et que le passager ne voit pas** : `commission_xof` et
 `driver_xof`. C'est votre part, et elle n'est servie qu'à vous.
+
+### La course peut changer SOUS vous (v4.0.0)
+
+Le passager annule pendant que vous roulez vers lui ; l'exploitation
+réattribue. Vous l'apprenez par **push** — `ride_cancelled_by_rider`
+(`data.type: "ride_status"`, `ride_id`, `status: "cancelled"`, `reason`) —
+et, si votre écran est ouvert, rien d'autre ne vous le dira : **relisez
+`GET /rides/{id}` à chaque push**, et à chaque retour au premier plan.
+`cancelled` = fermer l'écran de course, vous êtes de nouveau appelable.
+Une action sur une course annulée répond `409 invalid_transition` :
+c'est le signal de relire, pas de réessayer. Flux complet : `README`,
+« Temps réel ».
 
 ### 4 bis. Après la course — noter le passager, recevoir un pourboire (v3.8.0)
 
