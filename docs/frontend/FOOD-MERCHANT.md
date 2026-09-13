@@ -180,7 +180,9 @@ wss://api-staging.dira.llc/api/v1/food/ws/orders?token=<access_token>
 Un marchand ne reçoit que les commandes **de ses points de vente**. La trame
 ne porte pas la commande : `order_created` → `GET /stores/{id}/orders` (la
 nouvelle est en tête) ; `order_status` → relire la commande, ou la liste de
-l'onglet. Le push `merchant_new_order` (ci-dessous) fait la même chose
+l'onglet. **Une annulation par le client arrive ici aussi**
+(`status: cancelled`) — avant la v4.0.0, elle ne se voyait qu'en
+rafraîchissant. Le push `merchant_new_order` (ci-dessous) fait la même chose
 quand l'application est fermée. Sans socket : sonder la liste de l'onglet
 « Nouvelle » toutes les **10 s**. Flux complet : `README`, « Temps réel ».
 
