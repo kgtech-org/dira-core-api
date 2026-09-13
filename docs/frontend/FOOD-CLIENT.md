@@ -246,8 +246,16 @@ pending_payment → paid → preparing → ready → accepted → picking_up →
 > celui d'une course VTC : `accepted → picking_up → in_transit → completed`.
 > `assigned`, `delivering`, `delivered` n'existent plus (un filtre
 > `?status=delivered` répond `422`). Un seul écran d'état pour les repas et
-> les courses ; le tableau complet est dans le `README`, « UN vocabulaire
-> d'état ».
+> les courses :
+
+| Statut | Ce que ça veut dire | Commande de repas | Course VTC (même application) |
+|---|---|---|---|
+| `searching` | on cherche quelqu'un | — (la commande dit `ready`) | on appelle des chauffeurs |
+| `accepted` | quelqu'un a pris l'opération | un livreur part au restaurant | un chauffeur l'a prise |
+| `picking_up` | il est au point de départ | il retire les plats | il roule vers vous |
+| `in_transit` | le colis / le passager est à bord | en route vers vous | vous êtes monté |
+| `completed` | livré / déposé | livrée | déposé |
+| `cancelled` | fini sans être fait | annulée, remboursée si payée | annulée |
 
 | Statut | Ce que voit le client |
 |---|---|
@@ -375,8 +383,39 @@ d'autre. Le geste est toujours le même — **un signal, un `GET`** :
 Les pushs par statut : `order_confirmed` (`paid`), `order_preparing`,
 `order_ready`, `order_assigned` (`accepted` — la clé garde son nom, l'état
 non), `order_delivered` (`completed`), `order_cancelled`. Tous portent
-`data.status`. Le détail du flux, commun aux cinq applications : `README`,
-« Temps réel ».
+`data.type: "order_status"`, `data.order_id`, `data.status`.
+
+**Trois canaux, et l'application en tient deux à la fois :**
+
+| Canal | Ce qui arrive | Portée |
+|---|---|---|
+| **Socket des commandes** (ci-dessus) | `order_created`, `order_status { from, status }`, `order_message` | application ouverte, **toutes** vos commandes |
+| **Socket du suivi** `wss://tracking…/track/subscribe/{delivery_id}` (§5) | `position`, et **`status`** à chaque passage de la course | application ouverte, une livraison à la fois |
+| **Push** (socle, `POST /me/devices`, §12) | un gabarit **et** des données (`type`, `order_id`, `status`) | application fermée ou en arrière-plan |
+
+**Le flux, dans l'ordre — un signal, un `GET` :**
+
+1. **À l'ouverture d'un écran** : `GET /orders/{id}`. C'est l'état de référence —
+   jamais ce que dit le socket.
+2. **Socket ouvert** : sur une trame d'état, comparez à ce que vous affichez ;
+   si ça diffère, `GET /orders/{id}` et redessinez. La trame porte le statut : vous
+   pouvez changer le badge **avant** la réponse. Une trame qui « recule »
+   (un `from` qui n'est pas votre état) signale une trame manquée — relisez.
+3. **Push reçu** (application en arrière-plan) : `data.type` dit quoi ouvrir,
+   l'identifiant sur quoi, `data.status` ce qui a changé. Même geste : ouvrir
+   l'écran, `GET /orders/{id}`.
+4. **Reconnexion** du socket (back-off 1 s → 2 s → 4 s … 30 s) :
+   `GET /orders/{id}` **immédiatement**, avant d'appliquer la moindre trame — tout
+   ce qui s'est passé pendant la coupure n'est que dans la base.
+5. **Sans socket** (refusé, réseau captif, batterie) : **sondez** `GET /orders/{id}`
+   toutes les **10 s** tant que l'opération n'est ni `completed` ni
+   `cancelled`, en comparant `updated_at` ; passez à 30 s au bout de cinq
+   minutes sans changement. Ne sondez **jamais** une opération terminée.
+
+**Ce qu'aucun canal ne garantit** : l'ordre, l'unicité, la livraison. Deux
+trames pour le même passage (socket **et** push) sont normales — le second
+`GET` répond la même chose. Une application qui ferait du socket sa source
+de vérité verrait, un jour, une course « en route » qu'un `GET` dit terminée.
 
 ---
 
