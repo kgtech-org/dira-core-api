@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 3.5.0** · 12 septembre 2026
+> **Version 3.6.0** · 13 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -92,6 +92,29 @@ Réponse : **une entrée par classe**, toutes tarifées sur le même trajet.
 **`409 route_unavailable`** : le réseau routier est injoignable. Aucun prix
 n'est deviné — une distance à vol d'oiseau ferait payer un trajet qui n'existe
 pas. C'est un refus temporaire, pas une erreur de saisie.
+
+---
+
+### ⚠️ Une course se fait DANS une ville (v3.6.0)
+
+Le départ et l'arrivée doivent être dans la **même ville desservie** —
+dedans, ou à moins de **50 km** de sa limite (la banlieue, la plage,
+l'aéroport voisin). Le refus arrive **au devis**, avant tout prix :
+
+```
+422 { "error": { "code": "out_of_service_area",
+                 "message": "Ce lieu est à 380 km de Lomé : nous ne desservons pas au-delà de 70 km de la ville" } }
+422 { "error": { "code": "different_cities",
+                 "message": "Le départ est à Lomé et l'arrivée à Kara : une course se fait dans une seule ville" } }
+```
+
+Afficher le message tel quel (il est localisé et porte la distance). Les
+villes sont publiques — `GET /cities` → `{ items: [ { key, name,
+center: [lng, lat], radius_km, tolerance_km, active } ] }` — pour dire « nous
+ne desservons pas encore ici » dès qu'un passager pose un point, avant même
+le devis : un point est acceptable s'il est à moins de `radius_km +
+tolerance_km` du `center` d'une ville active, et les deux points doivent
+tomber dans la **même** ville.
 
 ---
 
