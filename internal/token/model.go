@@ -75,12 +75,23 @@ const (
 	// ReasonRefund rend au portefeuille ce qu'une commande ou une course
 	// annulée avait pris.
 	ReasonRefund = "refund"
+	// ReasonTip débite le portefeuille d'un passager d'un pourboire, remis
+	// au chauffeur par le grand livre des courses. Un motif distinct de
+	// `payment` : au relevé, « pourboire 500 F » se lit, « paiement 500 F »
+	// sur une course déjà payée se conteste.
+	ReasonTip = "tip"
 )
 
 // Ce à quoi un mouvement se rattache.
 const (
 	RefOrder = "order"
 	RefRide  = "ride"
+	// RefTip : le POURBOIRE d'une course. Un genre à part, et non `ride` :
+	// le paiement d'une course est unique par course (c'est sa clé
+	// d'idempotence), et un pourboire sur la même course est un SECOND
+	// mouvement — il lui faut sa propre clé, `payment:tip:<ride>`, et sa
+	// propre ligne au relevé, qui dit « pourboire » et non « course ».
+	RefTip = "tip"
 )
 
 // Unités du grand livre.

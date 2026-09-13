@@ -105,6 +105,15 @@ const (
 	// message, il attendrait devant un repas froid sans savoir que plus
 	// personne n'est appelé.
 	KeyDeliveryExpired = "delivery_expired"
+	// KeyRideTipReceived : un passager a laissé un pourboire — message au
+	// CHAUFFEUR. Un pourboire qui arrive sans un mot est un chiffre de plus
+	// au relevé ; dit à l'instant, c'est ce qui fait la journée.
+	KeyRideTipReceived = "ride_tip_received"
+	// KeyRideRatePrompt : la course est terminée — le PASSAGER est invité à
+	// noter. Envoyé à la fin de la course, pas à la fermeture de l'écran :
+	// un passager qui a rangé son téléphone en descendant ne note jamais
+	// sans ce rappel.
+	KeyRideRatePrompt = "ride_rate_prompt"
 )
 
 // defaults sont les gabarits COMPILÉS, servis tant que la base n'en porte pas.
@@ -225,6 +234,24 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "Ride not started", Body: "Your [time] ride from [pickup] could not start: [reason]. Please order it manually."},
 		},
 	},
+	KeyRideTipReceived: {
+		Key:         KeyRideTipReceived,
+		Description: "Un passager a laissé un pourboire — message au CHAUFFEUR.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Pourboire reçu", Body: "[rider] vous a laissé [amount] F de pourboire. Merci pour cette course !"},
+			LocaleEN: {Title: "Tip received", Body: "[rider] left you a [amount] F tip. Thank you for this ride!"},
+		},
+	},
+	KeyRideRatePrompt: {
+		Key:         KeyRideRatePrompt,
+		Description: "Course terminée : le PASSAGER est invité à noter son chauffeur.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Comment s'est passée votre course ?", Body: "Notez [driver] et, si vous le souhaitez, laissez-lui un pourboire."},
+			LocaleEN: {Title: "How was your ride?", Body: "Rate [driver] and, if you like, leave a tip."},
+		},
+	},
 	KeyDeliveryExpired: {
 		Key:         KeyDeliveryExpired,
 		Description: "Aucun livreur en N minutes : la recherche est arrêtée — message au MARCHAND, qui doit relancer.",
@@ -271,6 +298,8 @@ var provided = map[string][]string{
 	KeyRideScheduledStarted: {"pickup", "time"},
 	KeyRideScheduledFailed:  {"pickup", "time", "reason"},
 	KeyDeliveryExpired:      {"order_ref", "minutes"},
+	KeyRideTipReceived:      {"rider", "amount"},
+	KeyRideRatePrompt:       {"driver"},
 	KeyMerchantNewOrder:     {"order_ref", "items", "amount"},
 }
 
