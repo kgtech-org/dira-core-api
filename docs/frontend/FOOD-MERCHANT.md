@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 3.6.0** · 13 septembre 2026
+> **Version 3.7.0** · 13 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -160,6 +160,33 @@ PATCH /stores/{id}/orders/{order_id}/status   { status: "preparing" | "ready" }
 `?q=` cherche dans les **noms de plats** de la commande — « le client qui avait pris du poulet ». Un identifiant complet retrouve la commande exacte.
 
 Seuls `preparing` et `ready` sont à la main du marchand. Le reste suit le livreur.
+
+### ⚠️ Aucun livreur en 15 minutes : la course expire, le marchand relance — v3.7.0
+
+Dès que la commande passe à `ready`, la plateforme appelle des livreurs. Si
+**personne ne l'a prise au bout de 15 minutes**, la course **expire** : elle
+est retirée de la liste des livreurs (plus personne ne peut la prendre), et
+le marchand reçoit la notification **`delivery_expired`** —
+« Commande [order_ref] : aucun livreur en 15 min. La recherche est arrêtée —
+relancez-la depuis la commande quand vous êtes prêt. » Data :
+`{ "type": "delivery_expired", "order_id", "store_id" }`.
+
+La commande n'est **pas annulée** : le repas est prêt, payé, et seul le
+marchand sait s'il tient encore. À lui de relancer :
+
+```
+POST /stores/{id}/orders/{order_id}/relaunch
+→ 200 Order            un nouvel appel part, le délai de 15 min repart de zéro
+→ 409 order_not_ready  la commande n'est pas (ou plus) `ready`
+→ 409 search_running   un appel court encore : rien à relancer
+→ 409 delivery_taken   un livreur l'a prise entre-temps
+```
+
+Sur la commande prête, afficher l'état de la recherche et le bouton
+**« Relancer la recherche »** quand la notification est arrivée (ou quand
+`GET /stores/{id}/orders` la montre `ready` depuis plus de 15 min sans
+livreur). Un marchand qui préfère annuler passe par **Refuser** — possible
+jusqu'à `ready` inclus.
 
 ### Refuser — v1.3.0
 

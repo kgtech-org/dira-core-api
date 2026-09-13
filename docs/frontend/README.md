@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 3.6.0** · 13 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 3.7.0** · 13 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -142,6 +142,18 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 3.7.0 — 13 septembre 2026
+
+**Ajout rétrocompatible** — l'expiration des courses sans livreur.
+
+- **15 min** après `ready` sans livreur, la course **expire** : retirée des
+  livreurs (`409 delivery_expired` à l'acceptation), appel clos, marchand
+  prévenu (`delivery_expired`). Elle n'est pas annulée : le marchand
+  **relance** — `POST /food/stores/{id}/orders/{order_id}/relaunch` — et le
+  délai repart (`FOOD-MERCHANT.md` §4, `FOOD-DELIVERY.md` §3).
+- `Delivery` : `dispatch_state` gagne `expired` ; `dispatch_started_at`,
+  `dispatch_expired_at`.
 
 ### 3.6.0 — 13 septembre 2026
 

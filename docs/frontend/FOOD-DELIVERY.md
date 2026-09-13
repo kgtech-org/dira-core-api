@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 3.6.0** · 13 septembre 2026
+> **Version 3.7.0** · 13 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -78,6 +78,13 @@ PATCH  /agent/availability     { available }
 ## 3. L'APPEL — la course vient au livreur
 
 Quand le marchand valide sa préparation, les **5 livreurs libres les plus proches** sont appelés **ensemble** pendant **30 s**. Sans preneur : deux nouvelles vagues, puis la course part en urgence côté back-office et **retourne au pot commun**.
+
+> **v3.7.0 — elle n'y reste pas indéfiniment.** Quinze minutes après la
+> validation du marchand, une course que personne n'a prise **expire** :
+> elle disparaît de `/deliveries/available`, et l'accepter répond
+> `409 delivery_expired`. Elle revient si le marchand relance (nouvel
+> appel). Une course vue dans la liste puis refusée à l'acceptation n'est
+> donc pas un bug : rafraîchir la liste.
 
 L'appel arrive sur le socket de suivi **déjà ouvert**, en sens inverse des positions :
 
