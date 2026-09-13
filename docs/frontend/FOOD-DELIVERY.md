@@ -353,6 +353,13 @@ wss://api-staging.dira.llc/api/v1/food/ws/orders?token=<access_token>
 
 Un livreur n'y voit **que les commandes qu'il porte**. La trame porte le texte : affichez-la sans relire la conversation.
 
+**v4.0.0** : sur ce même socket arrivent aussi les **`order_status`** des
+commandes que vous portez — `accepted`, `picking_up`, `in_transit`,
+`completed` (vos propres actions, en écho) et surtout **`cancelled`** (le
+client, le marchand ou l'exploitation a annulé sous vous — §11). Gardez-le
+ouvert pendant toute la course, pas seulement quand la conversation est
+affichée.
+
 ---
 
 ## 8. Portefeuille — **SOCLE** (sans `/food`)

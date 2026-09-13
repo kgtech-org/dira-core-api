@@ -97,8 +97,9 @@ Ce qui a été **renommé** (rupture, d'où la version majeure) :
 Les **routes** n'ont pas bougé (`/deliveries/available` reste la liste des
 courses à prendre), ni les **clés de gabarit** (`order_assigned`,
 `order_delivered`) — ce sont des noms d'écran, pas des états. Les filtres
-`?status=` prennent les nouveaux mots ; un ancien mot est **refusé** (`422`),
-pas rendu vide.
+`?status=` prennent les nouveaux mots ; un ancien mot est **refusé** (`422`)
+sur les listes de commandes et de courses de livraison, et ne trouve **rien**
+sur la liste d'exploitation des courses VTC — jamais traduit en silence.
 
 > Les données déjà en base ont été **migrées** (staging) : vous ne verrez
 > jamais un ancien mot dans une réponse.
@@ -240,6 +241,40 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.0.0 — 13 septembre 2026
+
+**RUPTURE** — un seul vocabulaire d'état pour toute la plateforme, et le
+temps réel expliqué de bout en bout. Voir les deux sections « v4.0.0 » en
+tête de ce document.
+
+- **Statuts renommés** — course de livraison : `available → searching`,
+  `assigned → accepted`, `delivering → in_transit`, `delivered → completed` ;
+  commande : `assigned → accepted`, `delivering → in_transit`,
+  `delivered → completed` ; course VTC : `approach → picking_up`,
+  `onboard → in_transit`. Les anciens mots sont **refusés** (`422`) par
+  `PATCH /vtc/rides/{id}/status` et par les filtres `?status=` des commandes
+  et des courses de livraison. Routes et clés de gabarit inchangées. Données
+  staging migrées.
+- **Course VTC en temps réel** : le socket du suivi (`/track/subscribe/{ride_id}`)
+  porte désormais **`{ type: "status" }`** à chaque passage, comme pour une
+  livraison ; pushs `ride_accepted` (nom et voiture), `ride_driver_on_the_way`,
+  `ride_cancelled` au passager, `ride_cancelled_by_rider` au chauffeur — tous
+  avec `data.type: "ride_status"`, `ride_id`, `status` (`VTC-CLIENT.md` §6,
+  `VTC-DRIVER.md` §4).
+- **Livreur** : le socket des commandes lui sert les `order_status` des
+  commandes qu'il **porte** (annulation sous lui, en premier lieu) ; push
+  `delivery_cancelled` (`data.type: "delivery_status"`) (`FOOD-DELIVERY.md`
+  §7, §11). Les pushs `order_*` du client portent `data.status`.
+- **Toute annulation est annoncée** — y compris celle du client, qui
+  n'émettait rien : `order_status { status: cancelled }` au marchand et au
+  livreur qui la portait, push `order_cancelled` au client. Une attribution
+  manuelle par l'exploitation produit le même état qu'une acceptation
+  (commande `accepted`, appel clos, trame `status`).
+- Le flux **« un signal, un `GET` »**, la reconnexion et le sondage de repli
+  sont écrits une fois (`README`, « Temps réel ») et rappelés dans chaque
+  document : `FOOD-CLIENT.md` §8, `FOOD-MERCHANT.md` §4, `FOOD-DELIVERY.md`
+  §11, `VTC-CLIENT.md` §6, `VTC-DRIVER.md` §4.
 
 ### 3.8.0 — 13 septembre 2026
 
