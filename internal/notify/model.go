@@ -100,6 +100,11 @@ const (
 	KeyRideScheduledSoon    = "ride_scheduled_soon"
 	KeyRideScheduledStarted = "ride_scheduled_started"
 	KeyRideScheduledFailed  = "ride_scheduled_failed"
+	// KeyDeliveryExpired : aucun livreur en N minutes — la course est retirée
+	// du pot commun, et c'est au MARCHAND de relancer la recherche. Sans ce
+	// message, il attendrait devant un repas froid sans savoir que plus
+	// personne n'est appelé.
+	KeyDeliveryExpired = "delivery_expired"
 )
 
 // defaults sont les gabarits COMPILÉS, servis tant que la base n'en porte pas.
@@ -220,6 +225,15 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "Ride not started", Body: "Your [time] ride from [pickup] could not start: [reason]. Please order it manually."},
 		},
 	},
+	KeyDeliveryExpired: {
+		Key:         KeyDeliveryExpired,
+		Description: "Aucun livreur en N minutes : la recherche est arrêtée — message au MARCHAND, qui doit relancer.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Aucun livreur trouvé", Body: "Commande [order_ref] : aucun livreur en [minutes] min. La recherche est arrêtée — relancez-la depuis la commande quand vous êtes prêt."},
+			LocaleEN: {Title: "No courier found", Body: "Order [order_ref]: no courier in [minutes] min. The search has stopped — restart it from the order when you are ready."},
+		},
+	},
 	KeyDispatchFailed: {
 		Key:         KeyDispatchFailed,
 		Description: "Aucun livreur n'a pris la course — message au CLIENT.",
@@ -256,6 +270,7 @@ var provided = map[string][]string{
 	KeyRideScheduledSoon:    {"pickup", "time", "minutes"},
 	KeyRideScheduledStarted: {"pickup", "time"},
 	KeyRideScheduledFailed:  {"pickup", "time", "reason"},
+	KeyDeliveryExpired:      {"order_ref", "minutes"},
 	KeyMerchantNewOrder:     {"order_ref", "items", "amount"},
 }
 
