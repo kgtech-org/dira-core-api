@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 3.8.0** · 13 septembre 2026
+> **Version 4.0.0** · 13 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -159,7 +159,30 @@ PATCH /stores/{id}/orders/{order_id}/status   { status: "preparing" | "ready" }
 
 `?q=` cherche dans les **noms de plats** de la commande — « le client qui avait pris du poulet ». Un identifiant complet retrouve la commande exacte.
 
-Seuls `preparing` et `ready` sont à la main du marchand. Le reste suit le livreur.
+Seuls `preparing` et `ready` sont à la main du marchand. Le reste suit le livreur :
+`accepted` (il part au restaurant) → `picking_up` (il retire) → `in_transit`
+→ `completed`. **v4.0.0** : ces quatre mots sont ceux du vocabulaire commun de
+la plateforme — `assigned`, `delivering`, `delivered` n'existent plus, et
+`?status=delivered` répond `422`. Onglets suggérés : Nouvelle = `paid` ·
+En préparation = `preparing,ready` · Avec le livreur =
+`accepted,picking_up,in_transit` · Terminée = `completed,cancelled`.
+
+### Être prévenu d'un changement — socket, push, `GET` (v4.0.0)
+
+```
+wss://api-staging.dira.llc/api/v1/food/ws/orders?token=<access_token>
+
+{ "type": "hello", "role": "merchant" }
+{ "type": "order_created", "order_id": "…", "status": "pending_payment", "total": 5200, "ts": … }
+{ "type": "order_status",  "order_id": "…", "from": "ready", "status": "accepted", "ts": … }
+```
+
+Un marchand ne reçoit que les commandes **de ses points de vente**. La trame
+ne porte pas la commande : `order_created` → `GET /stores/{id}/orders` (la
+nouvelle est en tête) ; `order_status` → relire la commande, ou la liste de
+l'onglet. Le push `merchant_new_order` (ci-dessous) fait la même chose
+quand l'application est fermée. Sans socket : sonder la liste de l'onglet
+« Nouvelle » toutes les **10 s**. Flux complet : `README`, « Temps réel ».
 
 ### ⚠️ Aucun livreur en 15 minutes : la course expire, le marchand relance — v3.7.0
 
@@ -388,7 +411,7 @@ La liste dessinée montre un numéro par membre. `GET /me/staff` rend `name`, `r
 
 La carte dessinée annonce « Livreur affecté · *Mamadou D.* ». L'API ne rend **aucune identité de livreur** au marchand.
 
-> Le marchand a besoin de savoir **qu'un livreur vient** — ce que le statut `assigned` dit déjà — plus que de savoir **qui**. Affichez « Livreur affecté » sans nom tant que ce champ n'existe pas.
+> Le marchand a besoin de savoir **qu'un livreur vient** — ce que le statut `accepted` dit déjà — plus que de savoir **qui**. Affichez « Livreur affecté » sans nom tant que ce champ n'existe pas.
 
 ### ❌ La progression de préparation
 

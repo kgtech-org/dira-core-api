@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 3.8.0** · 13 septembre 2026
+> **Version 4.0.0** · 13 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -241,7 +241,7 @@ Depuis la v1.2.0, une course **attribuée** porte :
 
 **En espèces**, le livreur paie le marchand **de la main à la main**, du montant de ses lignes, et se rembourse à l'arrivée. L'écran de collecte doit rappeler la somme à sortir.
 
-**Terminer** n'est accepté qu'en `delivering` — toutes les collectes faites. La réponse porte **`distance_source`** : `tracked` (positions réellement poussées) ou `planned` (repli). **Affichez la mention quand c'est `planned`** : c'est cette distance qui rémunère, et le livreur doit pouvoir la contester avant de la découvrir sur sa paie.
+**Terminer** n'est accepté qu'en `in_transit` — toutes les collectes faites. La réponse porte **`distance_source`** : `tracked` (positions réellement poussées) ou `planned` (repli). **Affichez la mention quand c'est `planned`** : c'est cette distance qui rémunère, et le livreur doit pouvoir la contester avant de la découvrir sur sa paie.
 
 ---
 
@@ -407,18 +407,42 @@ Ne réécrivez ni la conversion de coordonnées, ni le cache de tournée, ni le 
 ## 11. Machine à états
 
 ```
-available ──accept──▶ assigned ──1re collecte──▶ picking_up ──toutes collectes──▶ delivering ──complete──▶ delivered
+searching ──accept──▶ accepted ──1re collecte──▶ picking_up ──toutes collectes──▶ in_transit ──complete──▶ completed
     │                    │                          │
     └────────────────────┴──────────────────────────┴── commande annulée ──▶ cancelled
 ```
 
+> **v4.0.0 — le vocabulaire commun.** `available` est devenu **`searching`**,
+> `assigned` → **`accepted`**, `delivering` → **`in_transit`**, `delivered` →
+> **`completed`** : les mots d'une course VTC, et ceux de la commande elle-même
+> à partir de `accepted`. La route `/deliveries/available` garde son nom — c'est
+> une liste, pas un état. Tableau complet : `README`, « UN vocabulaire d'état ».
+
 L'application ne pilote pas ces états : ils découlent des actions. Elle les **lit** dans la réponse de chaque appel. Le passage par `picking_up` a lieu même pour une collecte unique, pour que les deux machines à états restent linéaires.
+
+### La course peut changer SOUS vous (v4.0.0)
+
+Le client annule pendant que vous roulez vers le restaurant. Vous l'apprenez
+de deux façons, et il faut tenir les deux :
+
+- sur le **socket des commandes** (§7), déjà ouvert pour la conversation :
+  vous recevez désormais **`order_status`** pour les commandes que vous
+  **portez** — `{ "type": "order_status", "order_id": "…", "from": "accepted",
+  "status": "cancelled" }` ;
+- par **push**, application fermée : `delivery_cancelled`
+  (`data.type: "delivery_status"`, `delivery_id`, `order_id`,
+  `status: "cancelled"`).
+
+Dans les deux cas : **`GET /deliveries/{id}`**, et si elle est `cancelled`,
+fermer la course — vous êtes libre, aucune capacité n'est retenue. Une
+collecte ou une remise sur une course annulée répond `409` : relire, pas
+réessayer. Flux complet : `README`, « Temps réel ».
 
 > **`cancelled` — v3.8.0.** Une commande annulée (par le client, par le
 > refus du marchand, par l'exploitation) **ferme sa course** : elle quitte le
 > pot commun, l'appel en cours est clos (`call_closed`, `reason: cancelled`),
 > et si vous la portiez, elle disparaît de vos courses en cours — vous êtes
-> libre. Avant, elle restait `available` et l'accepter rendait « le statut a
+> libre. Avant, elle restait `searching` et l'accepter rendait « le statut a
 > déjà changé ». Une course `cancelled` ne s'accepte pas (`409`) ; l'écran
 > doit la retirer, pas réessayer.
 

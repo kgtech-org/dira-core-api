@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 3.8.0** · 13 septembre 2026
+> **Version 4.0.0** · 13 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -202,16 +202,22 @@ POST /scheduled-rides/{id}/pause · /resume · /cancel
 ## 5. La course, statut par statut
 
 ```
-searching → accepted → approach → onboard → completed
+searching → accepted → picking_up → in_transit → completed
          ↘ cancelled (par le passager, le chauffeur, ou l'échec de la recherche)
 ```
+
+> **v4.0.0 — le vocabulaire commun.** Ce sont les **mêmes mots** que pour une
+> course de livraison (`Delivery`) et que la fin d'une commande de repas
+> (`Order`) : un seul écran d'état pour toute l'application. `approach` est
+> devenu `picking_up`, `onboard` est devenu `in_transit` — voir le `README`,
+> « UN vocabulaire d'état ».
 
 | Statut | Ce que voit le passager |
 |---|---|
 | `searching` | « nous cherchons un chauffeur » — `driver_id` est vide |
 | `accepted` | un chauffeur a pris la course — `driver` dit qui (v3.8.0) |
-| `approach` | il roule vers le point de départ |
-| `onboard` | le passager est à bord |
+| `picking_up` | il roule vers le point de départ |
+| `in_transit` | le passager est à bord |
 | `completed` | terminée |
 | `cancelled` | `cancelled_by` dit qui, `cancelled_reason` pourquoi |
 
@@ -255,8 +261,8 @@ Chaque `stops[i].reached_at` porte l'instant.
 POST /rides/{id}/cancel   { "reason": "…" }   // motif facultatif
 ```
 
-`409 invalid_transition` sur une course `onboard` : le bouton doit disparaître
-à ce statut, pas échouer.
+`409 invalid_transition` sur une course `in_transit` : le bouton doit
+disparaître à ce statut, pas échouer.
 
 ---
 
@@ -267,10 +273,44 @@ par cette API.
 
 ```
 WS wss://tracking-staging.dira.llc/track/subscribe/{ride_id}
+
+{ "type": "hello",    "mission_id": "…" }
+{ "type": "position", "vehicle_id": "…", "vehicle_type": "voiture", "plate": "…",
+  "lng": 1.2255, "lat": 6.1319, "heading": 122.5, "speed": 8.3, "ts": 1757… }
+{ "type": "status",   "status": "picking_up", "ts": 1757… }
 ```
 
 L'identifiant de course sert d'identifiant de mission. Reconnexion + repli REST
 comme pour la livraison : voir [`FOOD-CLIENT.md` §5](FOOD-CLIENT.md).
+
+### Suivre l'état — socket, push, et `GET` (v4.0.0)
+
+**Le socket du suivi porte aussi les changements d'état de la course** :
+une trame `{ "type": "status", "status": "…" }` à chaque passage —
+`accepted`, `picking_up`, `in_transit`, `completed`, `cancelled`. Elle ne
+porte que le mot : à réception, **relisez `GET /rides/{id}`** et redessinez
+(qui vient, où en est-il, le prix, le parcours). Vous pouvez changer le badge
+avant la réponse.
+
+**Application en arrière-plan** : les mêmes passages arrivent en **push**
+(socle, `POST /me/devices`), avec en données `type: "ride_status"`,
+`ride_id`, `status` :
+
+| Gabarit | Quand | Données |
+|---|---|---|
+| `ride_accepted` | un chauffeur a pris la course — nom et voiture dans le texte | `status: accepted` |
+| `ride_driver_on_the_way` | il roule vers vous | `status: picking_up` |
+| `ride_cancelled` | annulée par le chauffeur ou la plateforme (`reason`) | `status: cancelled` |
+| `ride_rate_prompt` | terminée — noter, remercier (§7 bis) | `type: ride_rate_prompt` |
+| `ride_scheduled_soon` · `_started` · `_failed` | course programmée (§4 bis) | |
+
+À réception : ouvrir la course, `GET /rides/{id}`. Une trame reçue deux fois
+(socket **et** push) est normale — le second `GET` répond la même chose.
+
+**Sans socket** : sondez `GET /rides/{id}` toutes les **10 s** tant que la
+course n'est ni `completed` ni `cancelled`, en comparant `updated_at`.
+Jamais sur une course terminée. Le flux complet, commun à toutes les
+applications, est dans le `README`, « Temps réel ».
 
 ---
 
