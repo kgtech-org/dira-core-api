@@ -3,6 +3,7 @@ package rating
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -93,6 +94,9 @@ func (s *Service) Record(ctx context.Context, clientID, orderID string, targets 
 		if err := s.repo.Insert(ctx, &Rating{
 			OrderID: oid, ClientID: cid, TargetType: t.TargetType,
 			TargetID: tid, Score: t.Score, Comment: t.Comment,
+			// Datée ICI : sans cela, chaque avis sortait à l'an 1 dans les
+			// listes, et « il y a deux jours » n'existait pas.
+			CreatedAt: time.Now().UTC(),
 		}); err != nil {
 			return nil, err
 		}
