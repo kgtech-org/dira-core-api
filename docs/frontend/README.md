@@ -97,8 +97,9 @@ Ce qui a été **renommé** (rupture, d'où la version majeure) :
 Les **routes** n'ont pas bougé (`/deliveries/available` reste la liste des
 courses à prendre), ni les **clés de gabarit** (`order_assigned`,
 `order_delivered`) — ce sont des noms d'écran, pas des états. Les filtres
-`?status=` prennent les nouveaux mots ; un ancien mot est **refusé** (`422`),
-pas rendu vide.
+`?status=` prennent les nouveaux mots ; un ancien mot est **refusé** (`422`)
+sur les listes de commandes et de courses de livraison, et ne trouve **rien**
+sur la liste d'exploitation des courses VTC — jamais traduit en silence.
 
 > Les données déjà en base ont été **migrées** (staging) : vous ne verrez
 > jamais un ancien mot dans une réponse.
