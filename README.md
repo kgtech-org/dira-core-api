@@ -102,6 +102,7 @@ wallet, open an account, notify someone in their name. No person ever calls them
 |---|---|
 | `POST /internal/accounts/{contact,names,by-phone}` | read a name, a phone, an id — nothing more |
 | `POST /internal/accounts/{ensure,ensure-merchant}` | open an account; `ensure` takes any role, so it can create an admin |
+| `POST /internal/accounts/search` | ids of accounts whose name or phone contains a text, by role, in the request's country — for a vertical's search bar |
 | `POST /internal/wallets/{create,consume,credit,pay,refund,credit-earnings}` | move money |
 | `POST /internal/wallets/balance` | read a balance — what the VTC checks before calling drivers for a ride the balance will pay at acceptance |
 | `POST /internal/notifications/send` | send one templated message |

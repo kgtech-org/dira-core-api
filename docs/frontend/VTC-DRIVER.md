@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.5.0** · 15 septembre 2026
+> **Version 4.6.0** · 15 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -196,9 +196,14 @@ PATCH /drivers/me/active-vehicle    { "vehicle_id": "…" }
 | `409` aucun véhicule actif | le passager doit savoir ce qui vient le chercher |
 | `402 debt_limit_reached` | la dette a franchi le plafond — voir §6 |
 
-⚠️ **La classe du véhicule décide de ce que vous pouvez prendre.** Une citadine
-ne sert pas une course « van » : l'accepter mettrait six personnes dans quatre
-places.
+⚠️ **La classe du véhicule décide de ce que vous pouvez prendre (v4.6.0).**
+Un véhicule sert les courses de **son mode et des modes avant lui** dans
+`GET /classes` — l'ordre de la liste est une hiérarchie : eco < confort <
+van. Une confort est appelée pour une course eco (le passager monte dans
+mieux) ; une eco **n'est jamais appelée** pour une course confort, et une
+citadine ne sert pas une course « van » : l'accepter mettrait six personnes
+dans quatre places. Le serveur trie **avant** de sonner ; forcer
+l'acceptation répond `409 vehicle_class_mismatch`.
 
 Les classes proposées à la déclaration viennent de `GET /classes` (public) :
 `key`, `name`, `icon_url` (image), `map_icon_url` / `map_icon`. **Affichez
@@ -364,6 +369,7 @@ POST https://tracking-staging.dira.llc/track/calls/{call_id}/decline  { "vehicle
 | `409 call_expired` | l'offre appartient déjà à la vague suivante |
 | `402 debt_limit_reached` | votre dette dépasse le plafond |
 | `409 ride_taken` | un autre a été plus rapide |
+| `409 vehicle_class_mismatch` | le véhicule ne sert pas le mode de la course (v4.6.0) — n'arrive qu'en forçant `POST /rides/{id}/accept` sur une course pour laquelle vous n'avez pas été appelé ; l'écran d'appel n'en verra jamais |
 | `409 rider_cannot_pay` | le passager payait sur son solde Dira et ne peut plus (v4.4.0) : **la course a été annulée**, vous êtes libre — fermez l'écran, aucune course ne vous attend |
 
 ---

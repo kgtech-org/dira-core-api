@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.5.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.6.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -266,6 +266,17 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.6.0 — 15 septembre 2026
+
+**Ajout rétrocompatible** — **le MODE du véhicule décide qui sonne.** Un
+véhicule sert les courses de son mode et des modes AVANT lui dans
+`GET /classes` (eco < confort < van) : une confort est appelée pour une
+course eco, une eco ne l'est jamais pour une confort. Le chauffeur qui
+forcerait quand même l'acceptation reçoit `409 vehicle_class_mismatch`
+(`VTC-DRIVER.md` §3). Rien à changer dans les applications : c'est le
+serveur qui trie — mais l'écran d'appel ne montrera plus jamais un mode
+au-dessus du sien.
 
 ### 4.5.0 — 15 septembre 2026
 

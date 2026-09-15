@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -558,6 +559,16 @@ func (f *fakeUserRepo) ListAccounts(_ context.Context, flt AccountFilter, cursor
 		next = rows[limit-1].OID.Hex()
 	}
 	return rows, next, nil
+}
+
+func (f *fakeUserRepo) SearchAccountIDs(_ context.Context, q string, roles []string, limit int) ([]string, error) {
+	var out []string
+	for _, u := range f.users {
+		if (len(roles) == 0 || slices.Contains(roles, u.Role)) && (strings.Contains(strings.ToLower(u.Name), strings.ToLower(q)) || strings.Contains(u.Phone, q)) {
+			out = append(out, u.ID.Hex())
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeUserRepo) AccountByID(_ context.Context, id string) (*AccountRow, error) {
