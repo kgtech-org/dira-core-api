@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
 	"github.com/kgtech-org/dira-core-api/pkg/country"
@@ -32,20 +33,30 @@ type Installed interface {
 //     servi.
 //  4. Sinon, le pays par défaut du déploiement.
 //
-// ⚠️ À MONTER DEUX FOIS : globalement, pour les routes publiques, et DANS la
-// chaîne d'authentification, après `Auth`, pour que le jeton soit lu. La
-// première pose n'a pas les claims ; la seconde la remplace. Une seule pose
-// globale aurait laissé tout compte connecté au pays de son en-tête — donc
-// au choix de l'application, pas du serveur.
+// ⚠️ À MONTER GLOBALEMENT, avec le vérificateur de jetons. Le pays se lit
+// dans le JETON même sur une route publique — `GET /vtc/cities`, le
+// catalogue — quand l'application en présente un : sans cela, un client
+// connecté qui pose un en-tête `SN` sur une route sans `Auth` verrait les
+// villes du Sénégal, et pas celles de son compte. Le jeton est vérifié ici
+// pour le pays seulement ; `Auth` reste ce qui autorise. Un jeton invalide
+// est ignoré à cet étage — c'est `Auth` qui le refusera, là où il compte.
 //
 // Un en-tête qui ne nomme aucun pays servi est IGNORÉ, pas refusé : refuser
 // aurait coupé l'inscription d'un voyageur dont le téléphone dit « FR », alors
 // que le pays par défaut le sert très bien ; et la réponse lui dit dans quel
 // pays il a été inscrit.
-func Country(installed Installed) func(http.Handler) http.Handler {
+func Country(installed Installed, tokens *auth.Manager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
+			claimed, any := auth.CountryFromContext(ctx)
+			if _, has := auth.UserFromContext(ctx); !has && tokens != nil {
+				if bearer, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok && bearer != "" {
+					if c, err := tokens.Verify(bearer); err == nil && c.Type == auth.TokenTypeAccess {
+						claimed, any = c.Country, c.CountryAny
+					}
+				}
+			}
 			asked := country.Normalize(r.Header.Get(country.Header))
 			if asked == "" {
 				asked = country.Normalize(r.URL.Query().Get(country.QueryParam))
@@ -53,7 +64,6 @@ func Country(installed Installed) func(http.Handler) http.Handler {
 			if asked != "" && !installed.Enabled(asked) {
 				asked = ""
 			}
-			claimed, any := auth.CountryFromContext(ctx)
 
 			code, source := installed.Default(), country.SourceDefault
 			switch {

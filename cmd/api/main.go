@@ -139,15 +139,14 @@ func run(logger *slog.Logger) error {
 	// livraison doit pouvoir voir le sien. Un garde global l'aurait déconnecté
 	// de la console à la première lecture de son propre nom.
 	// LA COUCHE PAYS. Les pays ouverts vivent en base et se règlent depuis
-	// la console ; le middleware les lit par un cache. Monté DEUX fois — en
-	// tête pour les routes publiques, et dans la chaîne d'authentification
-	// APRÈS le jeton, pour que le pays du compte s'impose à l'en-tête. Voir
-	// `middleware.Country`.
+	// la console ; le middleware les lit par un cache. Monté GLOBALEMENT,
+	// avec le vérificateur de jetons : le pays du compte s'impose à
+	// l'en-tête même sur une route publique. Voir `middleware.Country`.
 	countrySvc := country.NewService(country.NewRepository(mongo), cfg.CountryDefault)
 	countrySvc.Start(ctx)
-	countryMW := middleware.Country(countrySvc)
+	countryMW := middleware.Country(countrySvc, tokens)
 
-	authMW := chain(middleware.Auth(tokens), countryMW,
+	authMW := chain(middleware.Auth(tokens),
 		onlyUnder("/api/v1/admin/", middleware.RequireScope(auth.ScopeCore)))
 
 	// Le portefeuille de jetons est créé À L'INSCRIPTION d'un livreur — c'est

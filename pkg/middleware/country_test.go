@@ -25,7 +25,7 @@ func TestCountry(t *testing.T) {
 
 	var seen string
 	var source country.Source
-	h := chainCountry(m, country.Catalogued{DefaultCode: "tg"}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := Country(country.Catalogued{DefaultCode: "tg"}, m)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen, source = country.FromContext(r.Context()), country.SourceFromContext(r.Context())
 	}))
 
@@ -65,16 +65,23 @@ func TestCountry(t *testing.T) {
 	}
 }
 
-// chainCountry monte le middleware comme un service le fait : une fois
-// avant l'authentification, une fois après.
-func chainCountry(m *auth.Manager, inst Installed, next http.Handler) http.Handler {
-	authed := Auth(m)(Country(inst)(next))
-	public := Country(inst)(next)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "" {
-			authed.ServeHTTP(w, r)
-			return
-		}
-		public.ServeHTTP(w, r)
-	})
+// Sur une route qui passe par Auth, les claims sont déjà dans le contexte :
+// le middleware doit les lire sans revérifier, et rendre la même décision.
+func TestCountryAfterAuth(t *testing.T) {
+	m := auth.NewManager("secret", time.Minute, time.Hour)
+	tok, err := m.Issue(auth.Grant{UserID: "c", Role: auth.RoleClient, Country: "TG"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen string
+	h := Auth(m)(Country(country.Catalogued{DefaultCode: "TG"}, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = country.FromContext(r.Context())
+	})))
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set(country.Header, "BJ")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if seen != "TG" {
+		t.Fatalf("after Auth: got %q, want TG", seen)
+	}
 }

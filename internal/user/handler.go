@@ -7,6 +7,7 @@ import (
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
 	"github.com/kgtech-org/dira-core-api/pkg/middleware"
 )
@@ -107,6 +108,11 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
+	}
+	// Le pays RETENU pour le compte — l'indicatif a pu parler — remplace
+	// celui que le middleware avait annoncé avant de connaître le numéro.
+	if resp.User.Country != "" {
+		w.Header().Set(country.Header, resp.User.Country)
 	}
 	httpx.JSON(w, http.StatusCreated, resp)
 }
