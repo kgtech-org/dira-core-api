@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.6.0** · 15 septembre 2026
+> **Version 4.7.0** · 15 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -190,11 +190,53 @@ PATCH  /agent/availability     { available }
 
 **Disponibilité** : se retirer **n'arrête pas le GPS**. Le livreur rentre chez lui, ou termine la course en main, tout en refusant les suivantes. C'est pourquoi la disponibilité se déclare et ne se déduit pas du flux de positions.
 
+> ⚠️ **LA PRÉSENCE — v4.7.0, la même règle que les chauffeurs VTC.** Un
+> livreur disponible qui **n'émet plus sa position pendant cinq minutes**
+> est **retiré du service par le serveur** (`available: false`,
+> `offline_reason: "stale"`) : il doit se redéclarer disponible. La réponse
+> de `PATCH /agent/availability` porte la présence :
+>
+> | Champ | Sens |
+> |---|---|
+> | `last_seen_at` | dernière position de son véhicule vue par le suivi |
+> | `tracking_stale` | disponible mais **rien émis depuis plus de deux minutes** : le suivi ne le propose plus — affichez **« suivi arrêté »**, c'est la raison n°1 d'un téléphone qui ne sonne pas |
+> | `is_online` | disponible **et** vu — appelable |
+> | `offline_at` · `offline_reason` | depuis quand et pourquoi il n'est plus en service : `driver` (lui), `stale` (silence), `admin` (l'exploitation) |
+>
+> Ce que l'app doit faire : garder le socket de suivi ouvert et **émettre
+> dès la disponibilité**, pas seulement en course ; sur `tracking_stale`,
+> le dire au livreur ; sur un retrait `stale` (`available: false` alors
+> qu'il ne l'a pas demandé), proposer de se redéclarer d'un geste.
+
 ---
 
 ## 3. L'APPEL — la course vient au livreur
 
-Quand le marchand valide sa préparation, les **5 livreurs libres les plus proches** sont appelés **ensemble** pendant **30 s**. Sans preneur : deux nouvelles vagues, puis la course part en urgence côté back-office et **retourne au pot commun**.
+Quand le marchand valide sa préparation, les livreurs libres autour de la
+**première collecte** sont appelés. Sans preneur, la course part en urgence
+côté back-office et **retourne au pot commun**.
+
+> **Comment on est appelé — v4.7.0.** C'est un **réglage d'exploitation**,
+> le même que pour les chauffeurs VTC, pas une règle de l'application : soit
+> **tous** les livreurs libres dans le rayon sont appelés en même temps (le
+> premier qui accepte l'emporte), soit **un seul** à la fois, du plus proche
+> au suivant dès un refus ou l'échéance. Par défaut : tous à 5 km, 30 s
+> chacun, trois vagues ou cinq minutes. Dans les deux cas : **un livreur en
+> cours d'appel n'est jamais appelé pour une autre course** — un seul écran
+> d'appel à la fois, jamais remplacé par un second ; **personne n'est
+> rappelé** sur la même course ; le compte à rebours (`expires_at`) est
+> celui du serveur et peut être **plus court** que d'habitude quand la
+> recherche touche à sa fin. Refuser explicitement vaut mieux que laisser
+> passer : en mode « un par un », c'est ce qui fait sonner le suivant tout
+> de suite. `GET /food/settings/dispatch` rend le réglage en vigueur
+> (`call_mode`, `call_radius_m`, `call_ttl_s`, …) si l'écran veut le dire.
+
+> **Qui sonne — v4.7.0.** Avant de faire sonner qui que ce soit, le serveur
+> écarte de la vague ceux qui ne peuvent pas prendre : livreur **retiré du
+> service** ou suspendu, sans véhicule au volant, et **véhicule immobilisé
+> par l'exploitation** — c'est le véhicule qui **émet** qui est jugé, pas
+> celui déclaré actif dans l'app. Un livreur écarté ne voit rien ; il n'a
+> rien à faire.
 
 > **v3.7.0 — elle n'y reste pas indéfiniment.** Quinze minutes après la
 > validation du marchand, une course que personne n'a prise **expire** :
