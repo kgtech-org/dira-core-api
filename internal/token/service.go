@@ -39,6 +39,8 @@ type Repo interface {
 	// en UNE opération atomique.
 	SpendMoney(ctx context.Context, walletID primitive.ObjectID, amount int) (fromPromo, fromCash int, err error)
 	ListTransactions(ctx context.Context, walletID primitive.ObjectID, limit int, cursor string) ([]Transaction, string, error)
+	// ListTransactionsNewest : les derniers mouvements d'abord — la fiche.
+	ListTransactionsNewest(ctx context.Context, walletID primitive.ObjectID, limit int, cursor string) ([]Transaction, string, error)
 	WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 
 	// ClaimOperation réserve un mouvement d'argent, ou dit qu'il a déjà eu
@@ -271,7 +273,7 @@ func (s *Service) TransactionsOf(ctx context.Context, ownerID string, page httpx
 	if err != nil {
 		return nil, "", err
 	}
-	items, next, err := s.repo.ListTransactions(ctx, wallet.ID, page.Limit, page.Cursor)
+	items, next, err := s.repo.ListTransactionsNewest(ctx, wallet.ID, page.Limit, page.Cursor)
 	if err != nil {
 		return nil, "", apperr.Internal(err)
 	}

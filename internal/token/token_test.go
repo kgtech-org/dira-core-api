@@ -108,8 +108,10 @@ func (f *fakeRepo) CreditField(_ context.Context, walletID primitive.ObjectID, f
 		w.Balance += amount
 	case "balance_xof":
 		w.BalanceXOF += amount
+	case "promo_xof":
+		w.PromoXOF += amount
 	default:
-		return errors.New("wallet not found")
+		return errors.New("unknown field " + field)
 	}
 	return nil
 }
@@ -151,6 +153,25 @@ func (f *fakeRepo) ListTransactions(_ context.Context, walletID primitive.Object
 	var items []Transaction
 	for _, t := range f.transactions {
 		if t.WalletID == walletID && (cursor == "" || t.ID.Hex() > cursor) {
+			items = append(items, t)
+		}
+	}
+	next := ""
+	if len(items) > limit {
+		items = items[:limit]
+		next = items[limit-1].ID.Hex()
+	}
+	return items, next, nil
+}
+
+// ListTransactionsNewest REPRODUIT le vrai : du plus récent au plus ancien.
+func (f *fakeRepo) ListTransactionsNewest(_ context.Context, walletID primitive.ObjectID, limit int, cursor string) ([]Transaction, string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var items []Transaction
+	for i := len(f.transactions) - 1; i >= 0; i-- {
+		t := f.transactions[i]
+		if t.WalletID == walletID && (cursor == "" || t.ID.Hex() < cursor) {
 			items = append(items, t)
 		}
 	}
@@ -642,4 +663,27 @@ func TestClientWalletOpensOnDemand(t *testing.T) {
 	// Un livreur, lui, doit AVOIR son portefeuille : l'absence reste visible.
 	_, err = svc.GetWallet(ctx, primitive.NewObjectID().Hex(), auth.RoleDriver, "")
 	require.Error(t, err, "pas d'ouverture implicite pour un livreur")
+}
+
+// La fiche d'un compte lit le grand livre DU PLUS RÉCENT au plus ancien, et
+// chaque mouvement dit son unité ; le geste promotionnel d'un opérateur y
+// figure sous son motif, à part de l'argent du client.
+func TestAdminLedgerIsNewestFirstAndPromoIsApart(t *testing.T) {
+	svc, _, _, _ := newTestService(newFakeRepo())
+	owner := primitive.NewObjectID()
+	require.NoError(t, svc.CreateWallet(context.Background(), owner.Hex(), WalletTypeClient))
+	require.NoError(t, svc.TopUp(context.Background(), owner.Hex(), 2000, map[string]any{"payment_id": "pay-1"}))
+	w, err := svc.PromoByOperator(context.Background(), "admin-1", owner.Hex(), 500, "dédommagement")
+	require.NoError(t, err)
+	assert.Equal(t, 2000, w.BalanceXOF)
+	assert.Equal(t, 500, w.PromoXOF)
+	_, err = svc.PromoByOperator(context.Background(), "admin-1", owner.Hex(), 500, "")
+	assert.Error(t, err, "sans justificatif, pas de geste")
+
+	items, _, err := svc.TransactionsOf(context.Background(), owner.Hex(), httpx.Page{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+	assert.Equal(t, ReasonPromoCredit, items[0].Reason, "le plus récent d'abord")
+	assert.Equal(t, "xof", items[0].Unit)
+	assert.Equal(t, ReasonWalletTopup, items[1].Reason)
 }
