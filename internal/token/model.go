@@ -92,6 +92,12 @@ const (
 	// mouvement — il lui faut sa propre clé, `payment:tip:<ride>`, et sa
 	// propre ligne au relevé, qui dit « pourboire » et non « course ».
 	RefTip = "tip"
+	// RefRideAdjustment : la DIFFÉRENCE de prix d'une course dont le trajet
+	// a changé en route. Un genre à part, et son propre identifiant (celui
+	// de l'ajustement, pas de la course) : la course est déjà payée sous la
+	// sienne, et chaque ajustement est un mouvement distinct — deux arrêts
+	// ajoutés sont deux débits, pas un rejeu.
+	RefRideAdjustment = "ride_adjustment"
 )
 
 // Unités du grand livre.

@@ -51,6 +51,10 @@ var declaredSurface = []string{
 	// socket est mort, par FCM, sans notification système.
 	"/internal/push/data",
 	"/internal/ratings",
+	// Le SOLDE d'un portefeuille : ce que le VTC lit avant d'appeler des
+	// chauffeurs pour une course payée sur le solde — débitée à
+	// l'acceptation, mais jamais lancée sans de quoi payer.
+	"/internal/wallets/balance",
 	"/internal/wallets/consume",
 	"/internal/wallets/create",
 	"/internal/wallets/credit",

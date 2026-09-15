@@ -65,6 +65,10 @@ type Wallets interface {
 	Pay(ctx context.Context, userID string, amountXOF int, refKind, refID string) error
 	Refund(ctx context.Context, userID string, amountXOF int, refKind, refID string) error
 	CreditEarnings(ctx context.Context, ownerID string, amountXOF int, reason, refKind, refID string, ref map[string]any) error
+	// WalletOf LIT un portefeuille par son propriétaire — ce qu'une
+	// verticale demande avant d'engager un chauffeur sur une course que le
+	// solde devra payer à l'acceptation.
+	WalletOf(ctx context.Context, ownerID string) (token.WalletResponse, error)
 }
 
 // Payments starts a mobile-money payment ON BEHALF OF a person.
@@ -142,6 +146,7 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/wallets/credit", h.credit)
 		g.Post("/internal/wallets/pay", h.payRef)
 		g.Post("/internal/wallets/refund", h.refundRef)
+		g.Post("/internal/wallets/balance", h.balance)
 		g.Post("/internal/wallets/credit-earnings", h.creditEarnings)
 
 		g.Post("/internal/notifications/send", h.notify)
@@ -261,7 +266,7 @@ type walletRequest struct {
 	Amount  int            `json:"amount" validate:"required,gt=0"`
 	Reason  string         `json:"reason" validate:"omitempty,max=60"`
 	RefID   string         `json:"ref_id" validate:"omitempty,len=24,hexadecimal"`
-	RefKind string         `json:"ref_kind" validate:"omitempty,oneof=order ride tip"`
+	RefKind string         `json:"ref_kind" validate:"omitempty,oneof=order ride tip ride_adjustment"`
 	Ref     map[string]any `json:"ref"`
 	Type    string         `json:"type" validate:"omitempty,oneof=driver merchant client"`
 }
@@ -301,6 +306,27 @@ func (h *Handler) refundRef(w http.ResponseWriter, r *http.Request) {
 	h.move(w, r, func(ctx context.Context, req walletRequest) error {
 		return h.wallets.Refund(ctx, req.OwnerID, req.Amount, req.RefKind, req.RefID)
 	})
+}
+
+// POST /internal/wallets/balance {owner_id} — le solde d'un portefeuille.
+//
+// Ce que le VTC lit avant d'appeler des chauffeurs pour une course payée
+// sur le solde : l'argent n'est débité qu'à l'acceptation, mais un
+// passager qui n'a pas de quoi payer ne doit pas faire rouler quelqu'un.
+func (h *Handler) balance(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		OwnerID string `json:"owner_id" validate:"required,len=24,hexadecimal"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := h.wallets.WalletOf(r.Context(), req.OwnerID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) creditEarnings(w http.ResponseWriter, r *http.Request) {

@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.3.0** · 15 septembre 2026
+> **Version 4.4.0** · 15 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -358,6 +358,7 @@ POST https://tracking-staging.dira.llc/track/calls/{call_id}/decline  { "vehicle
 | `409 call_expired` | l'offre appartient déjà à la vague suivante |
 | `402 debt_limit_reached` | votre dette dépasse le plafond |
 | `409 ride_taken` | un autre a été plus rapide |
+| `409 rider_cannot_pay` | le passager payait sur son solde Dira et ne peut plus (v4.4.0) : **la course a été annulée**, vous êtes libre — fermez l'écran, aucune course ne vous attend |
 
 ---
 
@@ -416,6 +417,19 @@ et, si votre écran est ouvert, rien d'autre ne vous le dira : **relisez
 `cancelled` = fermer l'écran de course, vous êtes de nouveau appelable.
 Une action sur une course annulée répond `409 invalid_transition` :
 c'est le signal de relire, pas de réessayer.
+
+**Le trajet aussi peut changer sous vous (v4.4.0).** Le passager — ou
+l'exploitation — ajoute un arrêt, en retire un, change la destination
+pendant que vous roulez. Vous recevez `ride_stops_changed`
+(`data.type: "ride_status"`, `event: "stops_changed"`, `ride_id`,
+`fare_xof`, `delta_xof`) : **relisez `GET /rides/{id}`** et redessinez
+l'itinéraire. Ce qui change : `stops` (les arrêts déjà atteints restent en
+tête, inchangés), `distance_m`, `duration_s`, `fare_xof`, `driver_xof`
+(votre part suit), et `fare_adjustments[]` qui garde l'historique. Le
+montant à encaisser en **espèces** est le nouveau `fare_xof` — la
+différence n'a pas été prise au passager, c'est vous qui l'encaissez
+(`movement: cash`). Pour une course payée sur le solde, la différence a déjà
+bougé (`charged` / `refunded`) : rien à demander.
 
 **Le flux, dans l'ordre — un signal, un `GET` :**
 
@@ -479,8 +493,27 @@ que la course est acceptée, et jusqu'à `completed` :
 
 ```json
 { "vehicle_id": "…", "mission_id": "<ride_id>", "lng": 1.2255, "lat": 6.1319,
-  "heading": 40, "speed": 12, "ts": 1789044151142 }
+  "heading": 40, "heading_source": "gps", "speed": 12, "ts": 1789044151142 }
 ```
+
+**Le CAP est attendu, pas facultatif (v4.4.0).** `heading` est la direction
+du véhicule, en degrés depuis le **nord vrai** (0–360, 0 = nord, 90 = est) ;
+c'est ce qui oriente la voiture sur la carte de l'exploitation. Deux
+sources, et `heading_source` dit laquelle :
+
+| Source | Quand | Comment |
+|---|---|---|
+| `gps` | en mouvement (vitesse > ~1,5 m/s) | le `bearing` de la position (Android `Location.bearing` si `hasBearing()`, iOS `CLLocation.course` ≥ 0) |
+| `compass` | à l'arrêt, ou quand le GPS n'a pas de cap | les capteurs : **vecteur de rotation** (`TYPE_ROTATION_VECTOR` / `CMDeviceMotion.heading`), converti en azimut, corrigé de la **déclinaison magnétique** (`GeomagneticField`) pour rendre le nord vrai, lissé (moyenne circulaire sur ~1 s) |
+
+```json
+{ "vehicle_id": "…", "mission_id": "…", "lng": 1.2255, "lat": 6.1319,
+  "heading": 40, "heading_source": "gps", "speed": 12, "ts": 1789044151142 }
+```
+
+Sans capteur exploitable (téléphone sans magnétomètre, calibration
+impossible), omettez les deux champs : le serveur garde le dernier cap
+connu. N'envoyez jamais `0` pour « inconnu » — c'est le nord.
 
 C'est ce champ qui fait le **parcours** : à `completed`, le serveur fige les
 positions portées par la course, les recale sur la route, et la course garde
