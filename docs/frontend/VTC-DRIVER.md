@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.1.0** · 15 septembre 2026
+> **Version 4.1.1** · 15 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -72,7 +72,9 @@ PATCH /drivers/me/active-vehicle    { "vehicle_id": "…" }
 
 > **La présence — v3.1.0.** `last_seen_at` est la dernière position que le
 > suivi a vue de votre véhicule (lue à l'instant) ; **`tracking_stale`** est
-> vrai après **90 s** sans position, ou jamais vu — c'est « suivi arrêté » :
+> vrai après **2 min** sans position (v4.1.1 — 90 s avant : un téléphone
+> en poche faisait clignoter « suivi arrêté »), ou jamais vu — c'est
+> « suivi arrêté » :
 > vous êtes encore en ligne, mais **vous n'êtes plus appelé**. Affichez-le
 > comme le widget. ⚠️ Après **5 min** sans position, **le serveur vous met hors
 > ligne** : `online: false`, `offline_reason: "stale"`, `offline_at`. Dites-le

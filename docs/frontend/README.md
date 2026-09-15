@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.1.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.1.1** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -241,6 +241,15 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.1.1 — 15 septembre 2026
+
+**Précisions** — un chauffeur hors ligne ne reçoit plus d'appel : la mise
+hors ligne le retire du vivier sur-le-champ, et chaque vague est confirmée
+par le métier avant de sonner (un chauffeur passé hors ligne ou suspendu
+entre-temps est écarté). `tracking_stale` passe à **2 min** sans position
+(90 s avant) — aligné sur la carte de la console, qui ne fait plus
+clignoter « muet » (`VTC-DRIVER.md` §2). Passage hors ligne inchangé : 5 min.
 
 ### 4.1.0 — 15 septembre 2026
 
