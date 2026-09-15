@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.4.0** · 15 septembre 2026
+> **Version 4.5.0** · 15 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -163,8 +163,18 @@ GET /classes
 ```
 
 ```json
-{ "items": [ { "key": "eco", "name": "Éco", "note": "Citadine · 1-4 passagers", "seats": 4 } ] }
+{ "items": [ { "key": "eco", "name": "Éco", "note": "Citadine · 1-4 passagers", "seats": 4,
+              "icon": "🚗", "map_icon": "voiture" } ] }
 ```
+
+**Les modes se règlent depuis la console (v4.5.0)** : leur nom, leur
+pictogramme et leur silhouette peuvent changer, et un mode peut
+s'ajouter. **N'écrivez ni le nom ni le pictogramme en dur** : affichez
+`icon` (un emoji) devant `name`, tel que servi. `map_icon` nomme la
+silhouette du marqueur pour une application qui dessine des cartes
+(`voiture` · `berline` · `suv` · `van` · `moto` · `tricycle` · `velo` ·
+`pieton`) ; sans silhouette pour cette valeur, dessinez `voiture`. La
+`key` reste l'identifiant technique (devis, course) — jamais un libellé.
 
 ⚠️ **Aucun prix ici.** Une grille tarifaire affichée hors d'un trajet donne un
 chiffre que la course ne confirmera pas. Le prix vient du devis, pour CE

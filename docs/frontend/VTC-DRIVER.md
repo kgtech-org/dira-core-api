@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.4.0** · 15 septembre 2026
+> **Version 4.5.0** · 15 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -199,6 +199,11 @@ PATCH /drivers/me/active-vehicle    { "vehicle_id": "…" }
 ⚠️ **La classe du véhicule décide de ce que vous pouvez prendre.** Une citadine
 ne sert pas une course « van » : l'accepter mettrait six personnes dans quatre
 places.
+
+Les classes proposées à la déclaration viennent de `GET /classes` (public) :
+`key`, `name`, `icon` (emoji), `map_icon`. **Affichez `icon` + `name` tels
+que servis** — les modes se règlent depuis la console, et un mode peut
+s'ajouter (v4.5.0). Le `class` d'un appel (§3) est la `key`.
 
 ---
 
