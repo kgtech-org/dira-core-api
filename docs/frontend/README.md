@@ -279,6 +279,11 @@ solde insuffisant refuse le changement. Pushes `ride_stops_changed`
 (chauffeur) et `ride_fare_adjusted` (passager). Voir `VTC-CLIENT.md` §5 et
 `VTC-DRIVER.md` §4.
 
+**Le CAP des véhicules** : `heading` (degrés depuis le nord vrai) est attendu
+sur chaque position, avec `heading_source` — `gps` en mouvement, `compass`
+(capteurs, déclinaison corrigée) à l'arrêt. Voir `VTC-DRIVER.md` §4,
+`FOOD-DELIVERY.md` §6.
+
 **Le solde Dira part à l'ACCEPTATION, plus à la commande** : `POST /rides`
 en `wallet` vérifie le solde (`402 insufficient_funds` sinon) et l'appel
 part sans débit ; le débit a lieu quand un chauffeur accepte. Si le solde a

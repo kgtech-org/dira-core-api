@@ -368,8 +368,27 @@ Depuis la v1.2.0, une course **attribuée** porte :
 wss://tracking-staging.dira.llc/track/agent
 
 { "vehicle_id": "…", "mission_id": "<delivery_id>", "type": "moto",
-  "plate": "…", "lng": …, "lat": …, "heading": …, "speed": …, "ts": … }
+  "plate": "…", "lng": …, "lat": …, "heading": …, "heading_source": "gps|compass", "speed": …, "ts": … }
 ```
+
+**Le CAP est attendu, pas facultatif (v4.4.0).** `heading` est la direction
+du véhicule, en degrés depuis le **nord vrai** (0–360, 0 = nord, 90 = est) ;
+c'est ce qui oriente la voiture sur la carte de l'exploitation. Deux
+sources, et `heading_source` dit laquelle :
+
+| Source | Quand | Comment |
+|---|---|---|
+| `gps` | en mouvement (vitesse > ~1,5 m/s) | le `bearing` de la position (Android `Location.bearing` si `hasBearing()`, iOS `CLLocation.course` ≥ 0) |
+| `compass` | à l'arrêt, ou quand le GPS n'a pas de cap | les capteurs : **vecteur de rotation** (`TYPE_ROTATION_VECTOR` / `CMDeviceMotion.heading`), converti en azimut, corrigé de la **déclinaison magnétique** (`GeomagneticField`) pour rendre le nord vrai, lissé (moyenne circulaire sur ~1 s) |
+
+```json
+{ "vehicle_id": "…", "mission_id": "…", "lng": 1.2255, "lat": 6.1319,
+  "heading": 40, "heading_source": "gps", "speed": 12, "ts": 1789044151142 }
+```
+
+Sans capteur exploitable (téléphone sans magnétomètre, calibration
+impossible), omettez les deux champs : le serveur garde le dernier cap
+connu. N'envoyez jamais `0` pour « inconnu » — c'est le nord.
 
 - **`mission_id` présent** = la position est enregistrée dans le parcours ; **absent** = simple présence (en ligne, hors course).
 - Cadence conseillée : 1 position / 1–3 s en course. Le serveur limite à 1 / 200 ms.

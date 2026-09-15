@@ -493,8 +493,27 @@ que la course est acceptée, et jusqu'à `completed` :
 
 ```json
 { "vehicle_id": "…", "mission_id": "<ride_id>", "lng": 1.2255, "lat": 6.1319,
-  "heading": 40, "speed": 12, "ts": 1789044151142 }
+  "heading": 40, "heading_source": "gps", "speed": 12, "ts": 1789044151142 }
 ```
+
+**Le CAP est attendu, pas facultatif (v4.4.0).** `heading` est la direction
+du véhicule, en degrés depuis le **nord vrai** (0–360, 0 = nord, 90 = est) ;
+c'est ce qui oriente la voiture sur la carte de l'exploitation. Deux
+sources, et `heading_source` dit laquelle :
+
+| Source | Quand | Comment |
+|---|---|---|
+| `gps` | en mouvement (vitesse > ~1,5 m/s) | le `bearing` de la position (Android `Location.bearing` si `hasBearing()`, iOS `CLLocation.course` ≥ 0) |
+| `compass` | à l'arrêt, ou quand le GPS n'a pas de cap | les capteurs : **vecteur de rotation** (`TYPE_ROTATION_VECTOR` / `CMDeviceMotion.heading`), converti en azimut, corrigé de la **déclinaison magnétique** (`GeomagneticField`) pour rendre le nord vrai, lissé (moyenne circulaire sur ~1 s) |
+
+```json
+{ "vehicle_id": "…", "mission_id": "…", "lng": 1.2255, "lat": 6.1319,
+  "heading": 40, "heading_source": "gps", "speed": 12, "ts": 1789044151142 }
+```
+
+Sans capteur exploitable (téléphone sans magnétomètre, calibration
+impossible), omettez les deux champs : le serveur garde le dernier cap
+connu. N'envoyez jamais `0` pour « inconnu » — c'est le nord.
 
 C'est ce champ qui fait le **parcours** : à `completed`, le serveur fige les
 positions portées par la course, les recale sur la route, et la course garde
