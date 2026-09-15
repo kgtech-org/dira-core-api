@@ -269,6 +269,14 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 
 ### 4.6.0 — 15 septembre 2026
 
+**Sans changement d'API** — **la nouvelle commande en temps réel chez le
+marchand, le pop-up de 5 s** de la maquette mobile : un seul socket ouvert
+pour toute l'application dès la connexion, `status: "paid"` comme unique
+signal (jamais `pending_payment`), carte qui surgit avec `store_ids` +
+`total` puis se complète par `GET`, 5 secondes, remplacement (jamais deux
+cartes), badge sur l'onglet *Nouvelle*, aucun pop-up à la reconnexion
+(`FOOD-MERCHANT.md` §4).
+
 **Ajout rétrocompatible** — **le MODE du véhicule décide qui sonne.** Un
 véhicule sert les courses de son mode et des modes AVANT lui dans
 `GET /classes` (eco < confort < van) : une confort est appelée pour une

@@ -39,6 +39,8 @@ type Repo interface {
 	// en UNE opération atomique.
 	SpendMoney(ctx context.Context, walletID primitive.ObjectID, amount int) (fromPromo, fromCash int, err error)
 	ListTransactions(ctx context.Context, walletID primitive.ObjectID, limit int, cursor string) ([]Transaction, string, error)
+	// ListTransactionsNewest : les derniers mouvements d'abord — la fiche.
+	ListTransactionsNewest(ctx context.Context, walletID primitive.ObjectID, limit int, cursor string) ([]Transaction, string, error)
 	WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 
 	// ClaimOperation réserve un mouvement d'argent, ou dit qu'il a déjà eu
@@ -262,6 +264,53 @@ func (s *Service) WalletOf(ctx context.Context, ownerID string) (WalletResponse,
 		return WalletResponse{}, err
 	}
 	return newWalletResponse(wallet, s.tokenPriceXOF), nil
+}
+
+// TransactionsOf pages le grand livre d'UN portefeuille, désigné par son
+// propriétaire — la fiche d'un compte sur la console.
+func (s *Service) TransactionsOf(ctx context.Context, ownerID string, page httpx.Page) ([]TransactionResponse, string, error) {
+	wallet, err := s.findWallet(ctx, ownerID)
+	if err != nil {
+		return nil, "", err
+	}
+	items, next, err := s.repo.ListTransactionsNewest(ctx, wallet.ID, page.Limit, page.Cursor)
+	if err != nil {
+		return nil, "", apperr.Internal(err)
+	}
+	resp := make([]TransactionResponse, 0, len(items))
+	for _, t := range items {
+		resp = append(resp, newTransactionResponse(t))
+	}
+	return resp, next, nil
+}
+
+// PromoByOperator offre un crédit promotionnel à un CLIENT, depuis la
+// console. Comme CreditByOperator : justificatif obligatoire, journal
+// d'audit, solde relu. Le portefeuille est créé s'il n'existe pas — un
+// client qui n'a jamais rechargé peut recevoir un geste commercial.
+func (s *Service) PromoByOperator(ctx context.Context, actorID, ownerID string, amountXOF int, justification string) (*WalletResponse, error) {
+	justification = strings.TrimSpace(justification)
+	if justification == "" {
+		return nil, apperr.Validation("justification is required for a promo credit")
+	}
+	if len(justification) > maxJustificationLen {
+		return nil, apperr.Validation("justification is too long")
+	}
+	if err := s.CreditPromo(ctx, ownerID, amountXOF, map[string]any{"justification": justification, "actor_id": actorID}); err != nil {
+		return nil, err
+	}
+	wallet, err := s.findWallet(ctx, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	s.record(ctx, "token.operator_promo", wallet.ID.Hex(), map[string]any{
+		"owner_id":      ownerID,
+		"amount_xof":    amountXOF,
+		"justification": justification,
+		"actor_id":      actorID,
+	})
+	resp := newWalletResponse(wallet, s.tokenPriceXOF)
+	return &resp, nil
 }
 
 // ListTransactions returns one page of transactions for the resolved wallet.

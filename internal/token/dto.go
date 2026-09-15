@@ -46,11 +46,15 @@ func newWalletResponse(w *Wallet, tokenPriceXOF int) WalletResponse {
 
 // TransactionResponse is the public representation of a wallet transaction.
 type TransactionResponse struct {
-	ID        string         `json:"id"`
-	WalletID  string         `json:"wallet_id"`
-	Kind      string         `json:"kind"`
-	Reason    string         `json:"reason"`
-	Amount    int            `json:"amount"`
+	ID       string `json:"id"`
+	WalletID string `json:"wallet_id"`
+	Kind     string `json:"kind"`
+	Reason   string `json:"reason"`
+	Amount   int    `json:"amount"`
+	// Unit dit QUELLE unité le mouvement déplace : `token` (absent en base
+	// pour l'historique) ou `xof`. Sans elle, un relevé additionnerait des
+	// jetons et des francs.
+	Unit      string         `json:"unit"`
 	RefID     string         `json:"ref_id,omitempty"`
 	RefKind   string         `json:"ref_kind,omitempty"`
 	Ref       map[string]any `json:"ref,omitempty"`
@@ -64,8 +68,12 @@ func newTransactionResponse(t Transaction) TransactionResponse {
 		Kind:      t.Kind,
 		Reason:    t.Reason,
 		Amount:    t.Amount,
+		Unit:      t.Unit,
 		Ref:       t.Ref,
 		CreatedAt: t.CreatedAt,
+	}
+	if resp.Unit == "" {
+		resp.Unit = "token"
 	}
 	resp.RefKind = t.RefKind
 	if t.RefID != nil {
@@ -92,6 +100,14 @@ type PurchaseResponse struct {
 // obligatoire : c'est lui qui rend le geste défendable en revue de comptes.
 type OperatorCreditRequest struct {
 	Amount        int    `json:"amount" validate:"required,gt=0"`
+	Justification string `json:"justification" validate:"required,min=3,max=500"`
+}
+
+// OperatorPromoRequest offre un crédit PROMOTIONNEL (XOF) à un client —
+// geste commercial, dédommagement. Justificatif obligatoire, comme pour les
+// jetons : il part au journal d'audit.
+type OperatorPromoRequest struct {
+	AmountXOF     int    `json:"amount_xof" validate:"required,gt=0"`
 	Justification string `json:"justification" validate:"required,min=3,max=500"`
 }
 

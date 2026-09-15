@@ -145,6 +145,35 @@ func (r *Repository) InsertTransaction(ctx context.Context, t *Transaction) erro
 
 // ListTransactions returns one page of transactions for a wallet, most recent
 // ids first is not used: cursor pagination follows _id ascending order.
+// ListTransactionsNewest pages le grand livre du PLUS RÉCENT au plus ancien
+// — ce qu'une fiche lit : les derniers mouvements d'abord. `ListTransactions`
+// reste ascendant pour les applications qui rejouent un relevé.
+func (r *Repository) ListTransactionsNewest(ctx context.Context, walletID primitive.ObjectID, limit int, cursor string) ([]Transaction, string, error) {
+	filter := bson.M{"wallet_id": walletID}
+	if cursor != "" {
+		cursorID, err := primitive.ObjectIDFromHex(cursor)
+		if err != nil {
+			return nil, "", fmt.Errorf("token: invalid cursor: %w", err)
+		}
+		filter["_id"] = bson.M{"$lt": cursorID}
+	}
+	opts := options.Find().SetSort(bson.D{{Key: "_id", Value: -1}}).SetLimit(int64(limit + 1))
+	cur, err := r.transactions.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, "", fmt.Errorf("token: list transactions: %w", err)
+	}
+	var items []Transaction
+	if err := cur.All(ctx, &items); err != nil {
+		return nil, "", fmt.Errorf("token: decode transactions: %w", err)
+	}
+	next := ""
+	if len(items) > limit {
+		items = items[:limit]
+		next = items[limit-1].ID.Hex()
+	}
+	return items, next, nil
+}
+
 func (r *Repository) ListTransactions(ctx context.Context, walletID primitive.ObjectID, limit int, cursor string) ([]Transaction, string, error) {
 	filter := bson.M{"wallet_id": walletID}
 	if cursor != "" {

@@ -54,7 +54,45 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		// jetons SANS contrepartie financière, justificatif exigé.
 		g.Post("/admin/wallets/{ownerID}/purchase", h.adminPurchase)
 		g.Post("/admin/wallets/{ownerID}/credit", h.adminCredit)
+		// Le grand livre d'UN portefeuille, et le geste commercial en ARGENT
+		// (promotionnel) pour un client — la fiche d'un compte.
+		g.Get("/admin/wallets/{ownerID}/transactions", h.adminTransactions)
+		g.Post("/admin/wallets/{ownerID}/promo", h.adminPromo)
 	})
+}
+
+// GET /admin/wallets/{ownerID}/transactions?cursor=&limit=
+func (h *Handler) adminTransactions(w http.ResponseWriter, r *http.Request) {
+	if _, _, err := caller(r); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	items, next, err := h.svc.TransactionsOf(r.Context(), chi.URLParam(r, "ownerID"), httpx.PageFromRequest(r))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.List(w, items, next)
+}
+
+// POST /admin/wallets/{ownerID}/promo — { amount_xof, justification }
+func (h *Handler) adminPromo(w http.ResponseWriter, r *http.Request) {
+	userID, _, err := caller(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var req OperatorPromoRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	wallet, err := h.svc.PromoByOperator(r.Context(), userID, chi.URLParam(r, "ownerID"), req.AmountXOF, req.Justification)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, wallet)
 }
 
 // MountCatalogueSpending monte les dépenses qui portent sur le CATALOGUE d'une
