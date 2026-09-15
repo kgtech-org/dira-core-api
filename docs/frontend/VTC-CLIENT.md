@@ -164,17 +164,21 @@ GET /classes
 
 ```json
 { "items": [ { "key": "eco", "name": "Éco", "note": "Citadine · 1-4 passagers", "seats": 4,
-              "icon": "🚗", "map_icon": "voiture" } ] }
+              "icon_url": "https://files.dira.llc/class/…/eco.png",
+              "map_icon_url": "https://files.dira.llc/class/…/eco-map.png",
+              "map_icon": "voiture" } ] }
 ```
 
-**Les modes se règlent depuis la console (v4.5.0)** : leur nom, leur
-pictogramme et leur silhouette peuvent changer, et un mode peut
-s'ajouter. **N'écrivez ni le nom ni le pictogramme en dur** : affichez
-`icon` (un emoji) devant `name`, tel que servi. `map_icon` nomme la
-silhouette du marqueur pour une application qui dessine des cartes
-(`voiture` · `berline` · `suv` · `van` · `moto` · `tricycle` · `velo` ·
-`pieton`) ; sans silhouette pour cette valeur, dessinez `voiture`. La
-`key` reste l'identifiant technique (devis, course) — jamais un libellé.
+**Les modes se règlent depuis la console (v4.5.0)** : leur nom et leurs
+icônes — des **images envoyées par l'exploitation** — peuvent changer, et
+un mode peut s'ajouter. **N'écrivez ni le nom ni l'icône en dur** :
+affichez `icon_url` devant `name`, tels que servis. `map_icon_url` est
+l'image du marqueur pour une application qui dessine des cartes ; à
+défaut (`null`), `map_icon` nomme une silhouette de repli (`voiture` ·
+`berline` · `suv` · `van` · `moto` · `tricycle` · `velo` · `pieton`) —
+sans image ni silhouette connue, dessinez `voiture`. Mettez les images en
+cache par URL : elles changent d'URL quand elles changent. La `key`
+reste l'identifiant technique (devis, course) — jamais un libellé.
 
 ⚠️ **Aucun prix ici.** Une grille tarifaire affichée hors d'un trajet donne un
 chiffre que la course ne confirmera pas. Le prix vient du devis, pour CE

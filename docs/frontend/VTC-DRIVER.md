@@ -201,9 +201,10 @@ ne sert pas une course « van » : l'accepter mettrait six personnes dans quatre
 places.
 
 Les classes proposées à la déclaration viennent de `GET /classes` (public) :
-`key`, `name`, `icon` (emoji), `map_icon`. **Affichez `icon` + `name` tels
-que servis** — les modes se règlent depuis la console, et un mode peut
-s'ajouter (v4.5.0). Le `class` d'un appel (§3) est la `key`.
+`key`, `name`, `icon_url` (image), `map_icon_url` / `map_icon`. **Affichez
+`icon_url` + `name` tels que servis** — les modes se règlent depuis la
+console, et un mode peut s'ajouter (v4.5.0). Le `class` d'un appel (§3)
+est la `key`.
 
 ---
 

@@ -269,10 +269,11 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 
 ### 4.5.0 — 15 septembre 2026
 
-**Ajout rétrocompatible** — les MODES (classes) portent un pictogramme
-d'affichage (`icon`, un emoji) et une silhouette de marqueur (`map_icon`),
-réglables depuis la console avec le nom ; un mode peut s'ajouter. Affichez
-`icon` + `name` tels que servis, jamais en dur (`VTC-CLIENT.md` §2).
+**Ajout rétrocompatible** — les MODES (classes) portent deux images
+envoyées depuis la console : `icon_url` (l'icône d'affichage) et
+`map_icon_url` (l'icône du marqueur, avec `map_icon` comme silhouette de
+repli), réglables avec le nom ; un mode peut s'ajouter. Affichez
+`icon_url` + `name` tels que servis, jamais en dur (`VTC-CLIENT.md` §2).
 
 ### 4.4.0 — 15 septembre 2026
 
