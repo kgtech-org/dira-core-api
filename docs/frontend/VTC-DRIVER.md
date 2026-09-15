@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.0.0** · 13 septembre 2026
+> **Version 4.1.0** · 15 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -112,7 +112,19 @@ places.
 ## 3. L'APPEL — la course vient au chauffeur
 
 **Il n'y a pas de liste de courses disponibles.** Le serveur choisit qui
-appeler, par vagues, et le chauffeur accepte ou refuse.
+appeler, et le chauffeur accepte ou refuse.
+
+> **Comment on est appelé — v4.1.0.** C'est un réglage d'exploitation, pas
+> une règle de l'application : soit **tous** les chauffeurs libres dans le
+> rayon sont appelés en même temps (le premier qui accepte l'emporte), soit
+> **un seul** à la fois, du plus proche au suivant dès un refus ou l'échéance.
+> Dans les deux cas : **un chauffeur en cours d'appel n'est jamais appelé pour
+> une autre course** — un seul écran d'appel à la fois, jamais remplacé par un
+> second ; **personne n'est rappelé** sur la même course ; le compte à rebours
+> (`expires_at`) est celui du serveur et peut être **plus court** que
+> d'habitude quand la recherche touche à sa fin. Refuser explicitement vaut
+> mieux que laisser passer : en mode « un par un », c'est ce qui fait sonner
+> le suivant tout de suite.
 
 L'appel arrive **par le socket du SUIVI**, celui-là même sur lequel vous
 poussez vos positions :

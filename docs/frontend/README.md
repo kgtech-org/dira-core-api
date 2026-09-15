@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.0.0** · 13 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.1.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -241,6 +241,28 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.1.0 — 15 septembre 2026
+
+**Ajout rétrocompatible** — la politique d'appel des chauffeurs, et la fin
+d'une recherche côté passager.
+
+- **Un chauffeur en cours d'appel n'est plus appelé pour une autre course**
+  (le second appel remplaçait le premier sur son écran). Un seul écran
+  d'appel à la fois, dans les deux verticales.
+- **Réglage d'exploitation** (console, `PUT /vtc/admin/settings/dispatch`) :
+  `call_mode` `parallel` (tous les chauffeurs libres du rayon d'un coup) ou
+  `sequential` (un à la fois, du plus proche), `call_radius_m`, `call_ttl_s`
+  (le temps de réponse de chacun), et la **fin** : `max_drivers` et/ou
+  `max_minutes`. Le compte à rebours d'un appel peut être plus court qu'avant
+  quand la recherche touche à sa fin (`VTC-DRIVER.md` §3).
+- **Passager** : quand la recherche s'arrête sans preneur, la course reste
+  `searching` avec **`dispatch_state: exhausted`** (`calling` sinon), push
+  **`ride_search_exhausted`**, et **`POST /vtc/rides/{id}/relaunch`** relance
+  l'appel (`409 search_running` pendant un appel, `409 not_searching` sur une
+  course prise). L'exploitation a le même geste
+  (`POST /vtc/admin/rides/{id}/relaunch-search`) et l'attribution manuelle
+  (`VTC-CLIENT.md` §5).
 
 ### 4.0.0 — 13 septembre 2026
 
