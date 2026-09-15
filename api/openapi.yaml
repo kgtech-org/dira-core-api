@@ -486,6 +486,43 @@ paths:
       parameters: [{name: ownerID, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Wallet}
+  /admin/wallets/{ownerID}/transactions:
+    get:
+      tags: [wallet]
+      summary: One wallet's ledger
+      description: >-
+        Le grand livre d'UN portefeuille, désigné par son propriétaire — la
+        fiche d'un compte. Chaque mouvement dit son `unit` (`token` ou
+        `xof`) : un relevé n'additionne pas des jetons et des francs.
+      parameters:
+        - {name: ownerID, in: path, required: true, schema: {type: string}}
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer}}
+      responses:
+        "200": {description: Transactions}
+        "404": {description: wallet_not_found}
+  /admin/wallets/{ownerID}/promo:
+    post:
+      tags: [wallet]
+      summary: Grant a promotional credit (XOF) to a client
+      description: >-
+        Un geste commercial en ARGENT — dépensé avant l'argent réel du
+        client, jamais confondu avec lui au grand livre (`promo_credit`).
+        Justificatif exigé, journal d'audit. Le portefeuille est créé s'il
+        n'existe pas.
+      parameters: [{name: ownerID, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount_xof, justification]
+              properties:
+                amount_xof: {type: integer, minimum: 1}
+                justification: {type: string, minLength: 3, maxLength: 500}
+      responses:
+        "200": {description: Wallet}
   /payments/providers:
     get:
       tags: [payments]
