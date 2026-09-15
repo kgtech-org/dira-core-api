@@ -358,6 +358,7 @@ POST https://tracking-staging.dira.llc/track/calls/{call_id}/decline  { "vehicle
 | `409 call_expired` | l'offre appartient déjà à la vague suivante |
 | `402 debt_limit_reached` | votre dette dépasse le plafond |
 | `409 ride_taken` | un autre a été plus rapide |
+| `409 rider_cannot_pay` | le passager payait sur son solde Dira et ne peut plus (v4.4.0) : **la course a été annulée**, vous êtes libre — fermez l'écran, aucune course ne vous attend |
 
 ---
 

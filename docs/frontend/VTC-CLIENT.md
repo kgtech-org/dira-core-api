@@ -248,16 +248,22 @@ POST /rides
 | Moyen | Ce qui se passe à la commande | À l'annulation |
 |---|---|---|
 | `cash` | rien : le chauffeur encaisse à l'arrivée | rien à rendre |
-| `wallet` | le **solde Dira est débité** immédiatement | **remboursé** sur le portefeuille |
+| `wallet` | le solde est **vérifié** (`402` s'il ne couvre pas) — il n'est **débité qu'à l'acceptation** d'un chauffeur (v4.4.0) | **remboursé** sur le portefeuille si un chauffeur avait accepté ; rien à rendre avant |
 | `online` | `payment_url` est rendue — **rien n'est encaissé** | remboursé **si** le paiement a été confirmé |
 
 > ⚠️ **`402 insufficient_funds`** sur `wallet` : le solde ne couvre pas la
 > course. Ce n'est pas une panne — routez vers la recharge du portefeuille
 > (`POST /wallet/purchase`, **au socle**), pas vers un message d'erreur.
 >
-> Encaisser AVANT d'appeler est délibéré : un chauffeur qui accepte une course
-> impayable aura roulé pour rien, et le découvrir à l'arrivée est le pire
-> moment pour tout le monde.
+> **Le solde part à l'acceptation, pas à la commande (v4.4.0).** Une
+> recherche sans preneur ne fait pas partir puis revenir l'argent, et un
+> passager qui annule pendant la recherche n'a rien à se faire rendre. Le
+> solde est **vérifié** à la commande pour que personne ne roule pour une
+> course impayable. Si le solde a fondu entre la commande et l'acceptation
+> (dépensé ailleurs), la course est **annulée** — `status: cancelled`,
+> `cancelled_reason: "payment_failed"`, push `ride_cancelled` — et le
+> passager doit recharger avant de recommander. Affichez le solde sur
+> l'écran de recherche : c'est lui qui paiera quand un chauffeur dira oui.
 
 > ⚠️ **`payment_url` ne prouve RIEN.** Elle ouvre la page de l'opérateur. La
 > course reste impayée tant que le serveur n'a pas reçu la confirmation :

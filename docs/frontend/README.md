@@ -279,6 +279,13 @@ solde insuffisant refuse le changement. Pushes `ride_stops_changed`
 (chauffeur) et `ride_fare_adjusted` (passager). Voir `VTC-CLIENT.md` §5 et
 `VTC-DRIVER.md` §4.
 
+**Le solde Dira part à l'ACCEPTATION, plus à la commande** : `POST /rides`
+en `wallet` vérifie le solde (`402 insufficient_funds` sinon) et l'appel
+part sans débit ; le débit a lieu quand un chauffeur accepte. Si le solde a
+fondu entre-temps, la course est annulée (`cancelled_reason:
+payment_failed`, push `ride_cancelled`) et le chauffeur reçoit
+`409 rider_cannot_pay`. Voir `VTC-CLIENT.md` §4, `VTC-DRIVER.md` §3.
+
 ### 4.3.0 — 15 septembre 2026
 
 **Ajout rétrocompatible** — la MONNAIE vient du pays : `GET /countries`
