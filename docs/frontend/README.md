@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.6.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.7.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -266,6 +266,18 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.7.0 — 15 septembre 2026
+
+**Ajout rétrocompatible** — **les livreurs s'appellent comme les
+chauffeurs.** Réglage d'exploitation par pays (tous en même temps ou un
+par un, rayon, temps de réponse, bornes — `GET /food/settings/dispatch`),
+présence (`last_seen_at`, `tracking_stale`, retrait du service après cinq
+minutes de silence avec `offline_reason`), et la vague qui écarte, avant de
+sonner, un livreur retiré ou un véhicule immobilisé par l'exploitation
+(`FOOD-DELIVERY.md` §2, §3). Rien à changer dans l'app pour être appelé ;
+à afficher : « suivi arrêté » sur `tracking_stale`, et proposer de se
+redéclarer après un retrait `stale`.
 
 ### 4.6.0 — 15 septembre 2026
 
