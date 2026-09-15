@@ -327,6 +327,86 @@ trames pour le même passage (socket **et** push) sont normales — le second
 `GET` répond la même chose. Une application qui ferait du socket sa source
 de vérité verrait, un jour, une course « en route » qu'un `GET` dit terminée.
 
+### 🔔 La nouvelle commande en TEMPS RÉEL — le pop-up de 5 s (v4.6.0)
+
+C'est l'écran de la maquette mobile : une carte **« Nouvelle commande »**
+qui **surgit en haut de n'importe quel écran** de l'application, reste
+**5 secondes**, puis se range dans l'onglet *Nouvelle*. Voici ce qu'il faut
+faire, dans l'ordre — et ce qu'il ne faut pas faire.
+
+**1. Un seul socket, ouvert POUR TOUTE L'APPLICATION.** Ouvrez
+`wss://…/api/v1/food/ws/orders?token=` **dès la connexion réussie**
+(`POST /auth/login` ou `/auth/refresh`) et gardez-le tant que l'application
+est au premier plan — pas seulement sur l'écran des commandes : la cuisine
+regarde son catalogue quand la commande tombe. Un socket par application,
+jamais un par écran (un réseau mobile ne pardonne pas trois connexions).
+Réouvrez-le à la reprise au premier plan et à chaque nouveau jeton
+(`/auth/refresh` toutes les 15 min : le jeton du socket expire avec l'accès,
+le serveur ferme — reconnectez avec le neuf).
+
+**2. La trame qui fait surgir la carte : `status: "paid"`.** Pas
+`order_created` en soi — une commande naît `pending_payment` quand le client
+paie par mobile money, et il n'y a rien à préparer tant que l'argent n'est
+pas arrivé. Deux trames disent « c'est à vous » :
+
+```
+{ "type": "order_created", "order_id": "…", "status": "paid",
+  "store_ids": ["…"], "total": 5200, "ts": … }                      ← espèces, solde Dira
+{ "type": "order_status",  "order_id": "…", "from": "pending_payment",
+  "status": "paid", "store_ids": ["…"], "total": 5200, "ts": … }    ← mobile money confirmé
+```
+
+Règle : **`status === "paid"` ⇒ pop-up**, quel que soit `type`. Tout autre
+`order_created` (`pending_payment`) se **mémorise sans rien afficher** ; le
+`paid` qui suit fera surgir la carte. Une trame `paid` déjà vue (même
+`order_id`) ne resurgit pas — socket et push peuvent la porter tous les deux.
+
+**3. Ce que la carte montre, et d'où ça vient.** La trame porte de quoi
+**dessiner immédiatement** : `store_ids` → le nom du point de vente (vous
+avez `GET /merchants/me` en cache), `total` → le montant, `ts` → « à
+l'instant ». Affichez la carte **avec ça, tout de suite**, puis
+`GET /stores/{store_id}/orders/{order_id}` pour compléter : nombre
+d'articles, premier plat, adresse. Si le `GET` tarde, la carte reste avec
+ce qu'elle a ; s'il répond `404` (commande annulée entre-temps), retirez-la.
+`store_ids` peut en porter plusieurs (commande multi-comptoirs) : la carte
+nomme **ceux qui sont à vous** — les vôtres seulement sont dans la trame.
+
+**4. Le comportement de la carte — exactement celui de la maquette :**
+
+- **surgit** par le haut, par-dessus l'écran courant, sans le fermer ;
+- **son + vibration** à l'apparition (c'est une commande payée : le
+  client attend, la sonnerie est méritée — contrairement à `pending_payment`) ;
+- **reste 5 s**, avec la barre de progression qui se vide, puis se **replie
+  seule** ; toucher la carte l'ouvre (`GET`, écran de la commande, boutons
+  *Préparer* / *Refuser*) ; la glisser vers le haut la ferme avant les 5 s ;
+- une **deuxième** commande pendant les 5 s : la carte **se remplace**
+  (nouvelle en avant, pastille « +1 en attente ») — jamais deux cartes
+  empilées, jamais une carte qui dure plus de 5 s parce qu'il en arrive
+  d'autres ;
+- **rien n'est perdu quand elle se replie** : l'onglet *Nouvelle* porte un
+  **badge** avec le nombre de commandes `paid` non ouvertes, et la liste
+  s'est déjà rafraîchie (`GET /stores/{id}/orders?status=paid`, la
+  nouvelle en tête) ;
+- la carte **ne demande aucune décision** : pas de « Prendre / Passer », pas
+  de compte à rebours (§ 8 bis) — la commande est déjà la vôtre.
+
+**5. À la reconnexion, PAS de pop-up.** Tout ce qui est tombé pendant une
+coupure est dans la base, pas dans une trame : `GET /stores/{id}/orders?status=paid`
+d'abord, badge sur l'onglet, et la carte ne surgit que pour ce qui arrive
+**après** la reconnexion. Faire surgir cinq cartes à la suite au retour du
+réseau apprend à fermer les cartes sans les lire.
+
+**6. Application fermée ou en arrière-plan :** c'est le push
+`merchant_new_order` (ci-dessous) qui sonne, par le système. Ne dessinez pas
+la carte depuis un push : ouvrez l'écran de la commande. Et une commande
+reçue par push **et** par socket au retour au premier plan ne surgit qu'une
+fois — c'est la règle du `order_id` déjà vu.
+
+**Aucun changement d'API** : les trames, les routes et le push sont ceux
+décrits au-dessus. Cette section dit comment les **tenir** pour que la
+maquette soit vraie — un socket ouvert partout, `paid` comme seul signal,
+5 secondes, jamais deux cartes.
+
 **Les neuf statuts d'une commande**, dans l'ordre — les quatre derniers sont
 ceux de la course de livraison, mot pour mot, et ceux d'une course VTC :
 
