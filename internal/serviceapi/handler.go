@@ -52,6 +52,12 @@ type Accounts interface {
 	// tient en un appel — c'est un gain de trajets, pas de pouvoir.
 	AccountsByIDs(ctx context.Context, ids []string) ([]user.AccountRow, error)
 	AccountByID(ctx context.Context, id string) (*user.AccountRow, error)
+	// SearchAccounts trouve des comptes par NOM ou TÉLÉPHONE (sous-chaîne),
+	// parmi des rôles, dans le pays de la requête — ce qu'une barre de
+	// recherche d'exploitation demande quand elle cherche « Kossi » ou
+	// « 90 20 » dans une liste de courses qui ne porte que des identifiants.
+	// Des IDENTIFIANTS seulement : la verticale filtre ses documents avec.
+	SearchAccounts(ctx context.Context, q string, roles []string, limit int) ([]string, error)
 }
 
 // Wallets is the money a vertical moves on a person's behalf.
@@ -136,6 +142,7 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/accounts/contact", h.contact)
 		g.Post("/internal/accounts/names", h.names)
 		g.Post("/internal/accounts/rows", h.accountRows)
+		g.Post("/internal/accounts/search", h.accountSearch)
 		g.Post("/internal/accounts/get", h.accountGet)
 		g.Post("/internal/accounts/ensure-merchant", h.ensureMerchant)
 		g.Post("/internal/accounts/ensure", h.ensureAccount)
@@ -478,6 +485,29 @@ func (h *Handler) listPayments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.List(w, items, next)
+}
+
+// POST /internal/accounts/search {q, roles?, limit?} — des identifiants de
+// comptes dont le nom ou le téléphone contient `q`. Borné au pays de la
+// requête (l'en-tête que la verticale transmet), 200 au plus : une barre
+// de recherche n'a pas besoin de plus, et un `$in` de dix mille
+// identifiants n'aurait servi personne.
+func (h *Handler) accountSearch(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Q     string   `json:"q" validate:"required,min=2,max=80"`
+		Roles []string `json:"roles" validate:"omitempty,max=4,dive,oneof=client driver merchant admin"`
+		Limit int      `json:"limit" validate:"omitempty,min=1,max=200"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	ids, err := h.accounts.SearchAccounts(r.Context(), req.Q, req.Roles, req.Limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"ids": ids})
 }
 
 // POST /internal/accounts/rows — plusieurs comptes en un appel.

@@ -46,6 +46,7 @@ type Repo interface {
 	// backoffice.go — ces lectures servent la console, et la fiche complète
 	// d'un livreur se compose ensuite dans la verticale.
 	ListAccounts(ctx context.Context, f AccountFilter, cursor string, limit int) ([]AccountRow, string, error)
+	SearchAccountIDs(ctx context.Context, q string, roles []string, limit int) ([]string, error)
 	AccountByID(ctx context.Context, id string) (*AccountRow, error)
 	AccountsByIDs(ctx context.Context, ids []string) ([]AccountRow, error)
 	SetAccountStatus(ctx context.Context, id, status string) (*AccountRow, error)
@@ -779,6 +780,13 @@ func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, email, p
 // ListAccounts searches accounts for an administration screen.
 func (s *Service) ListAccounts(ctx context.Context, f AccountFilter, cursor string, limit int) ([]AccountRow, string, error) {
 	return s.repo.ListAccounts(ctx, f, cursor, limit)
+}
+
+// SearchAccounts rend les identifiants des comptes dont le nom ou le
+// téléphone contient `q`, parmi `roles` (vides = tous), dans le pays de la
+// requête. Implémente `serviceapi.Accounts`.
+func (s *Service) SearchAccounts(ctx context.Context, q string, roles []string, limit int) ([]string, error) {
+	return s.repo.SearchAccountIDs(ctx, q, roles, limit)
 }
 
 // AccountByID reads one account.

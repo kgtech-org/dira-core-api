@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -85,6 +86,53 @@ func (r *Repository) AudienceIDs(ctx context.Context, roles []string, after prim
 	out := make([]primitive.ObjectID, 0, len(rows))
 	for _, x := range rows {
 		out = append(out, x.ID)
+	}
+	return out, nil
+}
+
+// SearchAccountIDs rend les identifiants des comptes dont le nom ou le
+// téléphone contient `q` — la sous-chaîne que quelqu'un tape, échappée —
+// parmi des rôles, dans le pays de la requête. Des identifiants seulement,
+// bornés à `limit` (200 au plus) : c'est ce qu'un filtre `$in` d'une
+// verticale sait consommer.
+func (r *Repository) SearchAccountIDs(ctx context.Context, q string, roles []string, limit int) ([]string, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 200
+	}
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return nil, nil
+	}
+	pattern := primitive.Regex{Pattern: regexp.QuoteMeta(q), Options: "i"}
+	// Un téléphone se tape avec des espaces (« 90 20 00 01 ») et se stocke
+	// sans : les chiffres seuls cherchent aussi la forme compacte.
+	digits := strings.Map(func(c rune) rune {
+		if c >= '0' && c <= '9' {
+			return c
+		}
+		return -1
+	}, q)
+	or := bson.A{bson.M{"name": pattern}, bson.M{"phone": pattern}}
+	if len(digits) >= 3 {
+		or = append(or, bson.M{"phone": primitive.Regex{Pattern: regexp.QuoteMeta(digits)}})
+	}
+	filter := country.Restrict(ctx, bson.M{"$or": or})
+	if len(roles) > 0 {
+		filter["role"] = bson.M{"$in": roles}
+	}
+	cur, err := r.users.Find(ctx, filter, options.Find().SetLimit(int64(limit)).SetProjection(bson.M{"_id": 1}))
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	var rows []struct {
+		ID primitive.ObjectID `bson:"_id"`
+	}
+	if err := cur.All(ctx, &rows); err != nil {
+		return nil, apperr.Internal(err)
+	}
+	out := make([]string, 0, len(rows))
+	for _, x := range rows {
+		out = append(out, x.ID.Hex())
 	}
 	return out, nil
 }
