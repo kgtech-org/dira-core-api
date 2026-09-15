@@ -49,7 +49,9 @@ func categoryOf(key string) string {
 }
 
 // Muteable dit si une catégorie peut être coupée par son destinataire.
-func Muteable(category string) bool { return category != CategoryDriverCall }
+func Muteable(category string) bool {
+	return category != CategoryDriverCall && category != CategoryAlerts
+}
 
 // Inbox is one notification, kept so the user can read it again.
 //

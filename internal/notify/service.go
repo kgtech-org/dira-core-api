@@ -56,6 +56,8 @@ type Service struct {
 	repo   *Repository
 	pusher Pusher
 	users  Accounts
+	// audiences résout les populations des campagnes — voir campaign.go.
+	audiences Audiences
 
 	// cache des gabarits : une notification par commande lirait sinon la même
 	// ligne à chaque changement de statut.

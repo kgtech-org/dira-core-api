@@ -232,6 +232,27 @@ func run(logger *slog.Logger) error {
 	ratingSvc := rating.NewService(rating.NewRepository(mongo), nil)
 
 	notifySvc := notify.NewService(notify.NewRepository(mongo))
+	// La langue choisie et les catégories coupées de chaque compte — et les
+	// POPULATIONS des campagnes (tous les clients, tous les chauffeurs…).
+	notifySvc.SetAccounts(userSvc)
+	notifySvc.SetAudiences(userRepo)
+	// Les campagnes programmées partent à l'heure dite : un tic par
+	// demi-minute, sûr sur plusieurs instances (la réservation est un
+	// compare-and-set en base).
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				tctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+				notifySvc.RunDueCampaigns(tctx)
+				cancel()
+			}
+		}
+	}()
 	if sa := fcmServiceAccount(cfg, logger); sa != "" {
 		if client, err := fcm.New(sa); err != nil {
 			// Une clé illisible se corrige ; démarrer en la taisant ferait
