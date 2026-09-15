@@ -3,8 +3,8 @@ package user
 import (
 	"context"
 	"errors"
-	"sort"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
