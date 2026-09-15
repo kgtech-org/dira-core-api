@@ -41,6 +41,7 @@ type Service struct {
 	// trimestre aurait été le prix d'une précision dont personne n'a besoin.
 	mu       sync.RWMutex
 	enabled  map[string]bool
+	currency map[string]string // réglages de monnaie, par pays
 	loadedAt time.Time
 	cacheTTL time.Duration
 }
@@ -84,12 +85,45 @@ func (s *Service) refresh(ctx context.Context) {
 		return
 	}
 	m := make(map[string]bool, len(rows))
+	cur := make(map[string]string, len(rows))
 	for _, r := range rows {
 		m[r.Code] = r.Enabled
+		if r.Currency != "" {
+			cur[r.Code] = r.Currency
+		}
 	}
 	s.mu.Lock()
-	s.enabled, s.loadedAt = m, time.Now()
+	s.enabled, s.currency, s.loadedAt = m, cur, time.Now()
 	s.mu.Unlock()
+}
+
+// CurrencyOf rend la monnaie EN VIGUEUR d'un pays : le réglage s'il y en a
+// un, sinon celle du catalogue.
+func (s *Service) CurrencyOf(code string) country.Currency {
+	info, ok := country.Lookup(code)
+	if !ok {
+		return country.Currency{}
+	}
+	s.mu.RLock()
+	override := s.currency[info.Code]
+	s.mu.RUnlock()
+	if override != "" {
+		if c, ok := country.LookupCurrency(override); ok {
+			return c
+		}
+	}
+	c, _ := country.LookupCurrency(info.Currency)
+	return c
+}
+
+// respond assemble la réponse d'un pays avec sa monnaie effective.
+func (s *Service) respond(info country.Info, enabled bool) Response {
+	cur := s.CurrencyOf(info.Code)
+	info.Currency = cur.Code
+	return Response{
+		Info: info, Enabled: enabled, Default: info.Code == s.defaultCode,
+		CurrencyName: cur.Name, CurrencySymbol: cur.Symbol, CurrencyDecimals: cur.Decimals,
+	}
 }
 
 // Enabled dit si un pays est OUVERT. Implémente `middleware.Installed`.
@@ -133,30 +167,48 @@ func (s *Service) List(ctx context.Context, onlyEnabled bool) ([]Response, error
 		if onlyEnabled && !enabled {
 			continue
 		}
-		out = append(out, Response{Info: info, Enabled: enabled, Default: info.Code == s.defaultCode})
+		out = append(out, s.respond(info, enabled))
 	}
 	return out, nil
 }
 
-// SetEnabled ouvre ou ferme un pays du catalogue.
-func (s *Service) SetEnabled(ctx context.Context, code string, enabled bool) (*Response, error) {
+// Update règle un pays du catalogue : ouvert ou fermé, et sa monnaie.
+func (s *Service) Update(ctx context.Context, code string, req UpdateRequest) (*Response, error) {
 	info, ok := country.Lookup(code)
 	if !ok {
 		return nil, errUnknownCountry
 	}
-	if info.Code == s.defaultCode && !enabled {
-		return nil, errDefaultCountry
+	if req.Enabled == nil && req.Currency == nil {
+		return nil, errNothingToUpdate
 	}
-	before := map[string]any{"code": info.Code, "enabled": s.Enabled(info.Code)}
-	if err := s.repo.SetEnabled(ctx, info.Code, enabled); err != nil {
-		return nil, apperr.Internal(err)
+	before := map[string]any{"code": info.Code, "enabled": s.Enabled(info.Code), "currency": s.CurrencyOf(info.Code).Code}
+	if req.Enabled != nil {
+		if info.Code == s.defaultCode && !*req.Enabled {
+			return nil, errDefaultCountry
+		}
+		if err := s.repo.SetEnabled(ctx, info.Code, *req.Enabled); err != nil {
+			return nil, apperr.Internal(err)
+		}
+	}
+	if req.Currency != nil {
+		// Vide = revenir à la monnaie du catalogue.
+		cur := country.NormalizeCurrency(*req.Currency)
+		if *req.Currency != "" {
+			if _, ok := country.LookupCurrency(cur); !ok {
+				return nil, errUnknownCurrency.WithMeta(map[string]any{"fields": []string{"currency"}})
+			}
+		}
+		if err := s.repo.SetCurrency(ctx, info.Code, cur); err != nil {
+			return nil, apperr.Internal(err)
+		}
 	}
 	s.refresh(ctx)
+	out := s.respond(info, s.Enabled(info.Code))
 	if s.audit != nil {
-		s.audit.Record(ctx, "country.set_enabled", "country", info.Code, before,
-			map[string]any{"code": info.Code, "enabled": enabled})
+		s.audit.Record(ctx, "country.update", "country", info.Code, before,
+			map[string]any{"code": info.Code, "enabled": out.Enabled, "currency": out.Currency})
 	}
-	return &Response{Info: info, Enabled: enabled, Default: info.Code == s.defaultCode}, nil
+	return &out, nil
 }
 
 // Resolve répond à « dans quel pays suis-je ? » et aligne le compte.

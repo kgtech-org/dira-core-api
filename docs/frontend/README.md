@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.2.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.3.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -266,6 +266,15 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.3.0 — 15 septembre 2026
+
+**Ajout rétrocompatible** — la MONNAIE vient du pays : `GET /countries`
+porte `currency` (en vigueur — réglable depuis la console), `currency_name`,
+`currency_symbol`, `currency_decimals`. Tout montant est un entier dans la
+plus petite unité de la monnaie du pays où il a été créé ; rien n'est
+converti, les champs `…_xof` portent la monnaie du pays. Formatez avec le
+symbole et les décimales du pays courant.
 
 ### 4.2.0 — 15 septembre 2026
 
