@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.3.0** · 15 septembre 2026
+> **Version 4.4.0** · 15 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -416,6 +416,19 @@ et, si votre écran est ouvert, rien d'autre ne vous le dira : **relisez
 `cancelled` = fermer l'écran de course, vous êtes de nouveau appelable.
 Une action sur une course annulée répond `409 invalid_transition` :
 c'est le signal de relire, pas de réessayer.
+
+**Le trajet aussi peut changer sous vous (v4.4.0).** Le passager — ou
+l'exploitation — ajoute un arrêt, en retire un, change la destination
+pendant que vous roulez. Vous recevez `ride_stops_changed`
+(`data.type: "ride_status"`, `event: "stops_changed"`, `ride_id`,
+`fare_xof`, `delta_xof`) : **relisez `GET /rides/{id}`** et redessinez
+l'itinéraire. Ce qui change : `stops` (les arrêts déjà atteints restent en
+tête, inchangés), `distance_m`, `duration_s`, `fare_xof`, `driver_xof`
+(votre part suit), et `fare_adjustments[]` qui garde l'historique. Le
+montant à encaisser en **espèces** est le nouveau `fare_xof` — la
+différence n'a pas été prise au passager, c'est vous qui l'encaissez
+(`movement: cash`). Pour une course payée sur le solde, la différence a déjà
+bougé (`charged` / `refunded`) : rien à demander.
 
 **Le flux, dans l'ordre — un signal, un `GET` :**
 

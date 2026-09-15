@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.3.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.4.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -266,6 +266,18 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.4.0 — 15 septembre 2026
+
+**Ajout rétrocompatible** — le TRAJET peut changer en cours de route.
+`PATCH /rides/{id}/stops` (passager) et `PATCH /admin/rides/{id}/stops`
+(console) reçoivent le nouveau trajet entier ; les arrêts déjà atteints sont
+figés ; le prix est recalculé avec la majoration du devis, l'argent suit
+tout de suite (différence débitée ou rendue sur le solde Dira, ou encaissée
+par le chauffeur en espèces — `fare_adjustments[]` sur la course) ; un
+solde insuffisant refuse le changement. Pushes `ride_stops_changed`
+(chauffeur) et `ride_fare_adjusted` (passager). Voir `VTC-CLIENT.md` §5 et
+`VTC-DRIVER.md` §4.
 
 ### 4.3.0 — 15 septembre 2026
 

@@ -132,6 +132,13 @@ const (
 	// annulée : il est libre, et doit l'apprendre avant d'arriver au
 	// restaurant.
 	KeyDeliveryCancelled = "delivery_cancelled"
+	// KeyRideStopsChanged va au CHAUFFEUR quand le trajet d'une course en
+	// cours change — un arrêt ajouté ou retiré, et un prix recalculé. Il
+	// relit la course : c'est elle qui porte la nouvelle destination.
+	KeyRideStopsChanged = "ride_stops_changed"
+	// KeyRideFareAdjusted va au PASSAGER pour le même changement : le
+	// nouveau prix, et ce qui a été débité ou rendu.
+	KeyRideFareAdjusted = "ride_fare_adjusted"
 )
 
 // defaults sont les gabarits COMPILÉS, servis tant que la base n'en porte pas.
@@ -315,6 +322,24 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "No driver available", Body: "We could not find a driver for your ride from [pickup]. Relaunch the search, or cancel for a refund."},
 		},
 	},
+	KeyRideStopsChanged: {
+		Key:         KeyRideStopsChanged,
+		Description: "Le trajet d'une course en cours a changé (arrêt ajouté ou retiré) — message au CHAUFFEUR, qui relit la course.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Trajet modifié", Body: "Le trajet de la course a changé : [stops] arrêts, nouvelle destination [dest]. Nouveau prix : [fare]."},
+			LocaleEN: {Title: "Route changed", Body: "The ride's route has changed: [stops] stops, new destination [dest]. New fare: [fare]."},
+		},
+	},
+	KeyRideFareAdjusted: {
+		Key:         KeyRideFareAdjusted,
+		Description: "Le prix d'une course en cours a été recalculé après un changement de trajet — message au PASSAGER, avec ce qui a été débité ou rendu.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Prix de la course ajusté", Body: "Votre trajet a changé : le prix passe à [fare]. [adjustment]"},
+			LocaleEN: {Title: "Ride fare adjusted", Body: "Your route has changed: the fare is now [fare]. [adjustment]"},
+		},
+	},
 	KeyDeliveryCancelled: {
 		Key:         KeyDeliveryCancelled,
 		Description: "La commande a été annulée sous le livreur qui la portait — message au LIVREUR.",
@@ -378,6 +403,8 @@ var provided = map[string][]string{
 	KeyRideCancelledByRider: {"reason"},
 	KeyDeliveryCancelled:    {"order_ref"},
 	KeyRideSearchExhausted:  {"pickup"},
+	KeyRideStopsChanged:     {"stops", "dest", "fare"},
+	KeyRideFareAdjusted:     {"fare", "adjustment"},
 	KeyMerchantNewOrder:     {"order_ref", "items", "amount"},
 }
 

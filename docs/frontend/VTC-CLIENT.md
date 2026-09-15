@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.3.0** · 15 septembre 2026
+> **Version 4.4.0** · 15 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -443,6 +443,61 @@ POST /rides/{id}/cancel   { "reason": "…" }   // motif facultatif
 `409 invalid_transition` sur une course `in_transit` : le bouton doit
 disparaître à ce statut, pas échouer.
 
+### Changer le trajet EN COURS DE ROUTE — un arrêt de plus, un de moins (v4.4.0)
+
+Le passager peut ajouter un arrêt, en retirer un, ou changer la
+destination **pendant qu'un chauffeur est assigné** (`accepted`,
+`picking_up`, `in_transit`). Il envoie le **nouveau trajet en entier** :
+
+```
+PATCH /api/v1/vtc/rides/{id}/stops
+{ "stops": [
+  { "kind": "pickup", "label": "Almadies",  "geo": [1.2255, 6.1319] },   ← figé
+  { "kind": "stop",   "label": "Pharmacie", "geo": [1.2300, 6.1400] },   ← nouveau
+  { "kind": "dest",   "label": "Aéroport",  "geo": [1.2545, 6.1656] }
+]}
+→ 200 Ride  — nouveau `stops`, `distance_m`, `duration_s`, `fare_xof`,
+              et `fare_adjustments: [{ from_xof, to_xof, delta_xof, movement, by, at }]`
+```
+
+**Ce qui est figé.** Les arrêts **déjà atteints** ne changent plus : le
+départ dès qu'un chauffeur roule vers lui, puis chaque arrêt marqué
+atteint (`reached_at`). Renvoyez-les **tels quels, en tête** — `422` sinon.
+Grisez-les dans l'éditeur : on ne réécrit pas ce qui a eu lieu. Même règle
+de forme qu'au devis : 2 à 5 arrêts, `pickup` en premier, `dest` en
+dernier, tous dans la ville desservie.
+
+**Le prix suit le trajet.** Il est recalculé sur la grille du jour avec la
+**même majoration qu'au devis** — une majoration montée ou retombée
+entre-temps ne change pas une course qui roule. Montrez le nouveau prix
+**avant** de confirmer : demandez un devis avec le nouveau trajet
+(`POST /rides/quote`) pour l'afficher, puis envoyez le `PATCH`. (Le devis
+peut différer de quelques francs si une majoration s'est ajoutée depuis :
+c'est le `PATCH` qui fait foi.)
+
+**L'argent suit le prix, tout de suite** — `fare_adjustments[].movement` :
+
+| Paiement | `delta_xof > 0` (plus cher) | `delta_xof < 0` (moins cher) |
+|---|---|---|
+| `wallet` | la différence est **débitée du solde Dira** → `charged` | rendue sur le solde → `refunded` |
+| `online` | **débitée du solde Dira** aussi (l'opérateur ne se rappelle pas à chaud) → `charged` | rendue sur le solde → `refunded` |
+| `cash` | rien ne bouge : le chauffeur encaisse le nouveau prix → `cash` | idem |
+
+> ⚠️ **`402 insufficient_funds` = le changement est REFUSÉ**, la course reste
+> exactement telle qu'elle était. Ce n'est pas une panne : routez vers la
+> recharge (`POST /wallet/purchase`, au socle), et proposez de réessayer.
+> `409 payment_pending` : une course mobile money pas encore confirmée ne
+> change pas de trajet tant que le paiement n'est pas arrivé.
+
+**Les deux sont prévenus.** Le chauffeur reçoit `ride_stops_changed` et
+relit la course ; le passager reçoit `ride_fare_adjusted`
+(`data.type: "ride_status"`, `event: "stops_changed"`, `fare_xof`,
+`delta_xof`) avec ce qui a bougé — relisez `GET /rides/{id}` pour
+redessiner le trajet, comme pour tout signal.
+
+`409 ride_not_reroutable` : pas de chauffeur (encore `searching`) ou
+course finie — pendant la recherche, annulez et recommandez.
+
 ---
 
 ## 6. Suivre le chauffeur
@@ -498,6 +553,7 @@ avant la réponse.
 | `ride_driver_on_the_way` | il roule vers vous | `status: picking_up` |
 | `ride_cancelled` | annulée par le chauffeur ou la plateforme (`reason`) | `status: cancelled` |
 | `ride_search_exhausted` | personne n'a pris la course — relancer ou annuler (§5, v4.1.0) | `status: searching`, `dispatch_state: exhausted` |
+| `ride_fare_adjusted` | le trajet a changé en route, le prix aussi — ce qui a été débité ou rendu (§5, v4.4.0) | `event: stops_changed`, `fare_xof`, `delta_xof` |
 | `ride_rate_prompt` | terminée — noter, remercier (§7 bis) | `type: ride_rate_prompt` |
 | `ride_scheduled_soon` · `_started` · `_failed` | course programmée (§4 bis) | |
 
