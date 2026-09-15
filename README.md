@@ -36,7 +36,22 @@ pkg/docs        Swagger UI + OpenAPI serving (the contract is passed in)
 pkg/audit       audit-log recorder
 pkg/diramaps    dira-maps client (route duration, landmarks)
 pkg/chat        the client ↔ driver conversation — BEHAVIOUR, not storage
+pkg/country     the COUNTRY layer: catalog, borders, request country, the `country` filter
 ```
+
+> ⚠️ **`pkg/country` is the platform's top-level boundary.** Dira installs country
+> by country, and every account, order, ride, store and driver carries a `country`
+> (ISO 3166-1 alpha-2). The request's country comes from the **token** (`cty`, the
+> account's country, minted at login), from the `X-Dira-Country` header when the
+> bearer may switch (`cty_any` — the direction, on the console) or has no account
+> yet, else from `COUNTRY_DEFAULT`. `middleware.Country` decides once per request;
+> repositories apply `country.Restrict(ctx, filter)` on every list the operation
+> or the public reads. Borders are **embedded** (`borders.json`, geoBoundaries ADM0
+> simplified to ~100 m) so any service can locate a point without a database.
+> Which countries are **open** is decided in core's `countries` collection, from
+> the console — Togo, Senegal and Guinea are opened at first start
+> (`country.Preloaded`); the catalog (with currencies and phone prefixes) is code,
+> because opening a country needs a deployment anyway.
 
 > ⚠️ **`pkg/chat` is a LIBRARY, not a service, and that is deliberate.**
 >
@@ -67,6 +82,7 @@ internal/user    accounts, auth, RBAC, addresses, preferences
 internal/token   token wallets and ledger
 internal/payment mobile money (provider abstraction + mock)
 internal/notify  inbox, push devices, multilingual templates (FCM)
+internal/country which countries are open; "which country am I in?" (device position, then IP)
 internal/config  core-only settings (the shared ones come from pkg/config)
 internal/indexes the MongoDB indexes this service owns
 api/openapi.yaml the contract, embedded in the binary
@@ -92,6 +108,7 @@ wallet, open an account, notify someone in their name. No person ever calls them
 | `POST /internal/backoffice/{wallets,token-transactions,payments}` | read the money, **raw** — ids, not names |
 | `POST /internal/backoffice/refund-order-payment` | mark an order's payment refunded — the vertical judges the dispute |
 | `POST /internal/ratings` | deposit scores a vertical has already validated |
+| `GET /internal/countries` | the open countries — the catalog and borders are shared code (`pkg/country`) |
 
 The back-office listings return **identifiers, not names**: core does not know what a point of
 sale or a food order is. The vertical owns those objects and names them in its own admin view.

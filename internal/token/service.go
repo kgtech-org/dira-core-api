@@ -13,6 +13,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/audit"
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
 )
 
@@ -122,7 +123,7 @@ func (s *Service) CreateWallet(ctx context.Context, ownerID, walletType string) 
 	if err != nil {
 		return apperr.Validation("invalid owner id").WithCause(err)
 	}
-	wallet := &Wallet{OwnerID: oid, Type: walletType, Balance: 0, UpdatedAt: time.Now().UTC()}
+	wallet := &Wallet{OwnerID: oid, Type: walletType, Balance: 0, Country: country.FromContext(ctx), UpdatedAt: time.Now().UTC()}
 	if err := s.repo.CreateWallet(ctx, wallet); err != nil {
 		if errors.Is(err, ErrDuplicateWallet) {
 			return nil // idempotent

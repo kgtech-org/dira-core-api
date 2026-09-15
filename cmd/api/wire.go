@@ -4,7 +4,9 @@ import (
 	"context"
 
 	"github.com/kgtech-org/dira-core-api/internal/payment"
+	"github.com/kgtech-org/dira-core-api/internal/staff"
 	"github.com/kgtech-org/dira-core-api/internal/token"
+	"github.com/kgtech-org/dira-core-api/internal/user"
 )
 
 // backOffice réunit les LECTURES financières de deux modules en une seule
@@ -19,6 +21,14 @@ import (
 // Aucun champ n'est recopié ici : les lignes traversent TELLES QUELLES. Un
 // champ ajouté à un portefeuille arrive au back-office sans qu'on touche à ce
 // fichier.
+// staffEntitlements adapte le staff à ce que les comptes en attendent.
+type staffEntitlements struct{ svc *staff.Service }
+
+func (a staffEntitlements) EntitlementsOf(ctx context.Context, userID string) (user.Entitlements, error) {
+	scopes, direction, err := a.svc.EntitlementsOf(ctx, userID)
+	return user.Entitlements{Scopes: scopes, Direction: direction}, err
+}
+
 type backOffice struct {
 	tokens   *token.Repository
 	payments *payment.Repository

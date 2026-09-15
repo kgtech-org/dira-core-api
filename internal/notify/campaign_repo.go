@@ -10,6 +10,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 )
 
 // InsertCampaign enregistre une campagne.
@@ -47,7 +49,7 @@ func (r *Repository) FindCampaign(ctx context.Context, id primitive.ObjectID) (*
 
 // ListCampaigns rend les dernières campagnes.
 func (r *Repository) ListCampaigns(ctx context.Context, limit int) ([]Campaign, error) {
-	cur, err := r.campaigns.Find(ctx, bson.M{},
+	cur, err := r.campaigns.Find(ctx, country.Restrict(ctx, bson.M{}),
 		options.Find().SetSort(bson.D{{Key: "_id", Value: -1}}).SetLimit(int64(limit)))
 	if err != nil {
 		return nil, fmt.Errorf("notify: list campaigns: %w", err)

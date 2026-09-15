@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 	"github.com/kgtech-org/dira-core-api/pkg/db"
 )
 
@@ -81,7 +82,7 @@ func (r *Repository) ByIDs(ctx context.Context, ids []primitive.ObjectID) (map[p
 // List returns fleets, newest first, optionally filtered by status or a
 // case-insensitive name search.
 func (r *Repository) List(ctx context.Context, status, q string, cursor primitive.ObjectID, limit int) ([]Fleet, error) {
-	filter := bson.M{}
+	filter := country.Restrict(ctx, bson.M{})
 	if status != "" {
 		filter["status"] = status
 	}

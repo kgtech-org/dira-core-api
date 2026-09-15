@@ -15,6 +15,7 @@ import (
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 	"github.com/kgtech-org/dira-core-api/pkg/phone"
 )
 
@@ -68,28 +69,43 @@ type Service struct {
 	repo    Repo
 	tokens  *auth.Manager
 	wallets WalletCreator
-	// staff rend les PORTÉES d'un administrateur, inscrites dans son jeton.
+	// staff rend les HABILITATIONS d'un administrateur — portées et droit
+	// de changer de pays —, inscrites dans son jeton.
 	//
 	// FACULTATIF, et il doit le rester : le socle doit pouvoir démarrer et
 	// délivrer des jetons sans que le module de staff soit branché. Un
 	// annuaire d'employés qui empêche les clients de se connecter serait une
 	// dépendance absurde.
-	staff StaffScopes
+	staff StaffEntitlements
+	// defaultCountry est le pays du déploiement, pour un compte qu'aucun
+	// signal — en-tête, indicatif — ne situe.
+	defaultCountry string
 }
 
-// StaffScopes est ce que ce service demande au module de staff.
+// Entitlements est ce qu'une fiche de staff accorde à un compte `admin`.
+type Entitlements struct {
+	Scopes []string
+	// Direction : la fonction `admin` du staff. C'est elle — et elle seule
+	// — qui peut regarder un autre pays que le sien depuis la console.
+	Direction bool
+}
+
+// StaffEntitlements est ce que ce service demande au module de staff.
 //
 // Déclarée côté consommateur : `internal/user` n'a pas à connaître le type
-// `Member`, il a besoin d'une liste de portées.
-type StaffScopes interface {
-	ScopesOf(ctx context.Context, userID string) ([]string, error)
+// `Member`, il a besoin d'une liste de portées et d'un drapeau.
+type StaffEntitlements interface {
+	EntitlementsOf(ctx context.Context, userID string) (Entitlements, error)
 }
 
-// SetStaffScopes branche l'annuaire des habilitations.
+// SetStaffEntitlements branche l'annuaire des habilitations.
 //
 // Un réglage séparé du constructeur pour casser le cycle : le module de staff
 // a besoin des comptes, et les comptes ont besoin des portées.
-func (s *Service) SetStaffScopes(sc StaffScopes) { s.staff = sc }
+func (s *Service) SetStaffEntitlements(sc StaffEntitlements) { s.staff = sc }
+
+// SetDefaultCountry règle le pays du déploiement (voir `config.Base`).
+func (s *Service) SetDefaultCountry(code string) { s.defaultCountry = country.Normalize(code) }
 
 // NewService builds the user service. tokens issues/verifies JWTs; wallets is
 // the token module adapter used to create driver wallets at registration.
@@ -147,6 +163,7 @@ func (s *Service) register(ctx context.Context, req RegisterRequest, role string
 		Email:        strings.ToLower(req.Email),
 		PasswordHash: hash,
 		Status:       StatusActive,
+		Country:      s.countryForNew(ctx, phoneNumber),
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -156,6 +173,9 @@ func (s *Service) register(ctx context.Context, req RegisterRequest, role string
 		}
 		return AuthResponse{}, apperr.Internal(err)
 	}
+	// Ce qui s'ouvre avec le compte — les portefeuilles — porte le pays du
+	// COMPTE, qui peut différer de celui de la requête (l'indicatif a parlé).
+	ctx = country.WithCountry(ctx, u.Country, country.SourceClaims)
 
 	if role == auth.RoleDriver {
 		if err := s.wallets.CreateWallet(ctx, u.ID.Hex(), "driver"); err != nil {
@@ -225,7 +245,7 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 	if err != nil {
 		return AuthResponse{}, err
 	}
-	return AuthResponse{User: newUserResponse(u), AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken}, nil
+	return AuthResponse{User: s.userResponse(ctx, u), AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken}, nil
 }
 
 // Refresh rotates a refresh token: the presented token is verified, its
@@ -282,7 +302,18 @@ func (s *Service) Me(ctx context.Context, userID string) (UserResponse, error) {
 	if err != nil {
 		return UserResponse{}, err
 	}
-	return newUserResponse(u), nil
+	return s.userResponse(ctx, u), nil
+}
+
+// userResponse est `newUserResponse` PLUS ce que seul le service sait : si
+// ce compte peut changer de pays. Une lecture de staff, pour les
+// administrateurs seulement — un client n'a pas de fiche à lire.
+func (s *Service) userResponse(ctx context.Context, u *User) UserResponse {
+	out := newUserResponse(u)
+	if u.Role == auth.RoleAdmin {
+		out.CountryAny = s.entitlements(ctx, u).Direction
+	}
+	return out
 }
 
 // UpdateProfile updates the caller's name and/or email.
@@ -478,20 +509,16 @@ func (s *Service) issueTokens(ctx context.Context, u *User) (TokenPairResponse, 
 	// AU MIEUX : si la lecture échoue, on émet sans portée plutôt que de
 	// refuser la connexion. Un annuaire de staff en panne ne doit pas
 	// empêcher les clients de se connecter.
-	var scopes []string
-	if s.staff != nil {
-		if got, err := s.staff.ScopesOf(ctx, u.ID.Hex()); err == nil {
-			scopes = got
-		} else {
-			slog.WarnContext(ctx, "user: staff scopes unavailable, issuing an unrestricted token",
-				"user_id", u.ID.Hex(), "error", err)
-		}
-	}
-	access, err := s.tokens.GenerateAccess(u.ID.Hex(), u.Role, scopes...)
+	//
+	// ⚠️ LE PAYS DU COMPTE VOYAGE DE LA MÊME FAÇON, et pour la même raison :
+	// c'est lui qui borne ce que ce compte voit dans chaque service. Le droit
+	// d'en changer (`cty_any`) n'est accordé qu'à la direction.
+	grant := s.grantFor(ctx, u)
+	access, err := s.tokens.Issue(grant)
 	if err != nil {
 		return TokenPairResponse{}, apperr.Internal(err)
 	}
-	refreshJWT, err := s.tokens.GenerateRefresh(u.ID.Hex(), u.Role, scopes...)
+	refreshJWT, err := s.tokens.IssueRefresh(grant)
 	if err != nil {
 		return TokenPairResponse{}, apperr.Internal(err)
 	}
@@ -511,6 +538,86 @@ func (s *Service) issueTokens(ctx context.Context, u *User) (TokenPairResponse, 
 		return TokenPairResponse{}, apperr.Internal(err)
 	}
 	return TokenPairResponse{AccessToken: access, RefreshToken: refresh}, nil
+}
+
+// grantFor assemble ce que le jeton d'un compte accorde.
+func (s *Service) grantFor(ctx context.Context, u *User) auth.Grant {
+	g := auth.Grant{UserID: u.ID.Hex(), Role: u.Role, Country: u.Country}
+	if u.Role != auth.RoleAdmin {
+		return g // la portée et le changement de pays sont des notions de STAFF
+	}
+	e := s.entitlements(ctx, u)
+	g.Scopes, g.CountryAny = e.Scopes, e.Direction
+	return g
+}
+
+// entitlements lit la fiche de staff d'un administrateur. AU MIEUX : si la
+// lecture échoue, on émet sans habilitation plutôt que de refuser la
+// connexion — un annuaire de staff en panne ne doit pas fermer la console à
+// tout le monde, et une liste vide n'accorde rien.
+func (s *Service) entitlements(ctx context.Context, u *User) Entitlements {
+	if s.staff == nil {
+		return Entitlements{}
+	}
+	e, err := s.staff.EntitlementsOf(ctx, u.ID.Hex())
+	if err != nil {
+		slog.WarnContext(ctx, "user: staff entitlements unavailable, issuing a token without any",
+			"user_id", u.ID.Hex(), "error", err)
+		return Entitlements{}
+	}
+	return e
+}
+
+// countryForNew décide le pays d'un compte qui s'ouvre.
+//
+// L'EN-TÊTE de l'application d'abord — elle a résolu sa position avant de
+// s'inscrire, c'est le contrat — puis l'INDICATIF du téléphone (un `+229`
+// est béninois jusqu'à preuve du contraire), puis le pays effectif de la
+// requête, qui est celui du déploiement quand rien d'autre ne le dit.
+func (s *Service) countryForNew(ctx context.Context, phone string) string {
+	if country.SourceFromContext(ctx) == country.SourceHeader {
+		return country.FromContext(ctx)
+	}
+	if code, ok := country.ByPhone(phone); ok {
+		return code
+	}
+	if code := country.FromContext(ctx); code != "" {
+		return code
+	}
+	return s.defaultCountry
+}
+
+// CountryOf rend le pays d'un compte. Implémente `country.Accounts`.
+func (s *Service) CountryOf(ctx context.Context, userID string) (string, error) {
+	u, err := s.findUser(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	return u.Country, nil
+}
+
+// SetCountry change le pays d'un compte. Implémente `country.Accounts`.
+//
+// ⚠️ Le jeton en cours porte encore l'ancien pays, jusqu'à son expiration
+// ou son rafraîchissement : l'application qui reçoit un nouveau pays de la
+// résolution doit RAFRAÎCHIR sa session pour le voir borner ses listes.
+func (s *Service) SetCountry(ctx context.Context, userID, code string) error {
+	code = country.Normalize(code)
+	if !country.Known(code) {
+		return apperr.Validation("unknown country")
+	}
+	u, err := s.findUser(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if u.Country == code {
+		return nil
+	}
+	u.Country, u.UpdatedAt = code, time.Now().UTC()
+	if err := s.repo.UpdateUser(ctx, u); err != nil {
+		return apperr.Internal(err)
+	}
+	return nil
 }
 
 // hashToken returns the sha256 hex digest of a refresh token; only hashes are

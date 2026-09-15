@@ -112,6 +112,7 @@ func (r *Repository) UpdateUser(ctx context.Context, u *User) error {
 		"avatar_url":    u.AvatarURL,
 		"preferences":   u.Preferences,
 		"status":        u.Status,
+		"country":       u.Country,
 		"updated_at":    u.UpdatedAt,
 	}})
 	if err != nil {

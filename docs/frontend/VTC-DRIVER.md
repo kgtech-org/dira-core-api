@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.1.1** · 15 septembre 2026
+> **Version 4.2.0** · 15 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -33,6 +33,7 @@
 | Dates | ISO 8601 UTC (`2026-09-13T10:41:23Z`). Une **date seule** s'écrit `YYYY-MM-DD`. |
 | Coordonnées | `[lng, lat]`, dans cet ordre, partout |
 | Langue | `Accept-Language: fr` ou `en` — les messages d'erreur et les notifications suivent |
+| Pays | `X-Dira-Country: TG` — sur chaque requête ; la réponse porte le pays **retenu** (voir la section *Le pays*) |
 
 **Traitez le `code`, pas le message.** Le message est traduit et peut changer ;
 le code est le contrat.
@@ -49,6 +50,88 @@ requête ; si le refresh échoue, revenir à la connexion. **`403`** = ce rôle,
 ou cette personne, n'a pas accès — ne pas réessayer.
 
 ---
+
+## ⚠️ Le PAYS — `X-Dira-Country` (v4.2.0)
+
+Dira s'installe pays par pays, et **toute donnée est bornée par pays** :
+un compte, une commande, une course, une enseigne, un chauffeur portent un
+`country` (ISO 3166-1 alpha-2 : `TG`, `BJ`, `CI`…) et une application ne
+voit que ceux de **son** pays. Ce que l'application doit faire tient en
+trois gestes.
+
+**1. Envoyer son pays dans l'en-tête `X-Dira-Country`, sur chaque
+requête** — socle, métier, suivi. Le serveur répond avec le pays **retenu**
+dans le même en-tête : lisez-le, et si votre valeur diffère, alignez-vous.
+Pour un compte ordinaire, l'en-tête **informe** — le pays du compte,
+inscrit dans le jeton, s'impose ; un client ne change pas de pays en
+changeant un en-tête. Sans jeton (inscription, connexion, `GET /countries`),
+l'en-tête est **admis** s'il nomme un pays ouvert, sinon le pays par défaut
+du déploiement s'applique. Là où l'on ne peut pas poser d'en-tête (une
+ouverture de WebSocket depuis un navigateur), `?country=TG` fait le même
+travail.
+
+**2. Trouver son pays** — avant l'inscription, puis à chaque démarrage :
+
+```
+POST /api/v1/me/country/resolve        (connecté)
+{ "lng": 1.2255, "lat": 6.1319 }       — la position de l'appareil, si vous l'avez
+{}                                     — sinon corps vide : l'adresse IP décide
+
+→ 200 {
+  "country":   "TG",        ← le pays RETENU : envoyez-le dans X-Dira-Country
+  "source":    "geo",       ← geo | ip | account | default
+  "detected":  "TG",        ← où la position / l'IP situe la personne, même hors zone
+  "supported": true,        ← `detected` est un pays ouvert
+  "updated":   false        ← le pays du compte a changé
+}
+```
+
+Deux signaux, dans l'ordre : la **position** de l'appareil (`geo`, la
+vérité à cent mètres près) ; sinon, ou si la position est hors zone,
+l'**adresse IP** de la requête (`ip`, moins sûre — un opérateur mobile sort
+parfois par un autre pays). Un signal qui désigne un pays **non ouvert** ne
+vaut pas : `supported: false`, `detected` dit où la personne est, et
+`country` reste celui du compte (`account`) ou, s'il n'en avait pas, le pays
+par défaut (`default`). C'est le moment d'afficher « Dira n'est pas encore
+disponible au Ghana » — sans bloquer : le compte reste utilisable dans son
+pays.
+
+**Avant l'inscription**, le compte n'existe pas : appelez `GET /countries`
+(public) pour la liste des pays ouverts, avec leur **indicatif**, et
+posez `X-Dira-Country` sur `POST /auth/register` avec le pays où la position
+de l'appareil tombe (calculé côté appareil, ou après une première
+connexion). Sans en-tête, le serveur déduit le pays de l'**indicatif** du
+téléphone (`+228` → `TG`, `+229` → `BJ`), puis du pays par défaut. Le compte
+porte le résultat dans `user.country`.
+
+**3. Rafraîchir la session quand le pays change.** `updated: true` veut
+dire que le compte a changé de pays — mais le jeton en cours porte encore
+l'ancien (`cty`), et c'est **le jeton** qui borne les listes. Faites un
+`POST /auth/refresh` tout de suite : le nouveau jeton porte le nouveau pays.
+Un voyageur qui ouvre l'application à Cotonou devient béninois pour Dira —
+c'est ce qu'il veut, commander à Cotonou. Son historique togolais ne bouge
+pas, il est marqué de son pays d'alors.
+
+```
+GET /api/v1/countries                  (public)
+→ 200 { "default": "TG", "items": [
+  { "code": "TG", "name": "Togo", "currency": "XOF", "phone_prefix": "+228",
+    "locale": "fr", "timezone": "Africa/Lome", "center": [1.2255, 6.1319],
+    "enabled": true, "default": true }
+]}
+```
+
+Trois pays sont ouverts d'office : **Togo** (`TG`), **Sénégal** (`SN`),
+**Guinée** (`GN`). Les autres s'ouvrent depuis la console.
+
+`GET /me` porte `country`. **Ne le mettez pas en cache au-delà d'une
+session** : la résolution du démarrage suivant peut le changer.
+
+> ⚠️ **Ne pas envoyer d'en-tête n'est pas une erreur, mais c'est un
+> silence** : le serveur retombe sur le pays du compte, puis sur celui du
+> déploiement, et l'application ne saura jamais qu'elle a été rangée
+> ailleurs que là où elle croit être. L'en-tête est ce qui rend l'écart
+> visible — dans la réponse.
 
 ## 2. Le profil chauffeur
 

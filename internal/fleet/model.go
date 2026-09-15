@@ -71,14 +71,18 @@ type Fleet struct {
 	CommissionBp *int   `bson:"commission_bp,omitempty"`
 	Status       string `bson:"status"`
 	Notes        string `bson:"notes,omitempty"`
-	CreatedAt    time.Time `bson:"created_at"`
-	UpdatedAt    time.Time `bson:"updated_at"`
+	// Country est le pays où la flotte opère — la borne des listes de la
+	// console. Une société qui opère dans deux pays est deux flottes : deux
+	// contrats, deux monnaies. Voir `pkg/country`.
+	Country   string    `bson:"country,omitempty"`
+	CreatedAt time.Time `bson:"created_at"`
+	UpdatedAt time.Time `bson:"updated_at"`
 }
 
 var (
-	errNotFound   = apperr.NotFound("fleet_not_found", "fleet not found")
-	errNameTaken  = apperr.Conflict("fleet_name_taken", "a fleet already carries this name")
-	errBadCommis  = apperr.Validation("commission_bp must be between 0 and 10000")
-	errBadStatus  = apperr.Validation("status must be active or suspended")
-	errEmptyName  = apperr.Validation("name is required")
+	errNotFound  = apperr.NotFound("fleet_not_found", "fleet not found")
+	errNameTaken = apperr.Conflict("fleet_name_taken", "a fleet already carries this name")
+	errBadCommis = apperr.Validation("commission_bp must be between 0 and 10000")
+	errBadStatus = apperr.Validation("status must be active or suspended")
+	errEmptyName = apperr.Validation("name is required")
 )

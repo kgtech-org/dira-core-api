@@ -7,6 +7,8 @@
 // Phone (E.164) is the primary identifier.
 db.users.createIndex({ phone: 1 }, { unique: true });
 db.users.createIndex({ role: 1 });
+// La borne PAYS des listes de la console — voir pkg/country.
+db.users.createIndex({ country: 1, role: 1, _id: 1 });
 
 // Refresh tokens are stored as sha256 hashes and rotated on every refresh.
 db.refresh_tokens.createIndex({ token_hash: 1 }, { unique: true });

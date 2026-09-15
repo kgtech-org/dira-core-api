@@ -342,6 +342,30 @@ func (s *Service) ScopesOf(ctx context.Context, userID string) ([]string, error)
 	return scopesFor(m), nil
 }
 
+// EntitlementsOf rend, en une lecture, ce que la fiche de staff accorde au
+// jeton : les portées, et le droit de changer de pays — réservé à la
+// DIRECTION (fonction `admin`). Un chargé de support borné à la livraison
+// voit la livraison de SON pays ; la direction voit chaque pays, un à la
+// fois, en le choisissant sur la console. Implémente
+// `user.StaffEntitlements` par l'adaptateur de `cmd/api`.
+func (s *Service) EntitlementsOf(ctx context.Context, userID string) (scopes []string, direction bool, err error) {
+	uid, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, false, nil
+	}
+	m, err := s.repo.ByUserID(ctx, uid)
+	if err != nil {
+		return nil, false, err
+	}
+	return scopesFor(m), isDirection(m), nil
+}
+
+// isDirection : une fiche ACTIVE avec la fonction `admin`. Suspendue, elle
+// n'accorde rien — comme pour les portées.
+func isDirection(m *Member) bool {
+	return m != nil && m.Status != StatusSuspended && m.Function == FunctionAdmin
+}
+
 // scopesFor porte la RÈGLE, séparée de la lecture en base pour être testable.
 //
 // ⚠️ Une fonction pure plutôt qu'un bloc au milieu de `ScopesOf` : un test

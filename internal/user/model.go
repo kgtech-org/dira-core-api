@@ -48,11 +48,18 @@ type User struct {
 	Email     string     `bson:"email,omitempty"`
 	AvatarURL string     `bson:"avatar_url,omitempty"`
 	// Preferences : notifications par catégorie, thème, langue, sons.
-	Preferences  *Preferences `bson:"preferences,omitempty"`
-	PasswordHash string       `bson:"password_hash"`
-	Status       string       `bson:"status"` // "active" | "suspended"
-	CreatedAt    time.Time    `bson:"created_at"`
-	UpdatedAt    time.Time    `bson:"updated_at"`
+	Preferences *Preferences `bson:"preferences,omitempty"`
+	// Country est le PAYS DU COMPTE (ISO 3166-1 alpha-2) : la borne « haut
+	// niveau » de tout ce que ce compte voit, inscrite dans son jeton à
+	// chaque émission. Posé à l'inscription — en-tête de l'application,
+	// sinon indicatif du téléphone, sinon pays par défaut — et réaligné par
+	// `POST /me/country/resolve` quand l'application situe la personne
+	// ailleurs. Voir `pkg/country`.
+	Country      string    `bson:"country,omitempty"`
+	PasswordHash string    `bson:"password_hash"`
+	Status       string    `bson:"status"` // "active" | "suspended"
+	CreatedAt    time.Time `bson:"created_at"`
+	UpdatedAt    time.Time `bson:"updated_at"`
 }
 
 // RefreshToken stores the sha256 hash of an issued refresh token. Rotation

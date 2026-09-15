@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 )
 
 // Ce fichier sert les LECTURES du back-office : la liste des portefeuilles et
@@ -71,7 +72,7 @@ func beforeCursor(filter bson.M, cursor string) bson.M {
 // pas exprimer avec ce qui existe.
 func (r *Repository) ListWallets(ctx context.Context, walletType, ownerID, cursor string, limit int) ([]WalletRow, string, error) {
 	limit = pageLimit(limit)
-	filter := bson.M{}
+	filter := country.Restrict(ctx, bson.M{})
 	if walletType != "" {
 		filter["type"] = walletType
 	}

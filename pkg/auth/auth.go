@@ -56,6 +56,33 @@ type Claims struct {
 	// localement : la faire lire au socle à chaque requête referait de lui le
 	// point de panne unique que la vérification locale existe pour éviter.
 	Scopes []string
+	// Country est le PAYS DU COMPTE (ISO 3166-1 alpha-2), inscrit à
+	// l'émission. C'est la borne « haut niveau » de tout ce que ce compte
+	// voit — voir `pkg/country` et `middleware.Country`.
+	//
+	// Dans le jeton pour la même raison que la portée : chaque service borne
+	// localement, sans demander au socle. Vide sur un jeton émis avant la
+	// couche pays : le middleware retombe alors sur l'en-tête, puis sur le
+	// pays par défaut.
+	Country string
+	// CountryAny dit que le porteur peut CHANGER de pays par l'en-tête
+	// `X-Dira-Country` — la direction, sur la console. Pour tout autre
+	// compte, l'en-tête n'est qu'une information et le pays du compte
+	// s'impose : un client ne se téléporte pas à Cotonou en changeant un
+	// en-tête.
+	CountryAny bool
+}
+
+// Grant est ce qu'un jeton accorde : l'identité, et ses bornes.
+//
+// Une structure plutôt qu'une liste d'arguments : à trois bornes (portées,
+// pays, droit de changer de pays), un appel positionnel ne se relit plus.
+type Grant struct {
+	UserID     string
+	Role       string
+	Scopes     []string
+	Country    string
+	CountryAny bool
 }
 
 // Portées connues. Une portée est une VERTICALE, pas une permission fine :
@@ -99,20 +126,30 @@ func NewManager(secret string, accessTTL, refreshTTL time.Duration) *Manager {
 // l'absence de portée est un cas légitime et courant — un client, un livreur,
 // un administrateur sans restriction — et non un oubli à signaler.
 func (m *Manager) GenerateAccess(userID, role string, scopes ...string) (string, error) {
-	return m.generate(userID, role, TokenTypeAccess, m.accessTTL, scopes)
+	return m.generate(Grant{UserID: userID, Role: role, Scopes: scopes}, TokenTypeAccess, m.accessTTL)
 }
 
 func (m *Manager) GenerateRefresh(userID, role string, scopes ...string) (string, error) {
-	return m.generate(userID, role, TokenTypeRefresh, m.refreshTTL, scopes)
+	return m.generate(Grant{UserID: userID, Role: role, Scopes: scopes}, TokenTypeRefresh, m.refreshTTL)
+}
+
+// Issue mints an access token for a full grant — scopes AND country.
+func (m *Manager) Issue(g Grant) (string, error) {
+	return m.generate(g, TokenTypeAccess, m.accessTTL)
+}
+
+// IssueRefresh mints a refresh token for a full grant.
+func (m *Manager) IssueRefresh(g Grant) (string, error) {
+	return m.generate(g, TokenTypeRefresh, m.refreshTTL)
 }
 
 func (m *Manager) RefreshTTL() time.Duration { return m.refreshTTL }
 
-func (m *Manager) generate(userID, role, typ string, ttl time.Duration, scopes []string) (string, error) {
+func (m *Manager) generate(g Grant, typ string, ttl time.Duration) (string, error) {
 	now := time.Now().UTC()
 	claims := jwt.MapClaims{
-		"sub":  userID,
-		"role": role,
+		"sub":  g.UserID,
+		"role": g.Role,
 		"typ":  typ,
 		"iat":  now.Unix(),
 		"exp":  now.Add(ttl).Unix(),
@@ -121,8 +158,14 @@ func (m *Manager) generate(userID, role, typ string, ttl time.Duration, scopes [
 	// tableau vide dans un jeton se lit « aucune portée autorisée » par un
 	// futur lecteur qui n'aurait pas la convention en tête ; un champ absent
 	// ne prête pas à cette lecture.
-	if len(scopes) > 0 {
-		claims["scp"] = scopes
+	if len(g.Scopes) > 0 {
+		claims["scp"] = g.Scopes
+	}
+	if g.Country != "" {
+		claims["cty"] = g.Country
+	}
+	if g.CountryAny {
+		claims["cty_any"] = true
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString(m.secret)
@@ -161,15 +204,19 @@ func (m *Manager) Verify(tokenStr string) (Claims, error) {
 			}
 		}
 	}
+	out.Country, _ = mapClaims["cty"].(string)
+	out.CountryAny, _ = mapClaims["cty_any"].(bool)
 	return out, nil
 }
 
 type ctxKey struct{}
 
 type ctxUser struct {
-	scopes []string
-	id     string
-	role   string
+	scopes     []string
+	id         string
+	role       string
+	country    string
+	countryAny bool
 }
 
 // WithUser stores the authenticated user in the context.
@@ -184,7 +231,21 @@ func WithUser(ctx context.Context, id, role string) context.Context {
 // de plus n'aurait rien appris à personne. Le middleware, lui, doit passer par
 // ici — sinon la portée s'arrête au jeton et ne protège rien.
 func WithClaims(ctx context.Context, c Claims) context.Context {
-	return context.WithValue(ctx, ctxKey{}, ctxUser{id: c.UserID, role: c.Role, scopes: c.Scopes})
+	return context.WithValue(ctx, ctxKey{}, ctxUser{
+		id: c.UserID, role: c.Role, scopes: c.Scopes,
+		country: c.Country, countryAny: c.CountryAny,
+	})
+}
+
+// CountryFromContext rend le pays du COMPTE porteur et son droit d'en
+// changer. Vide, vide : pas de jeton, ou un jeton d'avant la couche pays.
+//
+// ⚠️ Ce n'est pas le pays EFFECTIF de la requête — celui-là est posé par
+// `middleware.Country` et se lit par `country.FromContext`. La direction
+// peut regarder un autre pays que le sien.
+func CountryFromContext(ctx context.Context) (code string, any bool) {
+	u, _ := ctx.Value(ctxKey{}).(ctxUser)
+	return u.country, u.countryAny
 }
 
 // ScopesFromContext rend les portées du porteur, vides si aucune restriction.

@@ -111,6 +111,9 @@ type Wallet struct {
 	OwnerID primitive.ObjectID `bson:"owner_id"` // user id (driver) or store id (merchant)
 	Type    string             `bson:"type"`     // "driver" | "merchant"
 	Balance int                `bson:"balance"`  // JETONS
+	// Country est celui du propriétaire à l'ouverture — la borne des listes
+	// de la console. Voir `pkg/country`.
+	Country string `bson:"country,omitempty"`
 	// BalanceXOF est le solde en ARGENT : produit des ventes pour un marchand,
 	// commissions pour un livreur.
 	//

@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.1.1** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.2.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -149,6 +149,30 @@ trames pour le même passage (socket + push) sont normales — la seconde
 `GET` répond la même chose. Une application qui ferait du socket sa source de
 vérité verrait, un jour, une course « en route » qu'un `GET` dit terminée.
 
+## ⚠️ v4.2.0 — Le PAYS : `X-Dira-Country`
+
+Dira s'installe **pays par pays**, et toute donnée est bornée par pays : un
+compte, une commande, une course, une enseigne, un chauffeur portent un
+`country` (ISO 3166-1 alpha-2), et une application ne voit que ceux de son
+pays. Trois gestes pour une application, détaillés dans chaque spec
+(section *Le pays*) :
+
+1. **Envoyer `X-Dira-Country: TG` sur chaque requête**, et lire le pays
+   **retenu** dans le même en-tête de la réponse. Le pays du compte
+   (dans le jeton) s'impose à un compte ordinaire ; l'en-tête ne fait
+   qu'informer — et, sans jeton, il est admis s'il nomme un pays ouvert.
+2. **Trouver son pays** : `POST /me/country/resolve` avec la position de
+   l'appareil (`geo`), ou corps vide pour laisser l'adresse IP décider
+   (`ip`). Hors zone → `supported: false`, le compte garde son pays.
+   Avant l'inscription : `GET /countries` (public) et l'en-tête sur
+   `POST /auth/register` ; sans en-tête, l'indicatif du téléphone décide.
+3. **Rafraîchir la session** (`POST /auth/refresh`) quand la résolution
+   répond `updated: true` : c'est le jeton qui borne les listes.
+
+Côté exploitation, un compte de **direction** (`country_any` dans `GET /me`)
+choisit le pays qu'il regarde par ce même en-tête ; tout autre compte de
+staff voit le pays de son compte.
+
 ## Ce que ces documents remplacent
 
 `docs/specs/*.md` reste la référence **du backend** : un module par fichier, avec ses raisons de conception. Ces trois-ci sont la référence **du frontend** : un rôle par fichier, avec les contrats.
@@ -172,7 +196,8 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 
 **Transverse**
 
-- [ ] Client HTTP : **deux bases** par application (`/api/v1` pour le socle, `/api/v1/food` **ou** `/api/v1/vtc` pour le métier), `Accept-Language`, erreurs typées **sur `code`** — jamais sur le message, qui est traduit
+- [ ] Client HTTP : **deux bases** par application (`/api/v1` pour le socle, `/api/v1/food` **ou** `/api/v1/vtc` pour le métier), `Accept-Language`, **`X-Dira-Country`** sur chaque requête (et `?country=` sur les WebSockets), erreurs typées **sur `code`** — jamais sur le message, qui est traduit
+- [ ] Pays : `POST /me/country/resolve` au démarrage (position de l'appareil si possible), `GET /countries` avant l'inscription, **`POST /auth/refresh` quand `updated: true`**, message « pas encore disponible » quand `supported: false` — sans bloquer
 - [ ] ⚠️ Un **seul** jeton pour les deux bases : ne dupliquez pas la session
 - [ ] Auth : stockage sécurisé, refresh **sérialisé**, déconnexion au second échec
 - [ ] Pagination par curseur générique (`items` / `next_cursor`)
@@ -241,6 +266,19 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.2.0 — 15 septembre 2026
+
+**Ajout rétrocompatible** — la COUCHE PAYS. En-tête `X-Dira-Country` sur
+chaque requête (la réponse porte le pays retenu) ; `GET /countries`
+(public, les pays ouverts — Togo, Sénégal et Guinée d'office — avec
+indicatif, monnaie, langue, fuseau) ;
+`POST /me/country/resolve` (position de l'appareil, puis adresse IP ; met
+le compte à jour, `supported: false` hors zone) ; `country` et
+`country_any` dans `GET /me` et dans le jeton (`cty`, `cty_any`). Toute
+liste est bornée au pays de la requête. Une application qui n'envoie rien
+continue de fonctionner dans le pays de son compte — d'où « rétrocompatible »
+— mais ne saura pas où elle a été rangée.
 
 ### 4.1.1 — 15 septembre 2026
 

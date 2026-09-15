@@ -21,6 +21,7 @@ db.fleets.createIndex({ name: 1 }, { unique: true });
 
 // La liste de l'administration : les plus récentes d'abord, filtrées par état.
 db.fleets.createIndex({ status: 1, _id: -1 });
+db.fleets.createIndex({ country: 1, _id: -1 });
 
 // « Quelle flotte gère ce compte ? » — la question que pose la connexion d'un
 // gérant.

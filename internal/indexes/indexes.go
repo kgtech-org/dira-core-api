@@ -24,6 +24,10 @@ var applicationIndexes = []db.Index{
 	// --- user ---
 	{Collection: "users", Keys: db.K("phone", 1), Unique: true},
 	{Collection: "users", Keys: db.K("role", 1)},
+	// La borne PAYS des listes de la console — voir `pkg/country`. Le pays
+	// en tête, le rôle ensuite : c'est l'ordre des filtres de `/admin/users`
+	// et des audiences de campagne (« les clients du Togo »).
+	{Collection: "users", Keys: db.K("country", 1, "role", 1, "_id", 1)},
 	// L'email est facultatif : unique ET sparse, sinon deux comptes sans
 	// email entreraient en collision sur la valeur nulle.
 	// Unicité de l'e-mail SEULEMENT parmi ceux qui en ont un. On s'inscrit par
@@ -50,6 +54,7 @@ var applicationIndexes = []db.Index{
 
 	// --- token ---
 	{Collection: "token_wallets", Keys: db.K("owner_id", 1), Unique: true},
+	{Collection: "token_wallets", Keys: db.K("country", 1, "_id", -1)},
 	{Collection: "token_transactions", Keys: db.K("wallet_id", 1)},
 	{Collection: "token_transactions", Keys: db.K("created_at", 1)},
 	// La référence d'un mouvement : le COUPLE, pas l'identifiant seul. Deux
@@ -70,6 +75,7 @@ var applicationIndexes = []db.Index{
 	{Collection: "payments", Keys: db.K("provider_ref", 1), Unique: true},
 	{Collection: "payments", Keys: db.K("user_id", 1)},
 	{Collection: "payments", Keys: db.K("status", 1)},
+	{Collection: "payments", Keys: db.K("country", 1, "_id", -1)},
 
 	// --- notifications ---
 	{Collection: "push_devices", Keys: db.K("token", 1), Unique: true},
@@ -79,6 +85,7 @@ var applicationIndexes = []db.Index{
 	{Collection: "notifications", Keys: db.K("user_id", 1, "read_at", 1)},
 	// Les campagnes dues : le tic ne relit que celles qui attendent.
 	{Collection: "campaigns", Keys: db.K("status", 1, "send_at", 1)},
+	{Collection: "campaigns", Keys: db.K("country", 1, "_id", -1)},
 
 	// --- notes ---
 	// UNE note par (commande, cible). L'unicité est portée par l'INDEX et non
@@ -97,6 +104,7 @@ var applicationIndexes = []db.Index{
 	{Collection: "fleets", Keys: db.K("name", 1), Unique: true},
 	// La liste de l'administration, filtrée par état.
 	{Collection: "fleets", Keys: db.K("status", 1, "_id", -1)},
+	{Collection: "fleets", Keys: db.K("country", 1, "_id", -1)},
 	// « Quelle flotte gère ce compte ? » — la question que pose la connexion
 	// d'un gérant. PARTIEL : une flotte enregistrée sur contrat papier n'a pas
 	// encore de gérant, et indexer ces absences coûterait sans rien répondre.

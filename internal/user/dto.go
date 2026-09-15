@@ -117,6 +117,12 @@ type UserResponse struct {
 	Role      string    `json:"role"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
+	// Country est le pays du compte — celui que l'application envoie dans
+	// `X-Dira-Country`. CountryAny dit que ce compte peut regarder un AUTRE
+	// pays par cet en-tête : la direction, sur la console. Absent pour tout
+	// le monde d'autre.
+	Country    string `json:"country,omitempty"`
+	CountryAny bool   `json:"country_any,omitempty"`
 	// Preferences accompagne le compte : l'application les lit à chaque
 	// démarrage, et un appel séparé pour quatre interrupteurs serait un
 	// aller-retour de plus sur un réseau mobile.
@@ -137,6 +143,7 @@ func newUserResponse(u *User) UserResponse {
 		Preferences: u.Preferences,
 		Role:        u.Role,
 		Status:      u.Status,
+		Country:     u.Country,
 		CreatedAt:   u.CreatedAt,
 	}
 }
