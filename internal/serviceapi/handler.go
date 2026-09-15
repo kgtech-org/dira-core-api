@@ -261,7 +261,7 @@ type walletRequest struct {
 	Amount  int            `json:"amount" validate:"required,gt=0"`
 	Reason  string         `json:"reason" validate:"omitempty,max=60"`
 	RefID   string         `json:"ref_id" validate:"omitempty,len=24,hexadecimal"`
-	RefKind string         `json:"ref_kind" validate:"omitempty,oneof=order ride tip"`
+	RefKind string         `json:"ref_kind" validate:"omitempty,oneof=order ride tip ride_adjustment"`
 	Ref     map[string]any `json:"ref"`
 	Type    string         `json:"type" validate:"omitempty,oneof=driver merchant client"`
 }

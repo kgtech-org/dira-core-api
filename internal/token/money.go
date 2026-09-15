@@ -266,9 +266,9 @@ func parseRef(refKind, refID string) (*primitive.ObjectID, error) {
 		return nil, apperr.Validation("a reference needs both a kind and an id")
 	}
 	switch refKind {
-	case RefOrder, RefRide, RefTip:
+	case RefOrder, RefRide, RefTip, RefRideAdjustment:
 	default:
-		return nil, apperr.Validation("reference kind must be order, ride or tip")
+		return nil, apperr.Validation("reference kind must be order, ride, tip or ride_adjustment")
 	}
 	oid, err := primitive.ObjectIDFromHex(refID)
 	if err != nil {
