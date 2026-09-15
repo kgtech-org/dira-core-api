@@ -21,6 +21,10 @@ var Kinds = map[string]bool{
 	// Visuels du carrousel publicitaire (internal/banner). Images seules :
 	// une bannière est une carte, pas une vidéo.
 	"banner": true,
+	// Pictogrammes des MODES de véhicule (dira-vtc-api : classes) — l'icône
+	// d'affichage et l'icône de carte, envoyées depuis la console. Images
+	// seules, petites : un pictogramme n'est pas une photo.
+	"class": true,
 }
 
 // AllowedTypes maps accepted IMAGE content types to file extensions.

@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.4.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.5.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -266,6 +266,14 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.5.0 — 15 septembre 2026
+
+**Ajout rétrocompatible** — les MODES (classes) portent deux images
+envoyées depuis la console : `icon_url` (l'icône d'affichage) et
+`map_icon_url` (l'icône du marqueur, avec `map_icon` comme silhouette de
+repli), réglables avec le nom ; un mode peut s'ajouter. Affichez
+`icon_url` + `name` tels que servis, jamais en dur (`VTC-CLIENT.md` §2).
 
 ### 4.4.0 — 15 septembre 2026
 

@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 4.4.0** · 15 septembre 2026
+> **Version 4.5.0** · 15 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -535,7 +535,7 @@ POST /tickets · POST /bug-reports
 
 ⚠️ **`POST /uploads` est au socle — v3.0.0** : `…/api/v1/uploads`, plus `/food/uploads` (404). Multipart, champ `file`, le **type déclaré** de la part fait foi.
 
-`kind` ∈ `dish` · `store` · `brand` · `vehicle` · `avatar` · `feed` · `banner`. Images (jpeg, png, webp, svg) ≤ 5 MiB pour tout `kind` ; `feed` accepte **aussi** des vidéos ≤ 60 MiB — une vidéo pèse bien plus qu'une photo de plat, et rien d'autre ne profite de ce plafond. Au-delà de 64 MiB, la passerelle répond `413 payload_too_large`.
+`kind` ∈ `dish` · `store` · `brand` · `vehicle` · `avatar` · `feed` · `banner` · `class` (pictogrammes des modes VTC, console). Images (jpeg, png, webp, svg) ≤ 5 MiB pour tout `kind` ; `feed` accepte **aussi** des vidéos ≤ 60 MiB — une vidéo pèse bien plus qu'une photo de plat, et rien d'autre ne profite de ce plafond. Au-delà de 64 MiB, la passerelle répond `413 payload_too_large`.
 
 Téléversez **d'abord**, rattachez l'URL ensuite : une image qui échoue ne doit pas faire perdre la saisie.
 
