@@ -27,7 +27,7 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		g.Post("/me/country/resolve", h.resolve)
 		admin := middleware.RequireRole(auth.RoleAdmin)
 		g.With(admin).Get("/admin/countries", h.listAdmin)
-		g.With(admin).Put("/admin/countries/{code}", h.setEnabled)
+		g.With(admin).Put("/admin/countries/{code}", h.update)
 	})
 }
 
@@ -54,13 +54,13 @@ func (h *Handler) listAdmin(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": items, "default": h.svc.Default()})
 }
 
-func (h *Handler) setEnabled(w http.ResponseWriter, r *http.Request) {
-	var req SetEnabledRequest
+func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
+	var req UpdateRequest
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	out, err := h.svc.SetEnabled(r.Context(), chi.URLParam(r, "code"), req.Enabled)
+	out, err := h.svc.Update(r.Context(), chi.URLParam(r, "code"), req)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

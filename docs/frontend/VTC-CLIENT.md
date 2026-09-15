@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.2.0** · 15 septembre 2026
+> **Version 4.3.0** · 15 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -110,11 +110,19 @@ pas, il est marqué de son pays d'alors.
 ```
 GET /api/v1/countries                  (public)
 → 200 { "default": "TG", "items": [
-  { "code": "TG", "name": "Togo", "currency": "XOF", "phone_prefix": "+228",
+  { "code": "TG", "name": "Togo", "currency": "XOF", "currency_name": "Franc CFA (UEMOA)",
+    "currency_symbol": "F CFA", "currency_decimals": 0, "phone_prefix": "+228",
     "locale": "fr", "timezone": "Africa/Lome", "center": [1.2255, 6.1319],
     "enabled": true, "default": true }
 ]}
 ```
+
+**La monnaie vient du pays.** Tout montant de la plateforme est un entier
+dans la plus petite unité de la monnaie du pays où il a été créé — un prix
+sous `GN` est en francs guinéens, sous `TG` en francs CFA. Rien n'est
+converti : formatez avec `currency_symbol` et `currency_decimals` du pays
+courant (« 2 500 F CFA », « 35 000 FG »). Les champs nommés `…_xof` sont
+un héritage de nommage : ils portent la monnaie du pays.
 
 Trois pays sont ouverts d'office : **Togo** (`TG`), **Sénégal** (`SN`),
 **Guinée** (`GN`). Les autres s'ouvrent depuis la console.

@@ -152,8 +152,9 @@ paths:
       summary: Countries where Dira is open
       security: []
       description: >-
-        PUBLIC. Les pays OUVERTS, avec leur fiche : nom, monnaie, indicatif,
-        langue, fuseau, centre. `default` nomme le pays du déploiement —
+        PUBLIC. Les pays OUVERTS, avec leur fiche : nom, MONNAIE (code,
+        symbole, décimales — ce qu'il faut pour afficher un montant),
+        indicatif, langue, fuseau, centre. `default` nomme le pays du déploiement —
         celui qu'une requête sans jeton ni en-tête reçoit. Trois pays sont
         ouverts d'office : Togo, Sénégal, Guinée. Une application
         s'en sert avant toute connexion : proposer l'indicatif à
@@ -217,7 +218,14 @@ paths:
   /admin/countries/{code}:
     put:
       tags: [admin, countries]
-      summary: Open or close a country
+      summary: Open or close a country, set its currency
+      description: >-
+        Les deux champs sont facultatifs — on change l'un sans toucher à
+        l'autre. `currency` : un code ISO 4217 connu (`XOF`, `XAF`, `GNF`,
+        `GHS`, `NGN`, `EUR`, `USD`) ; vide = revenir à la monnaie du
+        catalogue. ⚠️ La monnaie se DÉCLARE, elle ne convertit rien : les
+        montants créés sous ce pays sont dans cette monnaie, en entiers de sa
+        plus petite unité.
       parameters:
         - {name: code, in: path, required: true, schema: {type: string, example: BJ}}
       requestBody:
@@ -226,13 +234,14 @@ paths:
           application/json:
             schema:
               type: object
-              required: [enabled]
               properties:
                 enabled: {type: boolean}
+                currency: {type: string, example: GNF}
       responses:
         "200": {description: Country}
         "404": {description: country_unknown — not in the catalog}
         "409": {description: country_default — the default country cannot be closed}
+        "422": {description: unknown currency, or nothing to update}
   /me/preferences:
     patch:
       tags: [users]
@@ -748,7 +757,10 @@ components:
       properties:
         code: {type: string, example: TG}
         name: {type: string, example: Togo}
-        currency: {type: string, example: XOF}
+        currency: {type: string, example: XOF, description: ISO 4217 — la monnaie EN VIGUEUR (réglage ou catalogue)}
+        currency_name: {type: string, example: Franc CFA (UEMOA)}
+        currency_symbol: {type: string, example: F CFA, description: à écrire après le montant}
+        currency_decimals: {type: integer, example: 0, description: 0 = l'entier stocké est l'unité ; 2 = l'entier est en centièmes}
         phone_prefix: {type: string, example: "+228"}
         locale: {type: string, example: fr}
         timezone: {type: string, example: Africa/Lome}

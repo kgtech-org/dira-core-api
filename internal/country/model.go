@@ -25,25 +25,40 @@ const Collection = "countries"
 // ne supprime pas la ligne : ses comptes, ses commandes et ses courses
 // portent encore son code, et la console doit pouvoir les relire.
 type Installation struct {
-	Code      string    `bson:"_id"`
-	Enabled   bool      `bson:"enabled"`
+	Code    string `bson:"_id"`
+	Enabled bool   `bson:"enabled"`
+	// Currency est la MONNAIE du pays telle que l'exploitation l'a réglée
+	// (ISO 4217). Vide = celle du catalogue. Réglable parce qu'un pays peut
+	// changer de monnaie — l'« eco » annoncée pour l'UEMOA — sans qu'on
+	// redéploie ; et parce que c'est un réglage d'exploitation, pas une
+	// vérité géographique.
+	Currency  string    `bson:"currency,omitempty"`
 	EnabledAt time.Time `bson:"enabled_at,omitempty"`
 	UpdatedAt time.Time `bson:"updated_at"`
 }
 
 // Response est un pays tel que le public et la console le lisent : la fiche
-// du catalogue, et l'état de son installation.
+// du catalogue, sa monnaie EFFECTIVE, et l'état de son installation.
 type Response struct {
 	country.Info
-	Enabled bool `json:"enabled"`
+	// CurrencyName, CurrencySymbol, CurrencyDecimals décrivent la monnaie en
+	// vigueur (`currency` de la fiche, remplacé par le réglage s'il y en a
+	// un) — ce qu'une application a besoin de savoir pour AFFICHER un
+	// montant : « 2 500 F CFA », « 35 000 FG ».
+	CurrencyName     string `json:"currency_name"`
+	CurrencySymbol   string `json:"currency_symbol"`
+	CurrencyDecimals int    `json:"currency_decimals"`
+	Enabled          bool   `json:"enabled"`
 	// Default marque le pays par défaut du déploiement — celui qu'une
 	// requête sans jeton ni en-tête reçoit.
 	Default bool `json:"default,omitempty"`
 }
 
-// SetEnabledRequest ouvre ou ferme un pays.
-type SetEnabledRequest struct {
-	Enabled bool `json:"enabled"`
+// UpdateRequest règle un pays : ouvert ou fermé, et sa monnaie. Les deux
+// facultatifs — on change l'un sans toucher à l'autre.
+type UpdateRequest struct {
+	Enabled  *bool   `json:"enabled"`
+	Currency *string `json:"currency" validate:"omitempty,len=3"`
 }
 
 // ResolveRequest est ce qu'une application envoie pour connaître son pays.
@@ -87,7 +102,9 @@ type ResolveResponse struct {
 }
 
 var (
-	errUnknownCountry = apperr.NotFound("country_unknown", "this country is not in the catalog")
-	errDefaultCountry = apperr.Conflict("country_default", "the default country cannot be disabled")
-	errNoCoordinates  = apperr.Validation("lng and lat go together: send both or neither")
+	errUnknownCountry  = apperr.NotFound("country_unknown", "this country is not in the catalog")
+	errUnknownCurrency = apperr.Validation("unknown currency: expected an ISO 4217 code such as XOF or GNF")
+	errNothingToUpdate = apperr.Validation("nothing to update: send enabled and/or currency")
+	errDefaultCountry  = apperr.Conflict("country_default", "the default country cannot be disabled")
+	errNoCoordinates   = apperr.Validation("lng and lat go together: send both or neither")
 )

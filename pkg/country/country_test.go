@@ -48,6 +48,20 @@ func TestCatalogHasBorders(t *testing.T) {
 	}
 }
 
+func TestCatalogCurrenciesAreKnown(t *testing.T) {
+	for _, c := range Catalog {
+		if _, ok := LookupCurrency(c.Currency); !ok {
+			t.Errorf("%s: currency %s is not in Currencies", c.Code, c.Currency)
+		}
+	}
+	if cur, ok := LookupCurrency("gnf"); !ok || cur.Symbol != "FG" || cur.Decimals != 0 {
+		t.Fatalf("LookupCurrency(gnf) = %+v, %v", cur, ok)
+	}
+	if NormalizeCurrency("xo") != "" || NormalizeCurrency("x0f") != "" {
+		t.Fatal("NormalizeCurrency accepted a bad code")
+	}
+}
+
 func TestNormalizeAndPhone(t *testing.T) {
 	if Normalize(" tg ") != "TG" || Normalize("Togo") != "" || Normalize("t1") != "" {
 		t.Fatal("Normalize")

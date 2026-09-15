@@ -80,9 +80,17 @@ func run(logger *slog.Logger) error {
 	defer func() { _ = mongo.Close(context.Background()) }()
 
 	if *reset {
-		logger.Warn("seed: DROPPING the core's accounts — every session of the platform is invalidated")
+		// TOUT ce que le socle tient sur des personnes et de l'argent : les
+		// comptes, leurs sessions et adresses, le staff, les portefeuilles et
+		// leurs mouvements, les paiements, les notifications et appareils,
+		// les campagnes, les notes, les flottes, le journal d'audit. Ce qui
+		// reste est du RÉGLAGE — les pays ouverts, les gabarits de messages
+		// — qu'un jeu de démonstration n'a pas à effacer.
+		logger.Warn("seed: DROPPING the core's data — every session of the platform is invalidated")
 		for _, name := range []string{
 			user.CollectionUsers, user.CollectionRefreshTokens, user.CollectionAddresses,
+			staff.Collection, "token_wallets", "token_transactions", "wallet_operations",
+			"payments", "push_devices", "notifications", "campaigns", "ratings", "fleets", "audit_logs",
 		} {
 			if err := mongo.DB.Collection(name).Drop(ctx); err != nil {
 				return fmt.Errorf("seed: drop %s: %w", name, err)
@@ -129,8 +137,38 @@ func run(logger *slog.Logger) error {
 		"password_source", "SEED_ADMIN_PASSWORD",
 		"staff_id", member.ID, "scopes", member.Scopes,
 		"db", cfg.MongoDB)
+
+	// --- UN EXPLOITANT PAR PAYS OUVERT ---
+	//
+	// La direction voit chaque pays ; un exploitant ne voit que le sien —
+	// c'est le pays de son COMPTE, déduit ici de l'indicatif de son numéro,
+	// qui borne sa console. Ces comptes existent pour montrer la borne, et
+	// pour qu'une équipe locale ait de quoi se connecter dès l'ouverture.
+	// Mot de passe de démonstration, comme les autres acteurs des verticales.
+	demoPassword := envOr("SEED_DEMO_PASSWORD", "dira12345")
+	for _, ops := range countryOps {
+		uid, err := svc.EnsureAccount(ctx, auth.RoleAdmin, ops.phone, ops.name, ops.email, demoPassword)
+		if err != nil {
+			return fmt.Errorf("seed: ensure ops %s: %w", ops.country, err)
+		}
+		if _, err := staffSvc.EnsureMember(ctx, uid, staff.FunctionOps, "Exploitation "+ops.label, auth.AllScopes); err != nil {
+			return fmt.Errorf("seed: ensure ops staff %s: %w", ops.country, err)
+		}
+		logger.Info("seed: country ops ready", "country", ops.country, "email", ops.email, "phone", ops.phone)
+	}
 	logger.Info("seed: done — les verticales sèment leur propre jeu de démonstration")
 	return nil
+}
+
+// countryOps : un compte d'exploitation par pays préchargé. L'INDICATIF du
+// numéro décide du pays du compte (`+221` → SN) — c'est la règle de
+// l'inscription, et la borne qui s'applique ensuite à sa console.
+var countryOps = []struct {
+	country, label, name, email, phone string
+}{
+	{"TG", "Togo", "Exploitation Lomé", "ops.tg@dira.llc", "+22890000101"},
+	{"SN", "Sénégal", "Exploitation Dakar", "ops.sn@dira.llc", "+221770000101"},
+	{"GN", "Guinée", "Exploitation Conakry", "ops.gn@dira.llc", "+224620000101"},
 }
 
 // envOr returns the environment value for key, or def when unset/blank.

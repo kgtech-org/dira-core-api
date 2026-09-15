@@ -49,6 +49,21 @@ func (r *Repository) SetEnabled(ctx context.Context, code string, enabled bool) 
 	return nil
 }
 
+// SetCurrency règle la monnaie d'un pays (vide = celle du catalogue).
+func (r *Repository) SetCurrency(ctx context.Context, code, currency string) error {
+	update := bson.M{"$set": bson.M{"updated_at": time.Now().UTC()}}
+	if currency == "" {
+		update["$unset"] = bson.M{"currency": ""}
+	} else {
+		update["$set"].(bson.M)["currency"] = currency
+	}
+	_, err := r.countries.UpdateOne(ctx, bson.M{"_id": code}, update, options.Update().SetUpsert(true))
+	if err != nil {
+		return fmt.Errorf("country: set currency: %w", err)
+	}
+	return nil
+}
+
 // EnsureEnabled ouvre un pays s'il n'a JAMAIS été enregistré — sans rouvrir
 // un pays qu'on a fermé exprès. C'est le geste du démarrage pour le pays par
 // défaut.
