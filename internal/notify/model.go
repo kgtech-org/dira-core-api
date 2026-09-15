@@ -124,6 +124,10 @@ const (
 	// KeyRideCancelledByRider va au CHAUFFEUR : il roulait peut-être déjà
 	// vers le point de départ.
 	KeyRideCancelledByRider = "ride_cancelled_by_rider"
+	// KeyRideSearchExhausted : la recherche de chauffeur s'est arrêtée sans
+	// preneur — message au PASSAGER, avec de quoi relancer. La course n'est
+	// pas annulée : c'est lui qui décide.
+	KeyRideSearchExhausted = "ride_search_exhausted"
 	// KeyDeliveryCancelled va au LIVREUR qui portait la course d'une commande
 	// annulée : il est libre, et doit l'apprendre avant d'arriver au
 	// restaurant.
@@ -302,6 +306,15 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "Ride cancelled by the rider", Body: "The rider cancelled the ride ([reason]). You are available again."},
 		},
 	},
+	KeyRideSearchExhausted: {
+		Key:         KeyRideSearchExhausted,
+		Description: "Aucun chauffeur n'a pris la course dans le délai — message au PASSAGER, qui peut relancer.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Aucun chauffeur disponible", Body: "Nous n'avons pas trouvé de chauffeur pour votre course depuis [pickup]. Relancez la recherche, ou annulez : vous serez remboursé."},
+			LocaleEN: {Title: "No driver available", Body: "We could not find a driver for your ride from [pickup]. Relaunch the search, or cancel for a refund."},
+		},
+	},
 	KeyDeliveryCancelled: {
 		Key:         KeyDeliveryCancelled,
 		Description: "La commande a été annulée sous le livreur qui la portait — message au LIVREUR.",
@@ -364,6 +377,7 @@ var provided = map[string][]string{
 	KeyRideCancelled:        {"reason"},
 	KeyRideCancelledByRider: {"reason"},
 	KeyDeliveryCancelled:    {"order_ref"},
+	KeyRideSearchExhausted:  {"pickup"},
 	KeyMerchantNewOrder:     {"order_ref", "items", "amount"},
 }
 

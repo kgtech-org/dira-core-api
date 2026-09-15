@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.0.0** · 13 septembre 2026
+> **Version 4.1.0** · 15 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -270,7 +270,7 @@ aucune réponse, et sont refusés en entrée) :
 
 | Statut | Ce que voit le passager |
 |---|---|
-| `searching` | « nous cherchons un chauffeur » — `driver_id` est vide |
+| `searching` | « nous cherchons un chauffeur » — `driver_id` est vide ; `dispatch_state` dit si l'on appelle encore (v4.1.0, ci-dessous) |
 | `accepted` | un chauffeur a pris la course — `driver` dit qui (v3.8.0) |
 | `picking_up` | il roule vers le point de départ |
 | `in_transit` | le passager est à bord |
@@ -281,6 +281,38 @@ aucune réponse, et sont refusés en entrée) :
 GET /rides/{id}
 GET /rides?cursor=…     # l'historique de VOS courses, page par page
 ```
+
+### Quand personne ne répond — `dispatch_state` et la relance (v4.1.0)
+
+La plateforme appelle les chauffeurs autour du départ selon un réglage
+d'exploitation (tous en même temps dans un rayon, ou un par un du plus
+proche) et **s'arrête** au bout d'un nombre de chauffeurs ou de minutes.
+Une course `searching` porte alors **`dispatch_state`** :
+
+| `dispatch_state` | Ce que ça veut dire | Ce que montre l'écran |
+|---|---|---|
+| `calling` | on appelle des chauffeurs | « nous cherchons un chauffeur », animation |
+| `exhausted` | la recherche s'est arrêtée **sans preneur** — la course n'est **pas** annulée | « aucun chauffeur disponible » + deux boutons : **Relancer** et **Annuler** |
+
+`dispatch_at` date le dernier passage. Le passager l'apprend par **push**
+`ride_search_exhausted` (`data.type: "ride_status"`, `ride_id`,
+`status: "searching"`, `dispatch_state: "exhausted"`) — ouvrir la course,
+`GET /rides/{id}`, afficher les deux gestes.
+
+```
+POST /rides/{id}/relaunch      → 200 Ride, dispatch_state: calling
+POST /rides/{id}/cancel        → remboursé sur le solde si la course était payée
+```
+
+| Refus | Quand |
+|---|---|
+| `409 search_running` | un appel court déjà — masquer « Relancer » tant que `dispatch_state` vaut `calling` |
+| `409 not_searching` | la course a été prise, terminée ou annulée entre-temps — relire |
+| `503 dispatch_unavailable` | la recherche est momentanément indisponible — proposer de réessayer |
+
+> ⚠️ **N'annulez jamais d'office** une course épuisée : le passager a payé et
+> attend peut-être encore devant sa porte ; l'exploitation peut aussi lui
+> attribuer un chauffeur à la main. Laissez-lui les deux gestes.
 
 **Le parcours d'une course terminée (v3.2.0).** À `completed`, la course
 porte **`traveled_polyline`** (polyline Google, le chemin réellement roulé,
@@ -374,6 +406,7 @@ avant la réponse.
 | `ride_accepted` | un chauffeur a pris la course — nom et voiture dans le texte | `status: accepted` |
 | `ride_driver_on_the_way` | il roule vers vous | `status: picking_up` |
 | `ride_cancelled` | annulée par le chauffeur ou la plateforme (`reason`) | `status: cancelled` |
+| `ride_search_exhausted` | personne n'a pris la course — relancer ou annuler (§5, v4.1.0) | `status: searching`, `dispatch_state: exhausted` |
 | `ride_rate_prompt` | terminée — noter, remercier (§7 bis) | `type: ride_rate_prompt` |
 | `ride_scheduled_soon` · `_started` · `_failed` | course programmée (§4 bis) | |
 
