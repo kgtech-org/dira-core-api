@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 )
 
 // Ce fichier porte les CAMPAGNES : un message écrit par l'exploitation et
@@ -68,6 +69,10 @@ type Campaign struct {
 	// le repli ; chaque destinataire reçoit la langue de son appareil.
 	Locales  map[string]Text `bson:"locales" json:"locales"`
 	Audience Audience        `bson:"audience" json:"audience"`
+	// Country borne la population : « tous les clients » veut dire ceux du
+	// pays que la console regardait en publiant. Posé à la création, lu par
+	// l'envoi — qui tourne en tâche de fond, sans requête pour le lui dire.
+	Country string `bson:"country,omitempty" json:"country,omitempty"`
 	// Data voyage avec la notification jusqu'à l'application : `type`
 	// (`alert` | `campaign`), `campaign_id`, et ce que l'exploitant a
 	// ajouté — une adresse à ouvrir (`url`), un écran (`screen`).
@@ -158,7 +163,8 @@ func (s *Service) CreateCampaign(ctx context.Context, adminID string, req Create
 	}
 	c := &Campaign{
 		Kind: req.Kind, Locales: locales, Audience: Audience{Roles: roles},
-		Data: data, Note: strings.TrimSpace(req.Note),
+		Country: country.FromContext(ctx),
+		Data:    data, Note: strings.TrimSpace(req.Note),
 		Status: CampaignScheduled, SendAt: sendAt,
 		CreatedBy: by, CreatedAt: now, UpdatedAt: now,
 	}
@@ -345,6 +351,13 @@ const (
 func (s *Service) send(ctx context.Context, c *Campaign) {
 	started := time.Now().UTC()
 	c.StartedAt = &started
+	// L'envoi n'a pas de requête : c'est la campagne qui dit son pays, et
+	// le dépôt des comptes borne l'audience comme il le ferait pour une
+	// liste de la console. Sans pays (campagne d'avant la couche pays),
+	// l'audience est celle de tous les pays — ce qu'elle était alors.
+	if c.Country != "" {
+		ctx = country.WithCountry(ctx, c.Country, country.SourceClaims)
+	}
 	category := CategoryPromotions
 	if c.Kind == CampaignAlert {
 		category = CategoryAlerts

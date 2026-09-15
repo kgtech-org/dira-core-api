@@ -38,6 +38,11 @@ type Base struct {
 	JWTRefreshTTL time.Duration
 	LocalesPath   string
 	RateLimitRPM  int // requêtes par minute, par IP ou par compte
+	// CountryDefault est le pays du DÉPLOIEMENT (ISO 3166-1 alpha-2) : celui
+	// d'une requête que ni jeton ni en-tête ne situe. Chaque service le
+	// porte parce que chaque service borne ses listes par pays — voir
+	// `pkg/country`.
+	CountryDefault string
 
 	// Stockage d'objets (MinIO en développement) pour les fichiers envoyés.
 	MinioEndpoint  string
@@ -64,13 +69,14 @@ func (b *Base) IsProd() bool { return b.Env == "prod" }
 // variable d'environnement.
 func LoadBase(defaultDB, defaultBucket string) (Base, error) {
 	b := Base{
-		Port:        Env("PORT", "8080"),
-		Env:         Env("ENV", "dev"),
-		MongoURI:    Env("MONGO_URI", "mongodb://localhost:27017/?replicaSet=rs0"),
-		MongoDB:     Env("MONGO_DB", defaultDB),
-		RedisURI:    Env("REDIS_URI", "redis://localhost:6379/0"),
-		JWTSecret:   Env("JWT_SECRET", ""),
-		LocalesPath: Env("LOCALES_PATH", "locales"),
+		Port:           Env("PORT", "8080"),
+		Env:            Env("ENV", "dev"),
+		MongoURI:       Env("MONGO_URI", "mongodb://localhost:27017/?replicaSet=rs0"),
+		MongoDB:        Env("MONGO_DB", defaultDB),
+		RedisURI:       Env("REDIS_URI", "redis://localhost:6379/0"),
+		JWTSecret:      Env("JWT_SECRET", ""),
+		LocalesPath:    Env("LOCALES_PATH", "locales"),
+		CountryDefault: Env("COUNTRY_DEFAULT", "TG"),
 
 		MinioEndpoint:  Env("MINIO_ENDPOINT", "localhost:9000"),
 		MinioAccessKey: Env("MINIO_ACCESS_KEY", ""),

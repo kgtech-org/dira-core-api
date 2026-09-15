@@ -13,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 )
 
 // Ce fichier sert l'ADMINISTRATION DES COMPTES : chercher une personne,
@@ -39,6 +40,7 @@ type AccountRow struct {
 	Name      string             `bson:"name" json:"name"`
 	Email     string             `bson:"email,omitempty" json:"email,omitempty"`
 	Status    string             `bson:"status" json:"status"`
+	Country   string             `bson:"country,omitempty" json:"country,omitempty"`
 	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt time.Time          `bson:"updated_at" json:"updated_at"`
 }
@@ -62,7 +64,10 @@ func (r *Repository) AudienceIDs(ctx context.Context, roles []string, after prim
 	if limit <= 0 || limit > 1000 {
 		limit = 500
 	}
-	filter := bson.M{"role": bson.M{"$in": roles}, "status": StatusActive}
+	// Bornée au PAYS de la requête : une campagne se publie depuis une
+	// console qui regarde un pays, et « tous les clients » veut dire ceux de
+	// ce pays.
+	filter := country.Restrict(ctx, bson.M{"role": bson.M{"$in": roles}, "status": StatusActive})
 	if !after.IsZero() {
 		filter["_id"] = bson.M{"$gt": after}
 	}
@@ -92,7 +97,9 @@ func (r *Repository) ListAccounts(ctx context.Context, f AccountFilter, cursor s
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
-	filter := bson.M{}
+	// ⚠️ La borne pays, ici comme dans toute liste d'exploitation : la
+	// console de Lomé ne cherche pas parmi les comptes de Cotonou.
+	filter := country.Restrict(ctx, bson.M{})
 	if f.Role != "" {
 		filter["role"] = f.Role
 	}

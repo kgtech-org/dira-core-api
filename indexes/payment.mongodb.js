@@ -9,3 +9,4 @@
 db.payments.createIndex({ provider_ref: 1 }, { unique: true }); // webhook idempotency
 db.payments.createIndex({ user_id: 1 });
 db.payments.createIndex({ status: 1 });
+db.payments.createIndex({ country: 1, _id: -1 });

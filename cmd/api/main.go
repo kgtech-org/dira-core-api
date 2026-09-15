@@ -30,6 +30,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/api"
 	"github.com/kgtech-org/dira-core-api/internal/callback"
 	"github.com/kgtech-org/dira-core-api/internal/config"
+	"github.com/kgtech-org/dira-core-api/internal/country"
 	"github.com/kgtech-org/dira-core-api/internal/fleet"
 	"github.com/kgtech-org/dira-core-api/internal/indexes"
 	"github.com/kgtech-org/dira-core-api/internal/notify"
@@ -137,6 +138,14 @@ func run(logger *slog.Logger) error {
 	// le profil de la personne connectée, et un administrateur borné à la
 	// livraison doit pouvoir voir le sien. Un garde global l'aurait déconnecté
 	// de la console à la première lecture de son propre nom.
+	// LA COUCHE PAYS. Les pays ouverts vivent en base et se règlent depuis
+	// la console ; le middleware les lit par un cache. Monté GLOBALEMENT,
+	// avec le vérificateur de jetons : le pays du compte s'impose à
+	// l'en-tête même sur une route publique. Voir `middleware.Country`.
+	countrySvc := country.NewService(country.NewRepository(mongo), cfg.CountryDefault)
+	countrySvc.Start(ctx)
+	countryMW := middleware.Country(countrySvc, tokens)
+
 	authMW := chain(middleware.Auth(tokens),
 		onlyUnder("/api/v1/admin/", middleware.RequireScope(auth.ScopeCore)))
 
@@ -161,6 +170,11 @@ func run(logger *slog.Logger) error {
 		token.DefaultTokenPriceXOF, token.DefaultBoostCost, nil)
 	userRepo := user.NewRepository(mongo)
 	userSvc := user.NewService(userRepo, tokens, tokenSvc)
+	userSvc.SetDefaultCountry(cfg.CountryDefault)
+	// La résolution « dans quel pays suis-je ? » aligne le compte ; le repli
+	// par adresse IP passe par un fournisseur HTTP réglable, mis en cache.
+	countrySvc.SetAccounts(userSvc)
+	countrySvc.SetIPLookup(&country.HTTPLookup{URL: cfg.CountryIPLookupURL, Field: cfg.CountryIPLookupField, Cache: rdb})
 
 	// L'opérateur habituel d'un client vient des COMPTES : le proposer d'office
 	// évite de redemander à chaque paiement lequel il utilise.
@@ -280,6 +294,7 @@ func run(logger *slog.Logger) error {
 	router.Use(middleware.Logger(logger))
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.Language)
+	router.Use(countryMW)
 	router.Use(middleware.RateLimit(rdb, cfg.RateLimitRPM))
 
 	docs.Mount(router, "Dira Core API — Documentation", api.OpenAPISpec)
@@ -305,13 +320,17 @@ func run(logger *slog.Logger) error {
 	staffSvc.SetAuditor(auditRec)
 	// ⚠️ Réglé APRÈS construction, pour casser le cycle : le staff a besoin
 	// des comptes, et les comptes ont besoin des portées.
-	userSvc.SetStaffScopes(staffSvc)
+	userSvc.SetStaffEntitlements(staffEntitlements{svc: staffSvc})
+	countrySvc.SetAuditor(auditRec)
 
 	router.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 			httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 		})
 		user.NewHandler(userSvc).Mount(r, authMW)
+		countryHandler := country.NewHandler(countrySvc)
+		countryHandler.Mount(r, authMW)
+		countryHandler.MountService(r, middleware.Service(cfg.ServiceToken))
 		// L'ENVOI DE FICHIERS, pour tout rôle connecté : avatar, véhicule,
 		// document de conformité, et les objets des verticales (plat, point de
 		// vente, enseigne, vidéo de feed, bannière). Une porte, une règle.

@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 )
 
 // PaymentRow is one payment, as the back-office reads it.
@@ -35,7 +36,7 @@ func (r *Repository) List(ctx context.Context, status, purpose, cursor string, l
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
-	filter := bson.M{}
+	filter := country.Restrict(ctx, bson.M{})
 	if status != "" {
 		filter["status"] = status
 	}

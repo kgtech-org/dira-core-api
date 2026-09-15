@@ -63,6 +63,9 @@ type Payment struct {
 	Amount   int                `bson:"amount"`   // smallest currency unit
 	Currency string             `bson:"currency"` // "XOF"
 	Status   string             `bson:"status"`   // "pending" | "succeeded" | "failed"
+	// Country est le pays de la requête qui a lancé le paiement — la borne
+	// des listes de la console. Voir `pkg/country`.
+	Country string `bson:"country,omitempty"`
 	// ProviderRef is the provider-side identifier; unique index guarantees
 	// webhook idempotency.
 	ProviderRef string `bson:"provider_ref"`

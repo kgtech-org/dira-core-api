@@ -34,9 +34,22 @@ info:
     séparateurs (espaces, points, tirets) sont tolérés et retirés. Le
     numéro est l'identifiant du compte : « 22899000001 » sans `+` est
     refusé (`fields: ["phone"]`), il ne devine pas un pays.
+
+
+    **Pays.** Toute donnée est bornée par PAYS (ISO 3166-1 alpha-2). Une
+    application envoie le sien dans l'en-tête `X-Dira-Country` ; le serveur
+    répond avec le pays RETENU dans le même en-tête. Pour un compte
+    ordinaire, le pays du compte (dans le jeton, `cty`) s'impose ; seul un
+    compte de direction (`cty_any`) change de pays par l'en-tête. Sans
+    jeton — inscription, connexion —, l'en-tête est admis s'il nomme un
+    pays ouvert (`GET /countries`), sinon le pays par défaut du
+    déploiement. Une application trouve son pays par
+    `POST /me/country/resolve`.
 servers:
   - url: /api/v1
 tags:
+  - name: countries
+    description: La couche pays — où Dira est ouvert, dans quel pays je suis
   - name: auth
     description: Inscription, connexion, rotation de jeton
   - name: users
@@ -63,6 +76,12 @@ paths:
         422). `first_name` / `last_name` sont facultatifs — `name` reste le
         nom d'affichage. Un livreur reçoit son portefeuille de jetons, un
         client son Dira Cash.
+
+
+        **Pays du compte** : l'en-tête `X-Dira-Country` s'il nomme un pays
+        ouvert (l'application a résolu sa position avant de s'inscrire),
+        sinon l'INDICATIF du téléphone (`+229` → BJ), sinon le pays par
+        défaut. La réponse le porte dans `user.country` et dans l'en-tête.
       requestBody:
         required: true
         content:
@@ -116,6 +135,10 @@ paths:
     get:
       tags: [users]
       summary: Own profile
+      description: >-
+        Porte `country` (le pays du compte) et, pour un compte de direction
+        seulement, `country_any: true` — ce compte peut regarder un autre
+        pays par l'en-tête `X-Dira-Country`.
       responses:
         "200": {description: Profile}
     patch:
@@ -123,6 +146,93 @@ paths:
       summary: Update own profile
       responses:
         "200": {description: Profile}
+  /countries:
+    get:
+      tags: [countries]
+      summary: Countries where Dira is open
+      security: []
+      description: >-
+        PUBLIC. Les pays OUVERTS, avec leur fiche : nom, monnaie, indicatif,
+        langue, fuseau, centre. `default` nomme le pays du déploiement —
+        celui qu'une requête sans jeton ni en-tête reçoit. Trois pays sont
+        ouverts d'office : Togo, Sénégal, Guinée. Une application
+        s'en sert avant toute connexion : proposer l'indicatif à
+        l'inscription, dire « Dira n'est pas encore chez vous ».
+      responses:
+        "200":
+          description: Open countries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  default: {type: string, example: TG}
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/Country"}
+  /me/country/resolve:
+    post:
+      tags: [countries, users]
+      summary: Resolve the caller's country and align the account
+      description: >-
+        « Dans quel pays suis-je ? ». Deux signaux, dans l'ordre : la
+        POSITION de l'appareil (`lng`, `lat`), si l'application l'envoie —
+        c'est la vérité, à cent mètres près ; puis l'ADRESSE IP de la
+        requête, sans position ou quand la position est hors zone. Un signal
+        qui désigne un pays non ouvert ne vaut pas : `supported: false`,
+        `detected` dit où la personne est, et `country` reste celui du
+        compte (ou le pays par défaut).
+
+
+        Le pays du compte est MIS À JOUR quand le pays retenu est sûr et
+        différent (`updated: true`). ⚠️ Le jeton en cours porte encore
+        l'ancien : l'application doit RAFRAÎCHIR sa session pour voir ses
+        listes bornées au nouveau pays. Corps vide admis (IP seule).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lng: {type: number, minimum: -180, maximum: 180}
+                lat: {type: number, minimum: -90, maximum: 90}
+      responses:
+        "200":
+          description: Resolution
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CountryResolution"}
+        "422": {description: lng and lat go together}
+  /admin/countries:
+    get:
+      tags: [admin, countries]
+      summary: The whole catalog with each country's state
+      description: >-
+        Tout le catalogue — ouverts ou non — pour l'écran de réglage. Le
+        catalogue lui-même (frontières, monnaies) est dans le code :
+        ouvrir un pays qui n'y est pas demande un déploiement.
+      responses:
+        "200": {description: Catalog}
+  /admin/countries/{code}:
+    put:
+      tags: [admin, countries]
+      summary: Open or close a country
+      parameters:
+        - {name: code, in: path, required: true, schema: {type: string, example: BJ}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: {type: boolean}
+      responses:
+        "200": {description: Country}
+        "404": {description: country_unknown — not in the catalog}
+        "409": {description: country_default — the default country cannot be closed}
   /me/preferences:
     patch:
       tags: [users]
@@ -632,6 +742,34 @@ paths:
         "404": {description: user_not_found}
         "422": {description: status must be active or suspended}
 components:
+  schemas:
+    Country:
+      type: object
+      properties:
+        code: {type: string, example: TG}
+        name: {type: string, example: Togo}
+        currency: {type: string, example: XOF}
+        phone_prefix: {type: string, example: "+228"}
+        locale: {type: string, example: fr}
+        timezone: {type: string, example: Africa/Lome}
+        center:
+          type: array
+          items: {type: number}
+          description: "[lng, lat] de la capitale économique"
+        enabled: {type: boolean}
+        default: {type: boolean}
+    CountryResolution:
+      type: object
+      properties:
+        country:
+          type: string
+          description: Le pays RETENU — à envoyer dans X-Dira-Country et à considérer comme celui du compte.
+        source: {type: string, enum: [geo, ip, account, default]}
+        detected:
+          type: string
+          description: Où la position ou l'adresse IP situe la personne, même hors zone.
+        supported: {type: boolean, description: "`detected` est un pays ouvert"}
+        updated: {type: boolean, description: le pays du compte a changé}
   securitySchemes:
     bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
 security:

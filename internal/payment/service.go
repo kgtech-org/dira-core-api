@@ -10,6 +10,7 @@ import (
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 )
 
 // DefaultProvider is used when the caller does not name a provider.
@@ -138,6 +139,7 @@ func (s *Service) Initiate(ctx context.Context, userID string, req InitiatePayme
 		Amount:   req.Amount,
 		Currency: DefaultCurrency,
 		Status:   StatusPending,
+		Country:  country.FromContext(ctx),
 		Meta:     meta,
 	}
 

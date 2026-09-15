@@ -7,6 +7,7 @@ package config
 import (
 	"fmt"
 
+	"github.com/kgtech-org/dira-core-api/internal/country"
 	core "github.com/kgtech-org/dira-core-api/pkg/config"
 )
 
@@ -51,6 +52,14 @@ type Config struct {
 	// passager attendrait une voiture que personne n'a commandée.
 	VTCBaseURL       string
 	VTCCallbackToken string
+
+	// CountryIPLookupURL et CountryIPLookupField : le fournisseur qui situe
+	// une adresse IP, repli de la résolution de pays quand l'application n'a
+	// pas de position. `{ip}` est remplacé dans l'URL ; le champ est celui
+	// de la réponse JSON qui porte le code alpha-2. Voir
+	// `internal/country.HTTPLookup`.
+	CountryIPLookupURL   string
+	CountryIPLookupField string
 }
 
 // Load reads the environment, applies defaults and validates.
@@ -73,6 +82,8 @@ func Load() (*Config, error) {
 		FoodCallbackToken:     core.Env("FOOD_CALLBACK_TOKEN", ""),
 		VTCBaseURL:            core.Env("VTC_BASE_URL", ""),
 		VTCCallbackToken:      core.Env("VTC_CALLBACK_TOKEN", ""),
+		CountryIPLookupURL:    core.Env("COUNTRY_IP_LOOKUP_URL", country.DefaultIPLookupURL),
+		CountryIPLookupField:  core.Env("COUNTRY_IP_LOOKUP_FIELD", country.DefaultIPLookupField),
 	}
 
 	switch cfg.Env {

@@ -7,6 +7,7 @@
 // ici doit l'être aussi là-bas.
 
 db.token_wallets.createIndex({ owner_id: 1 }, { unique: true });
+db.token_wallets.createIndex({ country: 1, _id: -1 });
 
 db.token_transactions.createIndex({ wallet_id: 1 });
 db.token_transactions.createIndex({ created_at: 1 });

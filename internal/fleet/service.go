@@ -8,6 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
 	"github.com/kgtech-org/dira-core-api/pkg/phone"
 )
@@ -108,7 +109,7 @@ func (s *Service) Create(ctx context.Context, actorID string, req CreateRequest)
 		Name: name, ContactName: strings.TrimSpace(req.ContactName),
 		ContactPhone: canonPhone(req.ContactPhone), ContactEmail: strings.ToLower(strings.TrimSpace(req.ContactEmail)),
 		ContractRef: strings.TrimSpace(req.ContractRef), CommissionBp: req.CommissionBp,
-		Status: StatusActive, Notes: req.Notes,
+		Status: StatusActive, Notes: req.Notes, Country: country.FromContext(ctx),
 	}
 	if req.OwnerUserID != "" {
 		oid, err := primitive.ObjectIDFromHex(req.OwnerUserID)
