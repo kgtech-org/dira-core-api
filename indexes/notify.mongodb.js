@@ -23,3 +23,6 @@ db.notifications.createIndex({ user_id: 1, _id: -1 });
 
 // Le badge de non-lus, lu à chaque ouverture de l'écran Compte.
 db.notifications.createIndex({ user_id: 1, read_at: 1 });
+
+// Campagnes : le tic ne relit que celles qui attendent leur heure.
+db.campaigns.createIndex({ status: 1, send_at: 1 });

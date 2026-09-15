@@ -77,6 +77,8 @@ var applicationIndexes = []db.Index{
 	{Collection: "message_templates", Keys: db.K("key", 1), Unique: true},
 	{Collection: "notifications", Keys: db.K("user_id", 1, "_id", -1)},
 	{Collection: "notifications", Keys: db.K("user_id", 1, "read_at", 1)},
+	// Les campagnes dues : le tic ne relit que celles qui attendent.
+	{Collection: "campaigns", Keys: db.K("status", 1, "send_at", 1)},
 
 	// --- notes ---
 	// UNE note par (commande, cible). L'unicité est portée par l'INDEX et non

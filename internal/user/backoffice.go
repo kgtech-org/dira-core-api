@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"time"
 
@@ -49,6 +50,38 @@ type AccountFilter struct {
 	Role   string
 	Status string
 	Query  string // nom ou téléphone, sous-chaîne insensible à la casse
+}
+
+// AudienceIDs rend les identifiants des comptes ACTIFS de ces rôles, après
+// `after`, par ordre d'identifiant — la page suivante d'une campagne.
+//
+// Des identifiants seulement : une campagne à dix mille personnes n'a pas
+// besoin de dix mille fiches en mémoire, elle a besoin de savoir à qui
+// écrire, dans un ordre stable qu'on peut reprendre.
+func (r *Repository) AudienceIDs(ctx context.Context, roles []string, after primitive.ObjectID, limit int) ([]primitive.ObjectID, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 500
+	}
+	filter := bson.M{"role": bson.M{"$in": roles}, "status": StatusActive}
+	if !after.IsZero() {
+		filter["_id"] = bson.M{"$gt": after}
+	}
+	cur, err := r.users.Find(ctx, filter,
+		options.Find().SetSort(bson.D{{Key: "_id", Value: 1}}).SetLimit(int64(limit)).SetProjection(bson.M{"_id": 1}))
+	if err != nil {
+		return nil, fmt.Errorf("user: audience ids: %w", err)
+	}
+	var rows []struct {
+		ID primitive.ObjectID `bson:"_id"`
+	}
+	if err := cur.All(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("user: audience ids: %w", err)
+	}
+	out := make([]primitive.ObjectID, 0, len(rows))
+	for _, x := range rows {
+		out = append(out, x.ID)
+	}
+	return out, nil
 }
 
 // ListAccounts pages accounts, oldest first, with optional filters.

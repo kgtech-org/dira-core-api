@@ -19,6 +19,7 @@ type Repository struct {
 	templates *mongo.Collection
 	devices   *mongo.Collection
 	inbox     *mongo.Collection
+	campaigns *mongo.Collection
 }
 
 func NewRepository(m *db.Mongo) *Repository {
@@ -26,6 +27,7 @@ func NewRepository(m *db.Mongo) *Repository {
 		templates: m.Collection(CollectionTemplates),
 		devices:   m.Collection(CollectionDevices),
 		inbox:     m.Collection(CollectionInbox),
+		campaigns: m.Collection(CollectionCampaigns),
 	}
 }
 

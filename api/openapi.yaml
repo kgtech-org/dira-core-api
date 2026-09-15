@@ -450,6 +450,65 @@ paths:
       parameters: [{name: key, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Rendered message}
+  /admin/campaigns:
+    get:
+      tags: [notifications]
+      summary: Campaigns and alerts sent to a population, newest first
+      responses:
+        "200": {description: Campaigns}
+    post:
+      tags: [notifications]
+      summary: Publish an alert or a campaign
+      description: >-
+        Un message à une POPULATION (`roles` : client, driver, merchant) plutôt
+        qu'à une personne. `kind` : `alert` — une information de service, qui
+        NE SE COUPE PAS ; `campaign` — une promotion, qui respecte le réglage
+        « promotions » de chacun. `locales.fr` obligatoire (le repli) ; chacun
+        reçoit la langue de son appareil. `send_at` absent ou passé = tout de
+        suite ; sinon programmée (un tic par 30 s). `data` voyage jusqu'à
+        l'application (`url`, `screen`…). L'envoi est mené en arrière-plan :
+        relire la campagne pour suivre `recipients`, `muted`, `devices`,
+        `pushed`, `failed`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, locales, roles]
+              properties:
+                kind: {type: string, enum: [alert, campaign]}
+                locales: {type: object, additionalProperties: {type: object, properties: {title: {type: string}, body: {type: string}}}}
+                roles: {type: array, items: {type: string, enum: [client, driver, merchant]}}
+                data: {type: object, additionalProperties: {type: string}}
+                note: {type: string, maxLength: 300}
+                send_at: {type: string, format: date-time}
+      responses:
+        "201": {description: Campaign}
+        "422": {description: "`locales.fr` manquant, rôles inconnus"}
+        "503": {description: "`campaigns_unavailable`"}
+  /admin/campaigns/test:
+    post:
+      tags: [notifications]
+      summary: Send the text to the caller's own phones, without recording anything
+      responses:
+        "200": {description: "{ sent }"}
+  /admin/campaigns/{id}:
+    get:
+      tags: [notifications]
+      summary: One campaign, with its progress
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Campaign}
+        "404": {description: campaign_not_found}
+  /admin/campaigns/{id}/cancel:
+    post:
+      tags: [notifications]
+      summary: Cancel a campaign that has not started
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Campaign}
+        "409": {description: "`campaign_started` — déjà partie, un message envoyé ne se rappelle pas"}
   /stores/{id}/ratings:
     get:
       tags: [ratings]

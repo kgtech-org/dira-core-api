@@ -36,7 +36,74 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		g.With(admin).Get("/admin/message-templates", h.listTemplates)
 		g.With(admin).Put("/admin/message-templates/{key}", h.saveTemplate)
 		g.With(admin).Post("/admin/message-templates/{key}/preview", h.previewTemplate)
+		// Les CAMPAGNES : un message à une population — voir campaign.go.
+		g.With(admin).Get("/admin/campaigns", h.listCampaigns)
+		g.With(admin).Post("/admin/campaigns", h.createCampaign)
+		g.With(admin).Post("/admin/campaigns/test", h.testCampaign)
+		g.With(admin).Get("/admin/campaigns/{id}", h.getCampaign)
+		g.With(admin).Post("/admin/campaigns/{id}/cancel", h.cancelCampaign)
 	})
+}
+
+// --- campagnes ---
+
+func (h *Handler) listCampaigns(w http.ResponseWriter, r *http.Request) {
+	page := httpx.PageFromRequest(r)
+	items, err := h.svc.ListCampaigns(r.Context(), page.Limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.List(w, items, "")
+}
+
+func (h *Handler) createCampaign(w http.ResponseWriter, r *http.Request) {
+	adminID, _ := auth.UserFromContext(r.Context())
+	var req CreateCampaignRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	c, err := h.svc.CreateCampaign(r.Context(), adminID, req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, c)
+}
+
+// POST /admin/campaigns/test — le texte, sur le téléphone de l'appelant.
+func (h *Handler) testCampaign(w http.ResponseWriter, r *http.Request) {
+	adminID, _ := auth.UserFromContext(r.Context())
+	var req CreateCampaignRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	sent, err := h.svc.SendTest(r.Context(), adminID, req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]int{"sent": sent})
+}
+
+func (h *Handler) getCampaign(w http.ResponseWriter, r *http.Request) {
+	c, err := h.svc.GetCampaign(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, c)
+}
+
+func (h *Handler) cancelCampaign(w http.ResponseWriter, r *http.Request) {
+	c, err := h.svc.CancelCampaign(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, c)
 }
 
 // POST /me/devices — déclare un téléphone joignable.
