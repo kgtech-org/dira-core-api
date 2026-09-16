@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.7.0** · 15 septembre 2026
+> **Version 4.8.0** · 16 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -576,6 +576,16 @@ POST /rides/{id}/messages/read
 
 Mêmes règles que côté passager : `409 conversation_closed` **deux heures** après
 l'arrivée, historique toujours lisible.
+
+> 🔔 **Le message est POUSSÉ à l'autre côté (v4.8.0).** Il n'y a pas de
+> socket de conversation sur les courses : quand l'autre application n'est
+> pas sur l'écran de la course, c'est la notification `chat_message` qui
+> l'atteint — titre « Nouveau message », corps = le texte, **jamais le nom
+> de l'expéditeur** — avec `data: { type: "chat_message", ride_id }`. Ouvrez
+> la conversation de cette course dessus et relisez
+> `GET /rides/{id}/messages`. Sur l'écran de la course, sondez la
+> conversation toutes les 5 s tant qu'elle est ouverte ; une notification
+> reçue pendant ce temps ne s'affiche pas deux fois — c'est le même message.
 
 ---
 

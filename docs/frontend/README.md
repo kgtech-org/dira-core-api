@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.7.0** · 15 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.8.0** · 16 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -266,6 +266,21 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.8.0 — 16 septembre 2026
+
+**Ajout rétrocompatible** — **chaque message de conversation est poussé à
+l'autre côté** (`chat_message`, `data.type: "chat_message"` +
+`order_id` ou `ride_id`), courses comprises — la livraison le faisait, les
+courses non. Le corps est le texte, l'expéditeur n'est jamais nommé.
+(`FOOD-CLIENT.md` §6, `FOOD-DELIVERY.md` §7, `VTC-CLIENT.md` §7,
+`VTC-DRIVER.md` §5.)
+
+⚠️ **Pour recevoir une notification, l'appareil doit être enregistré**
+(`POST /me/devices` avec son jeton FCM et sa plateforme) — et, sur iOS, le
+projet Firebase doit porter une **clé APNs valide** : sans elle, FCM
+refuse chaque envoi (`401 Invalid APNs credential`) et rien n'arrive, quel
+que soit le gabarit.
 
 ### 4.7.0 — 15 septembre 2026
 

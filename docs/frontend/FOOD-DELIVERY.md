@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.7.0** · 15 septembre 2026
+> **Version 4.8.0** · 16 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -530,6 +530,18 @@ wss://api-staging.dira.llc/api/v1/food/ws/orders?token=<access_token>
 ```
 
 Un livreur n'y voit **que les commandes qu'il porte**. La trame porte le texte : affichez-la sans relire la conversation.
+
+> 🔔 **Le message est POUSSÉ à l'autre côté (v4.8.0, confirmé).** Quand
+> l'application du destinataire est fermée ou en arrière-plan, chaque
+> message part en notification `chat_message` — titre « Nouveau message »,
+> corps = le texte, **jamais le nom de l'expéditeur** (le canal existe pour
+> ne pas échanger d'identités) — avec `data: { type: "chat_message",
+> order_id }`. Ouvrez la conversation de cette commande dessus, puis
+> `GET /orders/{order_id}/messages?cursor=` pour rattraper. Le socket reste
+> le canal quand l'écran est allumé : les deux peuvent porter le même
+> message, la conversation le dédoublonne par identifiant. Un client peut
+> couper la catégorie (`chat_messages` dans `PATCH /me/preferences`) — il
+> ne reçoit alors ni la notification ni l'archive.
 
 **v4.0.0** : sur ce même socket arrivent aussi les **`order_status`** des
 commandes que vous portez — `accepted`, `picking_up`, `in_transit`,
