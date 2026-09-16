@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.7.0** · 15 septembre 2026
+> **Version 4.8.0** · 16 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -414,6 +414,18 @@ POST /orders/{id}/messages/read
 - L'accusé de lecture part **après** l'affichage : marquer lu sans montrer effacerait un non-lu que personne n'a vu.
 
 Réception immédiate sur le socket des commandes (§8). Repli : `?cursor=<dernier id reçu>` ne rend que la suite — c'est aussi le rattrapage après coupure.
+
+> 🔔 **Le message est POUSSÉ à l'autre côté (v4.8.0, confirmé).** Quand
+> l'application du destinataire est fermée ou en arrière-plan, chaque
+> message part en notification `chat_message` — titre « Nouveau message »,
+> corps = le texte, **jamais le nom de l'expéditeur** (le canal existe pour
+> ne pas échanger d'identités) — avec `data: { type: "chat_message",
+> order_id }`. Ouvrez la conversation de cette commande dessus, puis
+> `GET /orders/{order_id}/messages?cursor=` pour rattraper. Le socket reste
+> le canal quand l'écran est allumé : les deux peuvent porter le même
+> message, la conversation le dédoublonne par identifiant. Un client peut
+> couper la catégorie (`chat_messages` dans `PATCH /me/preferences`) — il
+> ne reçoit alors ni la notification ni l'archive.
 
 ---
 
