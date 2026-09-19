@@ -3,6 +3,8 @@ package staff
 import (
 	"testing"
 
+	"go.mongodb.org/mongo-driver/bson/primitive"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -125,4 +127,28 @@ func TestOnlyDirectionMayChangeTheTeam(t *testing.T) {
 			assert.Equal(t, tc.allow, mayChangeTeam(tc.member))
 		})
 	}
+}
+
+// Une alerte de pays va aux membres DU pays, à la direction (tous les
+// pays), à un compte sans pays — jamais à un compte suspendu ni à
+// l'exploitation d'un autre pays.
+func TestRecipientsFollowCountryAndDirection(t *testing.T) {
+	tg, sn, boss, old, out := primitive.NewObjectID(), primitive.NewObjectID(), primitive.NewObjectID(), primitive.NewObjectID(), primitive.NewObjectID()
+	members := []Member{
+		{UserID: tg, Function: FunctionOps},
+		{UserID: sn, Function: FunctionOps},
+		{UserID: boss, Function: FunctionAdmin},
+		{UserID: old, Function: FunctionSupport},
+		{UserID: out, Function: FunctionOps},
+	}
+	identities := map[string]Identity{
+		tg.Hex():   {Country: "TG", Status: "active"},
+		sn.Hex():   {Country: "SN", Status: "active"},
+		boss.Hex(): {Country: "SN", Status: "active"},
+		old.Hex():  {Country: "", Status: "active"},
+		out.Hex():  {Country: "TG", Status: "suspended"},
+	}
+	got := pickRecipients(members, identities, "TG")
+	assert.ElementsMatch(t, []string{tg.Hex(), boss.Hex(), old.Hex()}, got)
+	assert.Len(t, pickRecipients(members, identities, ""), 4, "sans pays : tous sauf le suspendu")
 }

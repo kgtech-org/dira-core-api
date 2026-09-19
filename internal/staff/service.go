@@ -26,10 +26,11 @@ type Accounts interface {
 
 // Identity est le strict nécessaire pour afficher une ligne de staff.
 type Identity struct {
-	Name   string `json:"name"`
-	Phone  string `json:"phone"`
-	Email  string `json:"email"`
-	Status string `json:"status"`
+	Name    string `json:"name"`
+	Phone   string `json:"phone"`
+	Email   string `json:"email"`
+	Status  string `json:"status"`
+	Country string `json:"country,omitempty"`
 }
 
 // Auditor enregistre les gestes sensibles. Facultatif.
@@ -445,4 +446,50 @@ func (s *Service) EnsureMember(ctx context.Context, userID, function, title stri
 	return s.Create(ctx, CreateRequest{
 		UserID: userID, Function: function, Title: title, Scopes: scopes,
 	})
+}
+
+// Recipients rend les COMPTES du staff qui doivent recevoir une alerte
+// d'exploitation : les membres ACTIFS dont le périmètre couvre la verticale
+// (`scope`), et — quand l'alerte est d'un pays — ceux de ce pays ou de la
+// direction (qui regarde tous les pays). Un compte suspendu ne reçoit rien.
+//
+// C'est ce qui fait de la console un poste qu'on n'a pas à surveiller : la
+// course sans preneur, la pièce à vérifier arrivent à qui s'en occupe.
+func (s *Service) Recipients(ctx context.Context, scope, country string) ([]string, error) {
+	members, err := s.repo.List(ctx, "", scope, StatusActive, primitive.NilObjectID, 500)
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	ids := make([]string, 0, len(members))
+	for _, m := range members {
+		ids = append(ids, m.UserID.Hex())
+	}
+	if len(ids) == 0 {
+		return ids, nil
+	}
+	identities, err := s.accounts.Identities(ctx, ids)
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	return pickRecipients(members, identities, country), nil
+}
+
+// pickRecipients garde, parmi des membres, ceux qui reçoivent une alerte de
+// `country` : compte connu et non suspendu ; du pays, ou d'aucun pays (un
+// compte d'avant la couche pays), ou de la DIRECTION — qui regarde tous les
+// pays. Sans pays sur l'alerte, tout le monde.
+func pickRecipients(members []Member, identities map[string]Identity, country string) []string {
+	out := make([]string, 0, len(members))
+	for _, m := range members {
+		id := m.UserID.Hex()
+		acct, ok := identities[id]
+		if !ok || acct.Status == "suspended" {
+			continue
+		}
+		if country != "" && acct.Country != "" && acct.Country != country && m.Function != FunctionAdmin {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
 }

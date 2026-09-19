@@ -363,7 +363,7 @@ Règle : **`status === "paid"` ⇒ pop-up**, quel que soit `type`. Tout autre
 
 **3. Ce que la carte montre, et d'où ça vient.** La trame porte de quoi
 **dessiner immédiatement** : `store_ids` → le nom du point de vente (vous
-avez `GET /merchants/me` en cache), `total` → le montant, `ts` → « à
+avez `GET /me/merchant` en cache), `total` → le montant, `ts` → « à
 l'instant ». Affichez la carte **avec ça, tout de suite**, puis
 `GET /stores/{store_id}/orders/{order_id}` pour compléter : nombre
 d'articles, premier plat, adresse. Si le `GET` tarde, la carte reste avec

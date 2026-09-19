@@ -50,6 +50,7 @@ var declaredSurface = []string{
 	// porter, et qu'elle finirait par recopier chez elle.
 	"/internal/fleets/names",
 	"/internal/notifications/send",
+	"/internal/notifications/staff",
 	"/internal/payments/initiate",
 	// Le SIGNAL d'un appel : réveiller l'application d'un chauffeur dont le
 	// socket est mort, par FCM, sans notification système.

@@ -174,7 +174,18 @@ type Service struct {
 	repo  Store
 	fleet Fleet
 	audit Auditor
+	watch Watcher
 }
+
+// Watcher est prévenu d'un DÉPÔT : la verticale en fait une alerte au staff
+// (« pièce à vérifier ») — le socle ne sait pas qui, dans l'équipe, vérifie
+// les papiers de la livraison ou des courses. Facultatif, AU MIEUX.
+type Watcher interface {
+	DocumentSubmitted(ctx context.Context, driverID, userID, kind, vehicleID string)
+}
+
+// SetWatcher branche l'alerte de dépôt (câblage).
+func (s *Service) SetWatcher(w Watcher) { s.watch = w }
 
 // NewService builds the compliance service.
 func NewService(repo Store, fleet Fleet) *Service {
@@ -245,6 +256,9 @@ func (s *Service) SubmitDocument(ctx context.Context, userID string, req SubmitD
 	}
 	s.record(ctx, "compliance.document.submit", doc.ID.Hex(), nil,
 		map[string]any{"kind": doc.Kind, "owner_id": driverID})
+	if s.watch != nil {
+		s.watch.DocumentSubmitted(ctx, driverID, userID, doc.Kind, req.VehicleID)
+	}
 	out := toDocumentResponse(doc, time.Now().UTC())
 	return &out, nil
 }

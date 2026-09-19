@@ -13,6 +13,7 @@ package serviceapi
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -128,11 +129,23 @@ type Handler struct {
 	notifier   Notifier
 	payments   Payments
 	backoffice BackOffice
+	staff      StaffDirectory
+}
+
+// StaffDirectory dit QUI, dans l'équipe, reçoit une alerte d'exploitation :
+// les membres actifs dont le périmètre couvre la verticale, du pays donné
+// ou de la direction. Le module staff.
+type StaffDirectory interface {
+	Recipients(ctx context.Context, scope, country string) ([]string, error)
 }
 
 func NewHandler(a Accounts, w Wallets, n Notifier, p Payments, b BackOffice) *Handler {
 	return &Handler{accounts: a, wallets: w, notifier: n, payments: p, backoffice: b}
 }
+
+// SetStaff branche l'annuaire du staff (câblage). Sans lui, les alertes du
+// staff sont acceptées et ne vont nulle part — journalisé.
+func (h *Handler) SetStaff(s StaffDirectory) { h.staff = s }
 
 // Mount registers the routes under a middleware that checks the service token.
 func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler) {
@@ -157,6 +170,7 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/wallets/credit-earnings", h.creditEarnings)
 
 		g.Post("/internal/notifications/send", h.notify)
+		g.Post("/internal/notifications/staff", h.notifyStaff)
 		g.Post("/internal/push/data", h.signal)
 		g.Post("/internal/payments/initiate", h.initiatePayment)
 
@@ -403,6 +417,38 @@ func (h *Handler) notify(w http.ResponseWriter, r *http.Request) {
 	// La verticale n'a donc rien à attendre non plus.
 	h.notifier.Notify(r.Context(), req.UserID, req.Key, req.Vars, req.Data)
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// POST /internal/notifications/staff {scope, country?, key, vars, data} —
+// une alerte d'exploitation, à TOUS les membres du staff concernés. La
+// verticale ne connaît pas l'équipe ; elle dit de quoi il s'agit et pour
+// quel pays, le socle trouve à qui.
+func (h *Handler) notifyStaff(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Scope   string            `json:"scope" validate:"required,oneof=core food vtc"`
+		Country string            `json:"country" validate:"omitempty,len=2"`
+		Key     string            `json:"key" validate:"required,max=60"`
+		Vars    map[string]string `json:"vars"`
+		Data    map[string]string `json:"data"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if h.staff == nil {
+		slog.WarnContext(r.Context(), "serviceapi: staff alert dropped, no staff directory", "key", req.Key)
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+	ids, err := h.staff.Recipients(r.Context(), req.Scope, req.Country)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	for _, id := range ids {
+		h.notifier.Notify(r.Context(), id, req.Key, req.Vars, req.Data)
+	}
+	httpx.JSON(w, http.StatusAccepted, map[string]any{"recipients": len(ids)})
 }
 
 // --- paiements ---

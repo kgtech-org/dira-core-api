@@ -381,9 +381,13 @@ func run(logger *slog.Logger) error {
 		// d'une verticale — débiter un portefeuille, ouvrir un compte — et
 		// n'ont aucun sens pour une personne. Elles sont gardées par le secret
 		// partagé, et rassemblées en un seul endroit pour être auditables.
-		serviceapi.NewHandler(userSvc, tokenSvc, notifySvc, paymentSvc,
-			backOffice{tokens: tokenRepo, payments: paymentRepo}).
-			Mount(r, middleware.Service(cfg.ServiceToken))
+		internalAPI := serviceapi.NewHandler(userSvc, tokenSvc, notifySvc, paymentSvc,
+			backOffice{tokens: tokenRepo, payments: paymentRepo})
+		// Les alertes du STAFF : la verticale dit quoi et pour quel pays, le
+		// socle trouve à qui — les membres dont le périmètre couvre la
+		// verticale.
+		internalAPI.SetStaff(staffSvc)
+		internalAPI.Mount(r, middleware.Service(cfg.ServiceToken))
 	})
 
 	// Le consommateur démarre avec l'API et s'arrête avec elle.
@@ -513,7 +517,7 @@ func (a userAccounts) AccountsByIDs(ctx context.Context, ids []string) ([]staff.
 
 func staffRow(r user.AccountRow) staff.AccountRow {
 	return staff.AccountRow{
-		ID: r.ID, Role: r.Role, Name: r.Name, Phone: r.Phone, Email: r.Email, Status: r.Status,
+		ID: r.ID, Role: r.Role, Name: r.Name, Phone: r.Phone, Email: r.Email, Status: r.Status, Country: r.Country,
 	}
 }
 
