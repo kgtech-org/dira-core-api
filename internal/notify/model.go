@@ -114,6 +114,15 @@ const (
 	// un passager qui a rangé son téléphone en descendant ne note jamais
 	// sans ce rappel.
 	KeyRideRatePrompt = "ride_rate_prompt"
+	// LES ALERTES DU STAFF — ce que l'exploitation doit voir sans regarder
+	// son écran : poussées aux membres dont le périmètre couvre la verticale
+	// (`POST /internal/notifications/staff`). `staff_dispatch_failed` : une
+	// course ou une livraison sans preneur ; `staff_document_submitted` :
+	// une pièce déposée, à vérifier ; `staff_driver_pending` : un nouveau
+	// chauffeur ou livreur attend sa validation.
+	KeyStaffDispatchFailed    = "staff_dispatch_failed"
+	KeyStaffDocumentSubmitted = "staff_document_submitted"
+	KeyStaffDriverPending     = "staff_driver_pending"
 	// Les CHANGEMENTS D'ÉTAT d'une course, au passager — ce qui réveille une
 	// application en arrière-plan quand le socket du suivi ne l'atteint
 	// plus. Chacun porte en données `type: ride_status`, `ride_id`, `status`
@@ -268,6 +277,33 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "Tip received", Body: "[rider] left you a [amount] F tip. Thank you for this ride!"},
 		},
 	},
+	KeyStaffDispatchFailed: {
+		Key:         KeyStaffDispatchFailed,
+		Description: "STAFF — une course ou une livraison n'a trouvé personne : à attribuer ou relancer.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "[kind] sans preneur — [ref]", Body: "[place] · personne n'a accepté. À attribuer à la main ou à relancer."},
+			LocaleEN: {Title: "[kind] unanswered — [ref]", Body: "[place] · nobody accepted. Assign by hand or relaunch."},
+		},
+	},
+	KeyStaffDocumentSubmitted: {
+		Key:         KeyStaffDocumentSubmitted,
+		Description: "STAFF — une pièce (permis, assurance…) vient d'être déposée : à vérifier.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Pièce à vérifier", Body: "[who] a déposé : [document]."},
+			LocaleEN: {Title: "Document to review", Body: "[who] submitted: [document]."},
+		},
+	},
+	KeyStaffDriverPending: {
+		Key:         KeyStaffDriverPending,
+		Description: "STAFF — un nouveau chauffeur ou livreur attend sa validation.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Nouveau [kind] à valider", Body: "[who] a ouvert son profil et attend l'habilitation."},
+			LocaleEN: {Title: "New [kind] to validate", Body: "[who] opened a profile and awaits approval."},
+		},
+	},
 	KeyRideRatePrompt: {
 		Key:         KeyRideRatePrompt,
 		Description: "Course terminée : le PASSAGER est invité à noter son chauffeur.",
@@ -391,21 +427,24 @@ var provided = map[string][]string{
 	KeyDispatchFailed: {"order_ref"},
 	// Les courses programmées : le lieu de départ, l'heure locale, les
 	// minutes avant l'appel, et la raison d'un échec.
-	KeyRideScheduledSoon:    {"pickup", "time", "minutes"},
-	KeyRideScheduledStarted: {"pickup", "time"},
-	KeyRideScheduledFailed:  {"pickup", "time", "reason"},
-	KeyDeliveryExpired:      {"order_ref", "minutes"},
-	KeyRideTipReceived:      {"rider", "amount"},
-	KeyRideRatePrompt:       {"driver"},
-	KeyRideAccepted:         {"driver", "vehicle"},
-	KeyRideDriverOnTheWay:   {"driver"},
-	KeyRideCancelled:        {"reason"},
-	KeyRideCancelledByRider: {"reason"},
-	KeyDeliveryCancelled:    {"order_ref"},
-	KeyRideSearchExhausted:  {"pickup"},
-	KeyRideStopsChanged:     {"stops", "dest", "fare"},
-	KeyRideFareAdjusted:     {"fare", "adjustment"},
-	KeyMerchantNewOrder:     {"order_ref", "items", "amount"},
+	KeyRideScheduledSoon:      {"pickup", "time", "minutes"},
+	KeyRideScheduledStarted:   {"pickup", "time"},
+	KeyRideScheduledFailed:    {"pickup", "time", "reason"},
+	KeyDeliveryExpired:        {"order_ref", "minutes"},
+	KeyRideTipReceived:        {"rider", "amount"},
+	KeyRideRatePrompt:         {"driver"},
+	KeyStaffDispatchFailed:    {"kind", "ref", "place"},
+	KeyStaffDocumentSubmitted: {"who", "document"},
+	KeyStaffDriverPending:     {"kind", "who"},
+	KeyRideAccepted:           {"driver", "vehicle"},
+	KeyRideDriverOnTheWay:     {"driver"},
+	KeyRideCancelled:          {"reason"},
+	KeyRideCancelledByRider:   {"reason"},
+	KeyDeliveryCancelled:      {"order_ref"},
+	KeyRideSearchExhausted:    {"pickup"},
+	KeyRideStopsChanged:       {"stops", "dest", "fare"},
+	KeyRideFareAdjusted:       {"fare", "adjustment"},
+	KeyMerchantNewOrder:       {"order_ref", "items", "amount"},
 }
 
 // Provided rend les variables que la plateforme remplit pour une clé.

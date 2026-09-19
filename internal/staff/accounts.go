@@ -24,6 +24,9 @@ type AccountRow struct {
 	Phone  string
 	Email  string
 	Status string
+	// Country est le pays du compte — ce qui décide quels membres reçoivent
+	// une alerte de pays. Vide = tous (la direction).
+	Country string
 }
 
 // FromAccounts adapte un lecteur de comptes à l'interface `Accounts`.
@@ -49,7 +52,7 @@ func (f FromAccounts) Identities(ctx context.Context, ids []string) (map[string]
 	}
 	out := make(map[string]Identity, len(rows))
 	for _, r := range rows {
-		out[r.ID] = Identity{Name: r.Name, Phone: r.Phone, Email: r.Email, Status: r.Status}
+		out[r.ID] = Identity{Name: r.Name, Phone: r.Phone, Email: r.Email, Status: r.Status, Country: r.Country}
 	}
 	return out, nil
 }

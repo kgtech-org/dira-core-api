@@ -281,3 +281,12 @@ Content-Type: application/json
 ### 25. ⚠️ Nettoyage — le compte ouvert au § 7 (jeton admin, 40-admin § 1)
 # DELETE {{baseUrl}}/admin/users/{{ownerId}}
 # Authorization: Bearer <access_token admin>
+
+### Une alerte au STAFF de la livraison, pour le Togo
+POST {{baseUrl}}/internal/notifications/staff
+Authorization: Bearer {{serviceToken}}
+Content-Type: application/json
+
+{ "scope": "food", "country": "TG", "key": "staff_dispatch_failed",
+  "vars": { "kind": "Livraison", "ref": "#2DF9B4", "place": "Hédzranawoé" },
+  "data": { "type": "staff_dispatch_failed", "order_id": "6aaa40d61b4859668e2df9b4" } }
