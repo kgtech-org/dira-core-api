@@ -148,6 +148,20 @@ const (
 	// KeyRideFareAdjusted va au PASSAGER pour le même changement : le
 	// nouveau prix, et ce qui a été débité ou rendu.
 	KeyRideFareAdjusted = "ride_fare_adjusted"
+	// LE SUPPORT (`pkg/support`, monté par chaque verticale). Les clés sont
+	// DÉCLARÉES là-bas — le paquet est importé par les verticales, qui ne
+	// doivent pas tirer les gabarits avec lui — et recopiées ici ; un test
+	// vérifie qu'aucune n'est orpheline. `lost_item_reported` va au
+	// CHAUFFEUR : un passager a oublié quelque chose dans son véhicule ;
+	// `lost_item_found` / `lost_item_not_found` au PASSAGER : sa réponse ;
+	// `ticket_reply` et `ticket_resolved` à qui a ouvert le ticket.
+	KeyLostItemReported      = "lost_item_reported"
+	KeyLostItemFound         = "lost_item_found"
+	KeyLostItemNotFound      = "lost_item_not_found"
+	KeyTicketReply           = "ticket_reply"
+	KeyTicketResolved        = "ticket_resolved"
+	KeyStaffTicketOpened     = "staff_ticket_opened"
+	KeyStaffLostItemAnswered = "staff_lost_item_answered"
 )
 
 // defaults sont les gabarits COMPILÉS, servis tant que la base n'en porte pas.
@@ -376,6 +390,69 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "Ride fare adjusted", Body: "Your route has changed: the fare is now [fare]. [adjustment]"},
 		},
 	},
+	KeyLostItemReported: {
+		Key:         KeyLostItemReported,
+		Description: "SUPPORT — un passager signale un objet oublié dans le véhicule : message au CHAUFFEUR, qui répond depuis l'application.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Objet oublié dans votre véhicule", Body: "Un passager a oublié : [item] ([ref]). Vérifiez votre véhicule et répondez depuis l'application."},
+			LocaleEN: {Title: "Item left in your vehicle", Body: "A passenger left behind: [item] ([ref]). Check your vehicle and answer from the app."},
+		},
+	},
+	KeyLostItemFound: {
+		Key:         KeyLostItemFound,
+		Description: "SUPPORT — le chauffeur a retrouvé l'objet : message au PASSAGER, le support organise la restitution.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Objet retrouvé", Body: "Bonne nouvelle : votre [item] a été retrouvé. Le support vous contacte pour la restitution."},
+			LocaleEN: {Title: "Item found", Body: "Good news: your [item] was found. Support will contact you to return it."},
+		},
+	},
+	KeyLostItemNotFound: {
+		Key:         KeyLostItemNotFound,
+		Description: "SUPPORT — le chauffeur n'a pas retrouvé l'objet : message au PASSAGER, le ticket reste ouvert.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Objet non retrouvé", Body: "Le chauffeur n'a pas retrouvé votre [item]. Votre demande reste ouverte, le support la poursuit."},
+			LocaleEN: {Title: "Item not found", Body: "The driver could not find your [item]. Your request stays open and support is following up."},
+		},
+	},
+	KeyTicketReply: {
+		Key:         KeyTicketReply,
+		Description: "SUPPORT — quelqu'un a répondu sur un ticket qu'on a ouvert, ou qui nous concerne.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Réponse du support", Body: "Nouveau message sur votre demande [reference]."},
+			LocaleEN: {Title: "Support replied", Body: "New message on your request [reference]."},
+		},
+	},
+	KeyTicketResolved: {
+		Key:         KeyTicketResolved,
+		Description: "SUPPORT — la demande est close.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Demande traitée", Body: "Votre demande [reference] est close. Rouvrez-en une si le problème persiste."},
+			LocaleEN: {Title: "Request resolved", Body: "Your request [reference] is closed. Open a new one if the problem persists."},
+		},
+	},
+	KeyStaffTicketOpened: {
+		Key:         KeyStaffTicketOpened,
+		Description: "STAFF — un ticket vient d'être ouvert depuis une application.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "[kind] — [ref]", Body: "[who] a ouvert une demande."},
+			LocaleEN: {Title: "[kind] — [ref]", Body: "[who] opened a request."},
+		},
+	},
+	KeyStaffLostItemAnswered: {
+		Key:         KeyStaffLostItemAnswered,
+		Description: "STAFF — le chauffeur a répondu sur un objet perdu : à restituer, ou à poursuivre.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Objet perdu [answer] — [ref]", Body: "[who] a répondu : [item] [answer]."},
+			LocaleEN: {Title: "Lost item [answer] — [ref]", Body: "[who] answered: [item] [answer]."},
+		},
+	},
 	KeyDeliveryCancelled: {
 		Key:         KeyDeliveryCancelled,
 		Description: "La commande a été annulée sous le livreur qui la portait — message au LIVREUR.",
@@ -445,6 +522,13 @@ var provided = map[string][]string{
 	KeyRideStopsChanged:       {"stops", "dest", "fare"},
 	KeyRideFareAdjusted:       {"fare", "adjustment"},
 	KeyMerchantNewOrder:       {"order_ref", "items", "amount"},
+	KeyLostItemReported:       {"item", "ref"},
+	KeyLostItemFound:          {"item"},
+	KeyLostItemNotFound:       {"item"},
+	KeyTicketReply:            {"reference"},
+	KeyTicketResolved:         {"reference"},
+	KeyStaffTicketOpened:      {"kind", "ref", "who"},
+	KeyStaffLostItemAnswered:  {"ref", "who", "answer", "item"},
 }
 
 // Provided rend les variables que la plateforme remplit pour une clé.
