@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.8.0** · 16 septembre 2026
+> **Version 4.8.1** · 19 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -636,6 +636,44 @@ comparaison que chaque application refait à sa façon.
 - **Téléphone en E.164 avec le `+`** ; sans indicatif, `422` avec `fields: ["phone"]`. `account_suspended` (403) à la connexion : le dire tel quel.
 - **Durées de vie des jetons — v3.1.0.** Access token **15 min** (staging : **10 min**), refresh token **30 jours**, consommé à la rotation (le rejouer → 401 → revenir à la connexion). ⚠️ Le socket du suivi est ouvert avec l'access token et **vit plus longtemps que lui** : à l'échéance, le suivi le ferme avec le code **4401 `token_expired`** — rafraîchir (`POST /auth/refresh`) **puis** reconnecter, jamais reconnecter avec le même jeton. Poignée de main : **401** = rafraîchir et revenir ; **403** = ce rôle ne peut pas pousser de positions, ne pas réessayer. L'ancien access token reste valide jusqu'à son échéance après une rotation : un court chevauchement socket / REST est normal.
 - **Un `422` nomme ses champs** (`fields`, `reason`) — §1 bis.
+
+### Le compte — la photo, le nom d'affichage, le prénom et le nom (v4.8.1)
+
+`GET /me` rend ce que l'app affiche du compte :
+
+```json
+{ "id": "…", "phone": "+22891000101", "name": "Kossi Amegan",
+  "avatar_url": "https://files.dira.llc/dira-media-staging/avatar/e63ea33e-….jpg",
+  "role": "driver", "status": "active", "country": "TG", "created_at": "…",
+  "preferences": { … } }
+```
+
+- **`avatar_url` est LA photo du compte.** Affichez-la partout où l'app dessine
+  un rond d'initiale — accueil, compte, profil — avec l'initiale de `name` en
+  repli quand le champ manque, et dessous le temps du chargement. ⚠️ C'est le
+  même champ que l'administration renseigne : un chauffeur dont la console
+  montre la photo et l'app une initiale n'a pas deux photos, il a une app qui
+  ne lit pas le champ.
+- **`name` est le nom d'AFFICHAGE ; `first_name` / `last_name` sont l'état
+  civil.** Les trois sont indépendants. Un compte créé à l'inscription, au
+  téléphone ou par l'administration ne porte que `name` : `first_name` et
+  `last_name` sont **absents de la réponse** tant que la personne ne les a
+  pas saisis — c'est l'état normal, pas une donnée perdue ni un mélange. Ne
+  les déduisez **jamais** de `name` (« Diallo Ndiaye » a deux prénoms), et
+  n'affichez pas leur concaténation là où `name` existe. Dans le formulaire
+  de profil : trois cases, pré-remplies avec ce que `GET /me` rend, vides
+  sinon.
+- **Changer la photo, en deux étapes** : `POST /uploads?kind=avatar`
+  (multipart, champ `file`, jpeg · png · webp, ≤ 5 MiB) → `201 { url }`, puis
+  `PATCH /me { "avatar_url": url }` → la réponse est le compte à jour, à
+  garder en session. Deux étapes pour qu'un envoi qui échoue ne fasse pas
+  perdre le reste de la saisie.
+- **`PATCH /me` n'envoie que ce qui change** :
+  `{ name?, first_name?, last_name?, birth_date?, gender?, email?, avatar_url? }`.
+  Une clé inconnue → `422 reason: unknown_field`. Quand `name` n'a jamais
+  été posé (vide, ou égal au téléphone), le serveur le fait suivre
+  `first_name + last_name` — dans tous les autres cas il ne bouge que si
+  l'app l'envoie.
 
 ---
 
