@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.8.0** · 16 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.8.1** · 19 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -266,6 +266,18 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.8.1 — 19 septembre 2026
+
+**Précision, rien ne change côté serveur** — **la photo et les noms du
+compte** (`VTC-DRIVER.md` §7, `FOOD-DELIVERY.md` §2). `GET /me` rend
+`avatar_url`, et c'est LA photo du compte, celle que la console montre
+aussi : l'app l'affiche partout où elle dessine un rond d'initiale.
+`first_name` / `last_name` sont **absents** tant que la personne ne les a
+pas saisis — `name` reste le nom d'affichage, rien ne se déduit de rien, et
+un profil aux cases prénom / nom vides n'est pas un mélange de données.
+Parcours pour changer la photo : `POST /uploads?kind=avatar` puis
+`PATCH /me { avatar_url }`.
 
 ### 4.8.0 — 16 septembre 2026
 
