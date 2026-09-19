@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.8.1** · 19 septembre 2026
+> **Version 4.9.0** · 19 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -683,6 +683,111 @@ aussi le passager — vous ne lisez jamais sa note, il ne lit jamais la vôtre :
 
 ---
 
+## 7 ter. Le SUPPORT — réclamations et objets perdus (v4.9.0)
+
+> Jusqu'ici l'application n'avait **aucune porte** vers le support : les
+> courses ne servaient pas de tickets, et le seul recours était d'appeler.
+> Désormais une réclamation se dépose **depuis l'application**, se suit dans
+> un fil, et le cas de l'**objet oublié dans la voiture** a son propre
+> parcours — parce que c'est dans les minutes qui suivent qu'un sac se
+> retrouve, pas quand le support ouvre sa file le lendemain.
+
+```
+POST /tickets                       { category, message, ride_id?, priority?, lost_item? }   → 201 ticket
+GET  /tickets                       → { items, next_cursor }   mes tickets, du plus récent au plus ancien
+GET  /tickets/{id}                  → le ticket et son fil
+POST /tickets/{id}/messages         { "body": "…" }   → 201 ticket
+```
+
+**Les catégories**, dans l'ordre où l'écran les propose :
+
+| `category` | Quand |
+|---|---|
+| `ride` | quelque chose s'est mal passé **pendant** une course — trajet, retard, prix : `ride_id` obligatoire |
+| `lost_item` | **objet oublié** dans la voiture — parcours à part, ci-dessous |
+| `payment` | débit, remboursement, mobile money |
+| `tokens` | (réservé aux chauffeurs et marchands — ne pas proposer au passager) |
+| `account` | connexion, profil, téléphone |
+| `behaviour` | conduite ou comportement du chauffeur : `ride_id` recommandé |
+| `other` | le reste |
+
+- `ride_id` rattache la course. **Seul un passager qui l'a vécue** peut s'y
+  référer (`403 forbidden` sinon) ; le serveur fige un libellé lisible
+  (`ref_label` : « Lomé Centre → Aéroport · 19/09 14:02 ») pour que le fil
+  reste compréhensible même des mois plus tard. Depuis l'écran d'une course
+  terminée, proposez « Signaler un problème » et « J'ai oublié quelque chose »
+  avec `ride_id` déjà rempli.
+- `priority` est facultative (`normal` par défaut) : ne la demandez pas au
+  passager, c'est le support qui la règle.
+- ⚠️ **`order_id` n'existe pas ici** — c'est le mot de la livraison. L'envoyer
+  répond `422 fields: ["order_id"], reason: "wrong_vertical"`.
+
+Le ticket rendu :
+
+```json
+{ "id": "…", "reference": "TCK-000123", "user_id": "…", "role": "client",
+  "category": "lost_item", "priority": "high", "status": "open",
+  "ride_id": "…", "ref_label": "Lomé Centre → Aéroport · 19/09 14:02",
+  "counterpart_id": "…",                       ← le chauffeur de la course (objet perdu seulement)
+  "lost_item": { "item": "Sac à dos noir", "details": "avec un ordinateur",
+                 "found": null, "answered_at": null, "note": "" },
+  "messages": [ { "author_id": "…", "author_role": "client", "body": "…", "at": "…" } ],
+  "created_at": "…", "updated_at": "…" }
+```
+
+**Afficher la référence** (`TCK-000123`) : c'est ce que le passager dira au
+téléphone. `status` ∈ `open` (déposé) · `in_progress` (pris en charge) ·
+`waiting` (on attend le passager) · `resolved` · `closed`. `author_role` dit
+qui parle dans le fil — `client`, `admin` (le support), `driver` (sur un objet
+perdu) : dessinez trois bulles différentes, jamais un nom.
+
+### 🎒 L'OBJET PERDU — `lost_item`
+
+```
+POST /tickets  { "category": "lost_item", "ride_id": "…",
+                 "message": "Je l'ai laissé sur la banquette arrière",
+                 "lost_item": { "item": "Sac à dos noir", "details": "avec un ordinateur portable" } }
+```
+
+Ce qui se passe **côté serveur**, et que l'écran doit dire :
+
+1. `ride_id` **et** `lost_item.item` sont obligatoires (`422` qui les nomme).
+   Seul le passager de la course peut le déclarer, et la course doit avoir eu
+   un chauffeur — `409 no_driver_yet` sinon (une course annulée en recherche).
+2. La priorité monte à **`high`** d'office.
+3. **Le chauffeur de cette course est prévenu à l'instant** (notification
+   `lost_item_reported`) et devient partie au ticket : il lit le fil, y
+   répond, et dit s'il a trouvé l'objet.
+4. Le passager reçoit sa réponse : **`lost_item_found`** (« Bonne nouvelle :
+   votre Sac à dos noir a été retrouvé. Le support vous contacte pour la
+   restitution ») ou **`lost_item_not_found`**. Données
+   `{ type: "lost_item", ticket_id, ride_id }` : ouvrir le ticket dessus.
+5. Dans le ticket, `lost_item.found` a **trois états** : `null` — le
+   chauffeur n'a pas encore regardé ; `true` — retrouvé, `lost_item.note` dit
+   où, le statut passe `in_progress` et le support organise la restitution ;
+   `false` — pas trouvé, le ticket **reste ouvert**, le support poursuit.
+   Affichez les trois différemment : « pas encore regardé » n'est pas « pas
+   trouvé ».
+
+⚠️ **La restitution passe par le support**, jamais par un échange de numéros
+dans le fil : c'est ce qui protège les deux côtés.
+
+### Le fil, et ce qui réveille l'application
+
+- `POST /tickets/{id}/messages` : le passager écrit ; le support et, sur un
+  objet perdu, le chauffeur reçoivent **`ticket_reply`** (« Nouveau message
+  sur votre demande TCK-000123 »). Quand c'est le support ou le chauffeur qui
+  écrit, c'est le passager qui la reçoit. Données `{ type: "ticket",
+  ticket_id, ride_id? }`.
+- Quand le support clôt (`resolved` · `closed`) : **`ticket_resolved`**, une
+  fois.
+- Ces notifications sont dans la catégorie `support`, **non coupable** dans
+  les préférences : on a posé une question, on reçoit la réponse.
+- Pas de socket : sur l'écran d'un ticket ouvert, relisez `GET /tickets/{id}`
+  à l'ouverture et sur chaque notification reçue.
+
+---
+
 ## 8. Ce que le SOCLE sert (sans `/vtc`)
 
 | | |
@@ -690,6 +795,7 @@ aussi le passager — vous ne lisez jamais sa note, il ne lit jamais la vôtre :
 | `POST /auth/register` · `/auth/login` · `/auth/refresh` · `/auth/logout` | la session |
 | `GET · PATCH /me` · `PATCH /me/preferences` | le profil |
 | `POST /uploads?kind=avatar` | la photo de profil — **v3.0.0**, une seule porte pour toute la plateforme |
+| `POST /bug-reports` (**LIVRAISON**, `…/api/v1/food/bug-reports`) | signaler un bug de l'application — pas une réclamation : celles-ci sont §7 ter, sur `/vtc/tickets` |
 | `GET · POST /me/addresses` · `PUT · DELETE /me/addresses/{id}` | le carnet d'adresses |
 | `GET /wallet` · `/wallet/transactions` · `POST /wallet/purchase` | le solde Dira |
 | `GET /payments/providers` · `POST /payments/initiate` · `GET /payments/{id}` | mobile money |

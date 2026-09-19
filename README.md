@@ -33,9 +33,10 @@ pkg/media       video probing and transcoding
 pkg/i18n        French/English message catalogue
 pkg/jobs        Asynq client
 pkg/docs        Swagger UI + OpenAPI serving (the contract is passed in)
-pkg/audit       audit-log recorder
+pkg/audit       the platform's ONE audit journal — the core writes it, the verticals ship to it
 pkg/diramaps    dira-maps client (route duration, landmarks)
 pkg/chat        the client ↔ driver conversation — BEHAVIOUR, not storage
+pkg/support     the support desk: tickets, the thread, the LOST-ITEM case — same shape as pkg/chat
 pkg/country     the COUNTRY layer: catalog, borders, request country, the `country` filter
 ```
 
@@ -68,6 +69,16 @@ pkg/country     the COUNTRY layer: catalog, borders, request country, the `count
 > This is the test for anything else: does the core hold it because both need the
 > same *data* (a balance, an account), or merely the same *behaviour*? The second
 > belongs in `pkg/`.
+>
+> `pkg/support` passed the same test. A complaint is filed at the **same desk**
+> whatever the vertical, but a ride ticket and an order ticket are never listed
+> together on the server — the console composes both lists, as it does for the
+> fleet. Each vertical mounts it under its base (`/food/tickets`, `/vtc/tickets`)
+> on its own collection and lends what it alone knows: whose order or ride it is,
+> and who carried it. That is what the **lost-item** case needs: the driver of
+> that very trip is told at once and answers from the app (`lost_item_reported`,
+> `lost_item_found` / `lost_item_not_found`); the desk is alerted on every ticket
+> (`staff_ticket_opened`, `staff_lost_item_answered`).
 
 ⚠️ **What `pkg/` must never hold**: business settings. A delivery fee grid, a WhatsApp
 token or a ride commission belongs to its service. Gathering them here would turn a shared
@@ -106,7 +117,8 @@ wallet, open an account, notify someone in their name. No person ever calls them
 | `POST /internal/wallets/{create,consume,credit,pay,refund,credit-earnings}` | move money |
 | `POST /internal/wallets/balance` | read a balance — what the VTC checks before calling drivers for a ride the balance will pay at acceptance |
 | `POST /internal/notifications/send` | send one templated message |
-| `POST /internal/notifications/staff` | one operations alert to every active staff member whose scope covers the vertical (and country, unless direction) — `staff_dispatch_failed`, `staff_document_submitted`, `staff_driver_pending` |
+| `POST /internal/audit` | one audit entry from a vertical, stored as is with its `service` — the console reads every service's entries at `GET /admin/audit` |
+| `POST /internal/notifications/staff` | one operations alert to every active staff member whose scope covers the vertical (and country, unless direction) — `staff_dispatch_failed`, `staff_document_submitted`, `staff_driver_pending`, `staff_ticket_opened`, `staff_lost_item_answered` |
 | `POST /internal/payments/initiate` | start a payment on a client's behalf (WhatsApp) |
 | `POST /internal/backoffice/{wallets,token-transactions,payments}` | read the money, **raw** — ids, not names |
 | `POST /internal/backoffice/refund-order-payment` | mark an order's payment refunded — the vertical judges the dispute |

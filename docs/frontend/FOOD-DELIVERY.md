@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.8.1** · 19 septembre 2026
+> **Version 4.9.0** · 19 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -613,9 +613,36 @@ POST /wallet/purchase   { tokens }
 
 ```
 GET  /agents/{id}/ratings        (public)
-POST /tickets · POST /bug-reports
+POST /tickets · GET /tickets · GET /tickets/{id} · POST /tickets/{id}/messages · POST /bug-reports
+POST /tickets/{id}/lost-item     { "found": true | false, "note"? }      ← votre réponse sur un objet perdu (v4.9.0)
 POST /me/devices · GET /me/notifications
 ```
+
+### Le SUPPORT — et l'objet oublié chez vous (v4.9.0)
+
+**Ouvrir une demande** : `POST /tickets { category, message, order_id? }`,
+`category` ∈ `order` (un problème sur une commande que **vous** avez livrée —
+`order_id` obligatoire, `403` sinon) · `payment` · `tokens` (jetons) ·
+`account` · `behaviour` (un client, un marchand) · `other`. Le ticket rendu
+porte `reference` (`TCK-000123`, à afficher), `status` et un fil
+`messages[]` (`author_role` : `driver` vous, `admin` le support, `client`
+sur un objet perdu). Vous recevez **`ticket_reply`** à chaque réponse et
+**`ticket_resolved`** à la clôture — catégorie `support`, non coupable.
+
+**🎒 Un client dit avoir perdu quelque chose sur une de vos livraisons** — le
+seul ticket qui **vient à vous** : vous recevez **`lost_item_reported`**
+(« Objet oublié · Un passager a oublié : Clés de maison (Commande #A1B2C3 ·
+19/09 12:40). Vérifiez et répondez depuis l'application », données
+`{ type: "lost_item", ticket_id, order_id }`). Ouvrez le ticket dessus
+(`GET /tickets/{id}` → `lost_item.item`, `lost_item.details`) ; il figure
+aussi dans `GET /tickets` (`counterpart_id` = vous). **Répondez** avec deux
+boutons : `POST /tickets/{id}/lost-item { "found": true, "note": "…" }` ou
+`{ "found": false }` — réservé au livreur de la commande (`403`), et à un
+objet perdu (`409 not_a_lost_item`). Trouvé : **le support vous contacte
+pour la restitution**, n'échangez pas de numéros dans le fil. Pas trouvé :
+le ticket reste ouvert côté support, vous pouvez répondre à nouveau plus
+tard. `lost_item.found` vaut `null` tant que vous n'avez pas répondu :
+c'est l'état « à traiter » à mettre en avant.
 
 - La moyenne ne s'affiche jamais sans son **nombre d'avis**.
 - ⚠️ **L'appel de course n'est pas coupable dans les préférences** : c'est le gagne-pain du livreur. Les autres catégories le sont.

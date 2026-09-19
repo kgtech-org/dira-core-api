@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.8.1** · 19 septembre 2026
+> **Version 4.9.0** · 19 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -586,6 +586,55 @@ l'arrivée, historique toujours lisible.
 > `GET /rides/{id}/messages`. Sur l'écran de la course, sondez la
 > conversation toutes les 5 s tant qu'elle est ouverte ; une notification
 > reçue pendant ce temps ne s'affiche pas deux fois — c'est le même message.
+
+---
+
+## 5 bis. Le SUPPORT — et l'objet oublié dans votre véhicule (v4.9.0)
+
+```
+POST /tickets                       { category, message, ride_id? }   → 201 ticket
+GET  /tickets                       → mes tickets ET les objets perdus qui me concernent
+GET  /tickets/{id}                  → le ticket et son fil
+POST /tickets/{id}/messages         { "body": "…" }
+POST /tickets/{id}/lost-item        { "found": true | false, "note": "sous le siège passager" }   ← LA réponse du chauffeur
+```
+
+**Ouvrir une demande** : `category` ∈ `ride` (un problème pendant une course
+— `ride_id` obligatoire, et seulement une course que **vous** avez conduite,
+`403` sinon) · `payment` · `tokens` (jetons, commission, dette) · `account` ·
+`behaviour` (un passager) · `other`. Le ticket rendu porte une `reference`
+(`TCK-000123`) à afficher, un `status` (`open` · `in_progress` · `waiting` ·
+`resolved` · `closed`) et un fil `messages[]` où `author_role` dit qui parle
+(`driver` vous, `admin` le support, `client` le passager sur un objet perdu).
+Le support répond : vous recevez **`ticket_reply`**, puis
+**`ticket_resolved`** à la clôture — catégorie `support`, non coupable.
+
+### 🎒 Un passager a oublié quelque chose dans votre véhicule
+
+C'est le seul cas où un ticket **vient à vous** sans que vous l'ayez ouvert.
+
+1. Le passager déclare l'objet depuis son application, sur **votre** course.
+   Vous recevez à l'instant **`lost_item_reported`** — « Objet oublié dans
+   votre véhicule · Un passager a oublié : Sac à dos noir (Lomé Centre →
+   Aéroport · 19/09 14:02). Vérifiez votre véhicule et répondez depuis
+   l'application » — données `{ type: "lost_item", ticket_id, ride_id }`.
+   **Ouvrez le ticket dessus** : `GET /tickets/{id}` rend `lost_item.item`,
+   `lost_item.details`, et le fil.
+2. Le ticket apparaît aussi dans `GET /tickets` : vous en êtes partie
+   (`counterpart_id` = vous), même si vous ne l'avez pas ouvert.
+3. **Répondez** — c'est le geste que l'écran doit rendre évident, deux
+   boutons : `POST /tickets/{id}/lost-item { "found": true, "note": "…" }` ou
+   `{ "found": false }`. La note est facultative (où l'objet était, où vous
+   êtes). Réservé au chauffeur de la course : un autre chauffeur reçoit `403`,
+   un ticket qui n'est pas un objet perdu `409 not_a_lost_item`.
+4. Le passager est prévenu de votre réponse. **Trouvé** : le ticket passe
+   `in_progress` et **le support vous contacte pour organiser la
+   restitution** — vous n'avez pas à joindre le passager, et le fil du ticket
+   n'est pas là pour échanger des numéros. **Pas trouvé** : le ticket reste
+   ouvert côté support ; vous pouvez répondre à nouveau plus tard si l'objet
+   réapparaît.
+5. `lost_item.found` reste `null` tant que vous n'avez pas répondu : c'est
+   l'état « à traiter » à mettre en évidence dans votre liste.
 
 ---
 

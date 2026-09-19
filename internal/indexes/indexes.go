@@ -121,6 +121,17 @@ var applicationIndexes = []db.Index{
 	// La liste de l'administration, filtrée par fonction ou par état.
 	{Collection: "staff_members", Keys: db.K("function", 1, "_id", -1)},
 	{Collection: "staff_members", Keys: db.K("status", 1, "_id", -1)},
+
+	// --- le journal d'audit de TOUTE la plateforme ---
+	//
+	// Lu du plus récent au plus ancien, filtré par service, par acteur, par
+	// action ou par objet. Les verticales y écrivent par la surface de
+	// service ; personne d'autre ne le lit que la console.
+	{Collection: "audit_logs", Keys: db.K("service", 1, "_id", -1)},
+	{Collection: "audit_logs", Keys: db.K("actor_id", 1, "_id", -1)},
+	{Collection: "audit_logs", Keys: db.K("action", 1, "_id", -1)},
+	{Collection: "audit_logs", Keys: db.K("resource.id", 1, "_id", -1)},
+	{Collection: "audit_logs", Keys: db.K("created_at", -1)},
 }
 
 // Ensure pose les index du socle. Idempotent : Mongo ignore un index déjà

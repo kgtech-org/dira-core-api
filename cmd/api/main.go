@@ -28,6 +28,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kgtech-org/dira-core-api/api"
+	"github.com/kgtech-org/dira-core-api/internal/auditlog"
 	"github.com/kgtech-org/dira-core-api/internal/callback"
 	"github.com/kgtech-org/dira-core-api/internal/config"
 	"github.com/kgtech-org/dira-core-api/internal/country"
@@ -340,7 +341,12 @@ func run(logger *slog.Logger) error {
 		// les montait : « + Nouveau client » et « Éditer » répondaient 404
 		// depuis la scission. Un handler écrit et jamais monté se lit, à la
 		// relecture, comme une route qui existe.
-		user.NewAdminUsers(userRepo, tokenSvc, auditRec).Mount(r, authMW)
+		adminUsers := user.NewAdminUsers(userRepo, tokenSvc, auditRec)
+		adminUsers.SetDefaultCountry(cfg.CountryDefault)
+		adminUsers.Mount(r, authMW)
+		// LE JOURNAL D'AUDIT de toute la plateforme, lu ici et nulle part
+		// ailleurs : les verticales y écrivent par la surface de service.
+		auditlog.NewHandler(auditRec).Mount(r, authMW)
 		notify.NewHandler(notifySvc).Mount(r, authMW)
 		// LE PORTEFEUILLE : `/wallet` pour la personne, `/admin/wallets/...`
 		// pour l'exploitation. Il n'était monté NULLE PART — ni ici, ni dans
@@ -387,6 +393,7 @@ func run(logger *slog.Logger) error {
 		// socle trouve à qui — les membres dont le périmètre couvre la
 		// verticale.
 		internalAPI.SetStaff(staffSvc)
+		internalAPI.SetJournal(auditRec)
 		internalAPI.Mount(r, middleware.Service(cfg.ServiceToken))
 	})
 

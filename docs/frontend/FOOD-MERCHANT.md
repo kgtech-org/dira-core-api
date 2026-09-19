@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 4.8.1** · 19 septembre 2026
+> **Version 4.9.0** · 19 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -610,8 +610,17 @@ GET /dishes/{id}/ratings     (public)
 GET /me · PATCH /me · PATCH /me/preferences        (SOCLE, sans /food)
 POST /uploads?kind=dish&entity={id}                (SOCLE, sans /food)
 POST /me/devices · GET /me/notifications           (SOCLE, sans /food)
-POST /tickets · POST /bug-reports
+POST /tickets · GET /tickets · GET /tickets/{id} · POST /tickets/{id}/messages · POST /bug-reports
 ```
+
+**Le support (v4.9.0)** : `POST /tickets { category, message }`, `category`
+∈ `tokens` (jetons, propulsions) · `payment` · `account` · `order`
+(`order_id` d'une commande passée chez vous — `403` sinon) · `behaviour` ·
+`other`. Le ticket rendu porte `reference` (`TCK-000123`, à afficher),
+`status` (`open` · `in_progress` · `waiting` · `resolved` · `closed`) et un
+fil `messages[]` ; le support répond (**`ticket_reply`**) et clôt
+(**`ticket_resolved`**) — catégorie `support`, non coupable. `lost_item`
+n'est pas pour vous : c'est le parcours client ↔ livreur.
 
 ⚠️ **`POST /uploads` est au socle — v3.0.0** : `…/api/v1/uploads`, plus `/food/uploads` (404). Multipart, champ `file`, le **type déclaré** de la part fait foi.
 

@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.8.1** · 19 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.9.0** · 19 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -206,6 +206,7 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ Téléphones en **E.164 avec le `+`** (`+22890000000`). Sans indicatif, le socle **refuse** (`422`, `fields: ["phone"]`) — il ne devine pas de pays. Pré-remplissez `+228` là où la personne le voit ; espaces et tirets sont tolérés
 - [ ] Un `422` se lit par **`fields`** : souligner **la** case nommée, jamais une bannière « vérifiez vos informations » sous un formulaire correct. `reason: unknown_field` est un **bug de l'application** — une clé que la route ne connaît pas, refusée pour que rien ne soit cru enregistré
 - [ ] Fichiers : **une seule porte**, `POST /api/v1/uploads` au **socle** — `/api/v1/food/uploads` n'existe plus (404)
+- [ ] Support (v4.9.0) : « Signaler un problème » et « J'ai oublié quelque chose » **depuis l'écran d'une course ou d'une commande terminée** (`ride_id` / `order_id` pré-rempli), la `reference` `TCK-…` affichée, le fil relu à l'ouverture et sur `ticket_reply` ; côté chauffeur / livreur, `lost_item_reported` ouvre le ticket et **deux boutons** répondent (`POST /tickets/{id}/lost-item`)
 
 **Client**
 
@@ -266,6 +267,39 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.9.0 — 19 septembre 2026
+
+**Ajout rétrocompatible** — **LE SUPPORT, depuis l'application, et l'OBJET
+PERDU.** Les courses n'avaient aucune porte de réclamation ; la livraison en
+avait une que les écrans ne proposaient pas. Le guichet est désormais le
+même des deux côtés (`pkg/support` du socle) : `POST · GET /tickets`,
+`GET /tickets/{id}`, `POST /tickets/{id}/messages` sous `/vtc` **et** sous
+`/food`, avec `ride_id` ou `order_id` selon la verticale, des catégories
+communes (`ride`|`order`, `lost_item`, `payment`, `tokens`, `account`,
+`behaviour`, `other`), `ref_label`, `author_role` sur chaque message, et
+des notifications de catégorie `support` (non coupable) : `ticket_reply`,
+`ticket_resolved`.
+
+Le **cas de l'objet perdu** (`category: lost_item` + `lost_item.item`) :
+le chauffeur — ou le livreur — de **cette** course est prévenu à l'instant
+(`lost_item_reported`), devient partie au ticket et répond depuis son
+application (`POST /tickets/{id}/lost-item { found }`) ; le passager reçoit
+`lost_item_found` / `lost_item_not_found` ; `lost_item.found` a trois états
+(`null` · `true` · `false`) ; la restitution passe par le support.
+(`VTC-CLIENT.md` §7 ter, `VTC-DRIVER.md` §5 bis, `FOOD-CLIENT.md` §13,
+`FOOD-DELIVERY.md` §9, `FOOD-MERCHANT.md` §8.)
+
+L'équipe est alertée à chaque ouverture (`staff_ticket_opened`) et à
+chaque réponse sur un objet perdu (`staff_lost_item_answered`).
+
+⚠️ **Deux files, deux profils.** Les plaintes des courses et celles de la
+livraison ne sont jamais mêlées côté serveur : chaque guichet exige la
+PORTÉE de sa verticale d'un membre du staff (`vtc` ou `food`) — lire,
+répondre, modifier. Un support « courses » ne voit pas la file de la
+livraison, et inversement ; la console ne lui propose que la sienne
+(`GET /me` rend `scopes` aux administrateurs). Ne concerne pas les
+applications mobiles.
 
 ### 4.8.1 — 19 septembre 2026
 

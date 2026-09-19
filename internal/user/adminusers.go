@@ -13,6 +13,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/audit"
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
 	"github.com/kgtech-org/dira-core-api/pkg/middleware"
 )
@@ -24,11 +25,17 @@ type AdminUsers struct {
 	repo    *Repository
 	wallets WalletCreator
 	auditor *audit.Recorder
+	// defaultCountry : le pays d'un compte créé sans en-tête ni indicatif
+	// reconnu — le même défaut que l'inscription.
+	defaultCountry string
 }
 
 func NewAdminUsers(repo *Repository, wallets WalletCreator, auditor *audit.Recorder) *AdminUsers {
 	return &AdminUsers{repo: repo, wallets: wallets, auditor: auditor}
 }
+
+// SetDefaultCountry règle le pays de repli des comptes créés ici (câblage).
+func (a *AdminUsers) SetDefaultCountry(code string) { a.defaultCountry = country.Normalize(code) }
 
 // AdminCreateUserRequest creates an account with any role (admin included).
 type AdminCreateUserRequest struct {
@@ -64,6 +71,10 @@ func (a *AdminUsers) Create(ctx context.Context, req AdminCreateUserRequest) (Us
 		Role: req.Role, Name: req.Name, Phone: req.Phone,
 		Email:        strings.ToLower(req.Email),
 		PasswordHash: hash, Status: StatusActive,
+		// ⚠️ Le PAYS, comme à l'inscription. Un compte de staff créé ici
+		// naissait sans pays : invisible des listes bornées, et la console
+		// lui affichait un pays vide.
+		Country:   newAccountCountry(ctx, req.Phone, a.defaultCountry),
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if err := a.repo.CreateUser(ctx, u); err != nil {

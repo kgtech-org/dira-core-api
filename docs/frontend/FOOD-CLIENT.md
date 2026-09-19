@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.8.1** · 19 septembre 2026
+> **Version 4.9.0** · 19 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -611,10 +611,62 @@ POST   /me/notifications/{id}/read
 
 ```
 GET  /tombola/draws · POST /tombola/draws/{id}/enter · GET /tombola/me
-POST /tickets · GET /tickets · POST /tickets/{id}/messages
+POST /tickets · GET /tickets · GET /tickets/{id} · POST /tickets/{id}/messages
 POST /bug-reports
 POST /uploads?kind=avatar&entity={id}    (SOCLE, sans /food — kind ∈ avatar|vehicle|dish|store|brand|feed|banner)
 ```
+
+### Le SUPPORT — réclamations et objets perdus (v4.9.0)
+
+> Les routes existaient ; l'application ne les proposait pas, et une plainte
+> finissait au téléphone. Voici ce que l'écran doit faire, et le cas de
+> l'**objet oublié** (dans le sac, chez le livreur), qui a son propre
+> parcours.
+
+```
+POST /tickets   { category, message, order_id?, priority?, lost_item? }   → 201 ticket
+```
+
+| `category` | Quand |
+|---|---|
+| `order` | un problème **sur une commande** — plat manquant, froid, retard : `order_id` obligatoire |
+| `lost_item` | **objet oublié** (remis au livreur par erreur, laissé dans le sac) — parcours ci-dessous |
+| `payment` | débit, remboursement, mobile money |
+| `account` | connexion, profil, téléphone |
+| `behaviour` | comportement du livreur : `order_id` recommandé |
+| `other` | le reste (`tokens` existe mais concerne livreurs et marchands) |
+
+- `order_id` rattache la commande — **la vôtre** seulement (`403` sinon) ; le
+  serveur fige `ref_label` (« Commande #A1B2C3 · 19/09 12:40 »). Depuis
+  l'écran d'une commande livrée, proposez « Signaler un problème » avec
+  `order_id` déjà rempli.
+- `priority` est facultative : ne la demandez pas, le support la règle.
+- ⚠️ `ride_id` n'existe pas ici — `422 fields: ["ride_id"], reason:
+  "wrong_vertical"`.
+
+Le ticket rendu porte `reference` (`TCK-000123`, **à afficher** — c'est ce
+que le client dira au téléphone), `status` (`open` · `in_progress` ·
+`waiting` · `resolved` · `closed`), `messages[]` avec `author_role` (`client`
+vous, `admin` le support, `driver` le livreur sur un objet perdu — trois
+bulles, jamais un nom), et pour un objet perdu le bloc `lost_item`.
+
+**🎒 Objet perdu** : `{ "category": "lost_item", "order_id": "…", "message":
+"…", "lost_item": { "item": "Clés de maison", "details": "trousseau bleu" } }`.
+`order_id` et `lost_item.item` obligatoires (`422` qui les nomme), la
+commande doit avoir eu un livreur (`409 no_driver_yet`), priorité `high`
+d'office. **Le livreur de cette commande est prévenu à l'instant** et
+répond depuis son application ; vous recevez **`lost_item_found`** ou
+**`lost_item_not_found`** (données `{ type: "lost_item", ticket_id,
+order_id }` — ouvrir le ticket). `lost_item.found` a trois états : `null`
+(pas encore regardé), `true` (retrouvé, `note` dit où, statut `in_progress`,
+**le support organise la restitution**), `false` (pas trouvé, le ticket
+reste ouvert). La restitution passe par le support, jamais par un échange
+de numéros dans le fil.
+
+**Le fil** : `POST /tickets/{id}/messages` ; chaque réponse du support (ou
+du livreur) vous arrive en **`ticket_reply`**, la clôture en
+**`ticket_resolved`** — catégorie `support`, non coupable. Pas de socket :
+relisez `GET /tickets/{id}` à l'ouverture et sur chaque notification.
 
 ⚠️ **`POST /uploads` est au socle — v3.0.0** : `…/api/v1/uploads`, plus `/food/uploads` (404). Multipart, champ `file`, le **type déclaré** de la part fait foi (jpeg, png, webp, svg ; ≤ 5 MiB). Réponse `201 { url }` : téléversez **d'abord**, rattachez l'URL ensuite (`PATCH /me { avatar_url }`) — un envoi qui échoue ne doit pas faire perdre la saisie.
 

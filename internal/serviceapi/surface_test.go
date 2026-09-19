@@ -36,6 +36,9 @@ var declaredSurface = []string{
 	// seulement, pour qu'une verticale filtre ses courses ou ses commandes
 	// sur « Kossi » ou « 90 20 » — sa liste ne porte que des identifiants.
 	"/internal/accounts/search",
+	// LE JOURNAL D'AUDIT UNIQUE : une verticale y range ses entrées, avec le
+	// service qui les a écrites ; la console les lit toutes au socle.
+	"/internal/audit",
 	"/internal/backoffice/payments",
 	"/internal/backoffice/refund-order-payment",
 	"/internal/backoffice/token-transactions",
