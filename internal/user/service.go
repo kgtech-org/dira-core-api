@@ -578,6 +578,15 @@ func (s *Service) entitlements(ctx context.Context, u *User) Entitlements {
 // est béninois jusqu'à preuve du contraire), puis le pays effectif de la
 // requête, qui est celui du déploiement quand rien d'autre ne le dit.
 func (s *Service) countryForNew(ctx context.Context, phone string) string {
+	return newAccountCountry(ctx, phone, s.defaultCountry)
+}
+
+// newAccountCountry est LA règle du pays d'un compte qui naît — à
+// l'inscription comme à la création par l'administration : l'en-tête quand
+// c'est la direction qui parle, sinon l'indicatif du téléphone, sinon le
+// pays de la requête, sinon le défaut. Un compte sans pays n'apparaît dans
+// aucune liste bornée et sa console affiche un pays vide.
+func newAccountCountry(ctx context.Context, phone, fallback string) string {
 	if country.SourceFromContext(ctx) == country.SourceHeader {
 		return country.FromContext(ctx)
 	}
@@ -587,7 +596,7 @@ func (s *Service) countryForNew(ctx context.Context, phone string) string {
 	if code := country.FromContext(ctx); code != "" {
 		return code
 	}
-	return s.defaultCountry
+	return fallback
 }
 
 // CountryOf rend le pays d'un compte. Implémente `country.Accounts`.

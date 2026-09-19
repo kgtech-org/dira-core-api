@@ -341,7 +341,9 @@ func run(logger *slog.Logger) error {
 		// les montait : « + Nouveau client » et « Éditer » répondaient 404
 		// depuis la scission. Un handler écrit et jamais monté se lit, à la
 		// relecture, comme une route qui existe.
-		user.NewAdminUsers(userRepo, tokenSvc, auditRec).Mount(r, authMW)
+		adminUsers := user.NewAdminUsers(userRepo, tokenSvc, auditRec)
+		adminUsers.SetDefaultCountry(cfg.CountryDefault)
+		adminUsers.Mount(r, authMW)
 		// LE JOURNAL D'AUDIT de toute la plateforme, lu ici et nulle part
 		// ailleurs : les verticales y écrivent par la surface de service.
 		auditlog.NewHandler(auditRec).Mount(r, authMW)
