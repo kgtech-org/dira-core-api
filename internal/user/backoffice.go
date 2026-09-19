@@ -34,16 +34,20 @@ var errAccountNotFound = apperr.NotFound("user_not_found", "user not found")
 
 // AccountRow is one account as an administration screen reads it.
 type AccountRow struct {
-	ID        string             `bson:"-" json:"id"`
-	OID       primitive.ObjectID `bson:"_id" json:"-"`
-	Role      string             `bson:"role" json:"role"`
-	Phone     string             `bson:"phone" json:"phone"`
-	Name      string             `bson:"name" json:"name"`
-	Email     string             `bson:"email,omitempty" json:"email,omitempty"`
-	Status    string             `bson:"status" json:"status"`
-	Country   string             `bson:"country,omitempty" json:"country,omitempty"`
-	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
-	UpdatedAt time.Time          `bson:"updated_at" json:"updated_at"`
+	ID    string             `bson:"-" json:"id"`
+	OID   primitive.ObjectID `bson:"_id" json:"-"`
+	Role  string             `bson:"role" json:"role"`
+	Phone string             `bson:"phone" json:"phone"`
+	Name  string             `bson:"name" json:"name"`
+	Email string             `bson:"email,omitempty" json:"email,omitempty"`
+	// AvatarURL : la photo du compte. La console la montre sur chaque
+	// ligne et chaque fiche — sans elle ici, une photo posée (PATCH
+	// /admin/users/{id}) restait invisible partout où l'on lit des comptes.
+	AvatarURL string    `bson:"avatar_url,omitempty" json:"avatar_url,omitempty"`
+	Status    string    `bson:"status" json:"status"`
+	Country   string    `bson:"country,omitempty" json:"country,omitempty"`
+	CreatedAt time.Time `bson:"created_at" json:"created_at"`
+	UpdatedAt time.Time `bson:"updated_at" json:"updated_at"`
 }
 
 func (a *AccountRow) fill() { a.ID = a.OID.Hex() }
