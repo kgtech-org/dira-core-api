@@ -155,6 +155,18 @@ func (n *memNotifier) NotifyStaff(_ context.Context, country, key string, vars, 
 	n.staff = append(n.staff, sent{to: country, key: key, vars: vars, data: data})
 }
 
+type memNames map[string]string
+
+func (m memNames) NamesByIDs(_ context.Context, ids []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, id := range ids {
+		if n, ok := m[id]; ok {
+			out[id] = n
+		}
+	}
+	return out, nil
+}
+
 type memRefs struct{ ref *Reference }
 
 func (r memRefs) ReferenceOf(context.Context, string) (*Reference, error) {
@@ -467,6 +479,31 @@ func TestTheDeskClosesAndTheOpenerHearsOnce(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, n.users, 1)
 	assert.Equal(t, []string{"ticket.update", "ticket.update", "ticket.update"}, aud.actions)
+}
+
+func TestNamesAreForTheDeskOnly(t *testing.T) {
+	svc, _, n := rideDesk(t, taken())
+	svc.SetDirectory(memNames{riderID: "Ama Kposso", driverID: "Yao Dossou"})
+	ctx := context.Background()
+	opened, err := svc.Create(ctx, riderID, "client", CreateRequest{
+		Category: CategoryLostItem, RideID: rideID, Message: "x", LostItem: &LostItemRequest{Item: "sac"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "Ama Kposso", n.staff[0].vars["who"], "l'alerte nomme la personne")
+	assert.Empty(t, opened.UserName, "le passager ne lit pas de noms")
+
+	// Le passager et le chauffeur lisent des identifiants ; l'équipe, des noms.
+	mine, err := svc.Get(ctx, driverID, "driver", opened.ID)
+	require.NoError(t, err)
+	assert.Empty(t, mine.UserName)
+	assert.Empty(t, mine.CounterpartName)
+	desk, err := svc.Get(ctx, adminID, "admin", opened.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Ama Kposso", desk.UserName)
+	assert.Equal(t, "Yao Dossou", desk.CounterpartName)
+	rows, _, err := svc.List(ctx, adminID, "admin", ListQuery{}, httpx.Page{Limit: 20})
+	require.NoError(t, err)
+	assert.Equal(t, "Yao Dossou", rows[0].CounterpartName)
 }
 
 func TestAnOrderDeskSpeaksOrders(t *testing.T) {

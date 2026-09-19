@@ -74,9 +74,11 @@ type LostItemResponse struct {
 
 // Response is the public representation of a ticket.
 type Response struct {
-	ID         string `json:"id"`
-	Reference  string `json:"reference"`
-	UserID     string `json:"user_id"`
+	ID        string `json:"id"`
+	Reference string `json:"reference"`
+	UserID    string `json:"user_id"`
+	// UserName et CounterpartName ne sont posés que pour l'ADMINISTRATION.
+	UserName   string `json:"user_name,omitempty"`
 	Role       string `json:"role,omitempty"`
 	Category   string `json:"category"`
 	Priority   string `json:"priority"`
@@ -87,11 +89,12 @@ type Response struct {
 	RideID   string `json:"ride_id,omitempty"`
 	RefLabel string `json:"ref_label,omitempty"`
 	// CounterpartID : le chauffeur ou livreur concerné (objet perdu).
-	CounterpartID string            `json:"counterpart_id,omitempty"`
-	LostItem      *LostItemResponse `json:"lost_item,omitempty"`
-	Messages      []MessageResponse `json:"messages"`
-	CreatedAt     time.Time         `json:"created_at"`
-	UpdatedAt     time.Time         `json:"updated_at"`
+	CounterpartID   string            `json:"counterpart_id,omitempty"`
+	CounterpartName string            `json:"counterpart_name,omitempty"`
+	LostItem        *LostItemResponse `json:"lost_item,omitempty"`
+	Messages        []MessageResponse `json:"messages"`
+	CreatedAt       time.Time         `json:"created_at"`
+	UpdatedAt       time.Time         `json:"updated_at"`
 }
 
 func toResponse(t *Ticket) Response {

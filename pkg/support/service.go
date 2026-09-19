@@ -82,10 +82,15 @@ type Auditor interface {
 	Record(ctx context.Context, action, resourceType, resourceID string, before, after any)
 }
 
-// Directory names a person for the team's alerts. Facultatif : sans lui,
-// l'alerte dit « un client ».
+// Directory names people — for the team's alerts, and on the rows the
+// console reads. Facultatif : sans lui, l'alerte dit « un client » et la
+// console lit des identifiants.
+//
+// ⚠️ Les noms ne sont rendus qu'à l'ADMINISTRATION. Un passager ne lit
+// jamais le nom du chauffeur sur un ticket, ni l'inverse : le fil existe
+// pour qu'ils n'aient pas à s'échanger leurs coordonnées.
 type Directory interface {
-	NameOf(ctx context.Context, userID string) string
+	NamesByIDs(ctx context.Context, ids []string) (map[string]string, error)
 }
 
 // Store is what the service needs from persistence — déclaré ici, côté
@@ -311,7 +316,36 @@ func (s *Service) List(ctx context.Context, userID, role string, q ListQuery, pa
 	for i := range items {
 		out = append(out, toResponse(&items[i]))
 	}
+	if role == auth.RoleAdmin {
+		s.name(ctx, out)
+	}
 	return out, next, nil
+}
+
+// name pose les noms sur des lignes destinées à l'administration. AU MIEUX :
+// un annuaire injoignable rend des lignes sans noms plutôt que pas de lignes.
+func (s *Service) name(ctx context.Context, rows []Response) {
+	if s.directory == nil || len(rows) == 0 {
+		return
+	}
+	seen := map[string]bool{}
+	var ids []string
+	for _, r := range rows {
+		for _, id := range []string{r.UserID, r.CounterpartID} {
+			if id != "" && !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	names, err := s.directory.NamesByIDs(ctx, ids)
+	if err != nil {
+		return
+	}
+	for i := range rows {
+		rows[i].UserName = names[rows[i].UserID]
+		rows[i].CounterpartName = names[rows[i].CounterpartID]
+	}
 }
 
 // Get returns one ticket to a participant or an admin.
@@ -321,6 +355,11 @@ func (s *Service) Get(ctx context.Context, userID, role, ticketID string) (*Resp
 		return nil, err
 	}
 	resp := toResponse(t)
+	if role == auth.RoleAdmin {
+		rows := []Response{resp}
+		s.name(ctx, rows)
+		resp = rows[0]
+	}
 	return &resp, nil
 }
 
@@ -478,8 +517,10 @@ func (s *Service) data(t *Ticket) map[string]string {
 
 func (s *Service) nameOf(ctx context.Context, userID, role string) string {
 	if s.directory != nil {
-		if n := strings.TrimSpace(s.directory.NameOf(ctx, userID)); n != "" {
-			return n
+		if names, err := s.directory.NamesByIDs(ctx, []string{userID}); err == nil {
+			if n := strings.TrimSpace(names[userID]); n != "" {
+				return n
+			}
 		}
 	}
 	switch role {
