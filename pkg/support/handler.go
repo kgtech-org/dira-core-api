@@ -13,10 +13,13 @@ import (
 
 type Handler struct {
 	svc *Service
-	// scope est la PORTÉE exigée d'un administrateur sur les routes
-	// `/admin` — `auth.ScopeVTC`, `auth.ScopeFood`. Un guichet de support
-	// est une route d'administration comme une autre : un membre dont le
-	// périmètre ne couvre pas la verticale n'y touche pas.
+	// scope est la PORTÉE exigée d'un ADMINISTRATEUR sur tout le guichet —
+	// `auth.ScopeVTC`, `auth.ScopeFood`. C'est ce qui fait que les plaintes
+	// des courses et celles de la livraison peuvent être tenues par DEUX
+	// profils de support : un membre dont le périmètre ne couvre pas la
+	// verticale ne lit pas sa file, n'y répond pas, ne la modifie pas.
+	// `RequireScope` laisse passer les autres rôles : la portée est une
+	// notion de staff. Vide quand la verticale pose déjà le garde à l'entrée.
 	scope string
 }
 
@@ -29,17 +32,15 @@ func NewHandler(svc *Service, scope string) *Handler {
 func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 	r.Group(func(g chi.Router) {
 		g.Use(authMW)
+		if h.scope != "" {
+			g.Use(middleware.RequireScope(h.scope))
+		}
 		g.Post("/tickets", h.create)
 		g.Get("/tickets", h.list)
 		g.Get("/tickets/{id}", h.get)
 		g.Post("/tickets/{id}/messages", h.addMessage)
 		g.Post("/tickets/{id}/lost-item", h.answerLostItem)
-
-		admin := chi.Chain(middleware.RequireRole(auth.RoleAdmin))
-		if h.scope != "" {
-			admin = chi.Chain(middleware.RequireRole(auth.RoleAdmin), middleware.RequireScope(h.scope))
-		}
-		g.With(admin...).Patch("/admin/tickets/{id}", h.update)
+		g.With(middleware.RequireRole(auth.RoleAdmin)).Patch("/admin/tickets/{id}", h.update)
 	})
 }
 

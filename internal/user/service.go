@@ -312,7 +312,9 @@ func (s *Service) Me(ctx context.Context, userID string) (UserResponse, error) {
 func (s *Service) userResponse(ctx context.Context, u *User) UserResponse {
 	out := newUserResponse(u)
 	if u.Role == auth.RoleAdmin {
-		out.CountryAny = s.entitlements(ctx, u).Direction
+		e := s.entitlements(ctx, u)
+		out.CountryAny = e.Direction
+		out.Scopes = e.Scopes
 	}
 	return out
 }

@@ -123,6 +123,12 @@ type UserResponse struct {
 	// le monde d'autre.
 	Country    string `json:"country,omitempty"`
 	CountryAny bool   `json:"country_any,omitempty"`
+	// Scopes sont les PORTÉES d'un membre du staff — `core`, `vtc`, `food`
+	// — telles que les verticales les vérifient. La console les lit pour ne
+	// proposer que les guichets que la personne couvre : un support « courses »
+	// n'a pas à voir un onglet « livraison » qui lui répondra 403. Absent pour
+	// tout le monde d'autre.
+	Scopes []string `json:"scopes,omitempty"`
 	// Preferences accompagne le compte : l'application les lit à chaque
 	// démarrage, et un appel séparé pour quatre interrupteurs serait un
 	// aller-retour de plus sur un réseau mobile.

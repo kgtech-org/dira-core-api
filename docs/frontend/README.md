@@ -293,6 +293,14 @@ application (`POST /tickets/{id}/lost-item { found }`) ; le passager reçoit
 L'équipe est alertée à chaque ouverture (`staff_ticket_opened`) et à
 chaque réponse sur un objet perdu (`staff_lost_item_answered`).
 
+⚠️ **Deux files, deux profils.** Les plaintes des courses et celles de la
+livraison ne sont jamais mêlées côté serveur : chaque guichet exige la
+PORTÉE de sa verticale d'un membre du staff (`vtc` ou `food`) — lire,
+répondre, modifier. Un support « courses » ne voit pas la file de la
+livraison, et inversement ; la console ne lui propose que la sienne
+(`GET /me` rend `scopes` aux administrateurs). Ne concerne pas les
+applications mobiles.
+
 ### 4.8.1 — 19 septembre 2026
 
 **Précision, rien ne change côté serveur** — **la photo et les noms du
