@@ -22,6 +22,8 @@ import (
 	"github.com/kgtech-org/dira-core-api/internal/payment"
 	"github.com/kgtech-org/dira-core-api/internal/token"
 	"github.com/kgtech-org/dira-core-api/internal/user"
+	"github.com/kgtech-org/dira-core-api/pkg/apperr"
+	"github.com/kgtech-org/dira-core-api/pkg/audit"
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
 )
 
@@ -130,6 +132,13 @@ type Handler struct {
 	payments   Payments
 	backoffice BackOffice
 	staff      StaffDirectory
+	journal    Journal
+}
+
+// Journal est le journal d'audit UNIQUE de la plateforme : ce qu'une
+// verticale expédie ici est rangé tel quel, avec le service qui l'a écrit.
+type Journal interface {
+	Store(ctx context.Context, e audit.Entry)
 }
 
 // StaffDirectory dit QUI, dans l'équipe, reçoit une alerte d'exploitation :
@@ -146,6 +155,9 @@ func NewHandler(a Accounts, w Wallets, n Notifier, p Payments, b BackOffice) *Ha
 // SetStaff branche l'annuaire du staff (câblage). Sans lui, les alertes du
 // staff sont acceptées et ne vont nulle part — journalisé.
 func (h *Handler) SetStaff(s StaffDirectory) { h.staff = s }
+
+// SetJournal branche le journal d'audit (câblage).
+func (h *Handler) SetJournal(j Journal) { h.journal = j }
 
 // Mount registers the routes under a middleware that checks the service token.
 func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler) {
@@ -171,6 +183,7 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 
 		g.Post("/internal/notifications/send", h.notify)
 		g.Post("/internal/notifications/staff", h.notifyStaff)
+		g.Post("/internal/audit", h.recordAudit)
 		g.Post("/internal/push/data", h.signal)
 		g.Post("/internal/payments/initiate", h.initiatePayment)
 
@@ -416,6 +429,29 @@ func (h *Handler) notify(w http.ResponseWriter, r *http.Request) {
 	// notification perdue ne doit jamais faire échouer ce qui l'a déclenchée.
 	// La verticale n'a donc rien à attendre non plus.
 	h.notifier.Notify(r.Context(), req.UserID, req.Key, req.Vars, req.Data)
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// POST /internal/audit — une entrée d'audit d'une verticale, rangée telle
+// quelle. 202 : l'appelant n'attend rien, et une entrée perdue ne doit pas
+// faire échouer l'action qu'elle documente — elle est journalisée ici.
+func (h *Handler) recordAudit(w http.ResponseWriter, r *http.Request) {
+	var e audit.Entry
+	if err := httpx.Decode(r, &e); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if e.Service == "" || e.Action == "" {
+		httpx.Error(w, r, apperr.Validation("service and action are required").
+			WithMeta(map[string]any{"fields": []string{"service", "action"}}))
+		return
+	}
+	if h.journal == nil {
+		slog.WarnContext(r.Context(), "serviceapi: audit entry dropped, no journal", "service", e.Service, "action", e.Action)
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+	h.journal.Store(r.Context(), e)
 	w.WriteHeader(http.StatusAccepted)
 }
 

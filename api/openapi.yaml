@@ -689,6 +689,50 @@ paths:
       parameters: [{name: id, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Reviews}
+  /admin/audit:
+    get:
+      tags: [admin]
+      summary: The platform's audit journal — every service, one timeline
+      description: >-
+        UN SEUL JOURNAL. Chaque service tenait le sien et la console ne lisait
+        que celui de la livraison : une suspension de compte (socle), une
+        immobilisation de véhicule (courses) n'apparaissaient nulle part. Les
+        verticales écrivent désormais ici (`POST /internal/audit`), chaque
+        entrée porte `service` ∈ `core` · `vtc` · `food`, et cette route rend
+        tout, du plus récent au plus ancien.
+      parameters:
+        - {name: service, in: query, schema: {type: string, enum: [core, vtc, food]}}
+        - {name: actor_id, in: query, schema: {type: string}}
+        - {name: action, in: query, schema: {type: string}}
+        - {name: resource_id, in: query, schema: {type: string}}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: limit, in: query, schema: {type: integer}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        "200":
+          description: Entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string}
+                        service: {type: string}
+                        actor_id: {type: string}
+                        actor_role: {type: string}
+                        action: {type: string, example: ticket.update}
+                        resource_type: {type: string}
+                        resource_id: {type: string}
+                        before: {type: object}
+                        after: {type: object}
+                        created_at: {type: string, format: date-time}
+                  next_cursor: {type: string}
   /admin/users:
     get:
       tags: [admin]

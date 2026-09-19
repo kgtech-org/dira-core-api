@@ -33,7 +33,7 @@ pkg/media       video probing and transcoding
 pkg/i18n        French/English message catalogue
 pkg/jobs        Asynq client
 pkg/docs        Swagger UI + OpenAPI serving (the contract is passed in)
-pkg/audit       audit-log recorder
+pkg/audit       the platform's ONE audit journal — the core writes it, the verticals ship to it
 pkg/diramaps    dira-maps client (route duration, landmarks)
 pkg/chat        the client ↔ driver conversation — BEHAVIOUR, not storage
 pkg/support     the support desk: tickets, the thread, the LOST-ITEM case — same shape as pkg/chat
@@ -117,6 +117,7 @@ wallet, open an account, notify someone in their name. No person ever calls them
 | `POST /internal/wallets/{create,consume,credit,pay,refund,credit-earnings}` | move money |
 | `POST /internal/wallets/balance` | read a balance — what the VTC checks before calling drivers for a ride the balance will pay at acceptance |
 | `POST /internal/notifications/send` | send one templated message |
+| `POST /internal/audit` | one audit entry from a vertical, stored as is with its `service` — the console reads every service's entries at `GET /admin/audit` |
 | `POST /internal/notifications/staff` | one operations alert to every active staff member whose scope covers the vertical (and country, unless direction) — `staff_dispatch_failed`, `staff_document_submitted`, `staff_driver_pending`, `staff_ticket_opened`, `staff_lost_item_answered` |
 | `POST /internal/payments/initiate` | start a payment on a client's behalf (WhatsApp) |
 | `POST /internal/backoffice/{wallets,token-transactions,payments}` | read the money, **raw** — ids, not names |
