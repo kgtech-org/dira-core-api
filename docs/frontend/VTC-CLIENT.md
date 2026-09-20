@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.9.0** · 19 septembre 2026
+> **Version 4.10.0** · 20 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -436,8 +436,12 @@ devis, le parcours est ce qu'on montre dans le détail et le reçu.
 
 **La carte du chauffeur (v3.8.0).** Dès `accepted`, `GET /rides/{id}` porte
 `driver` : `{ id, name, rating_avg, rating_count, rides_count,
-vehicle: { class_key, brand, model, license_plate, color } }` — qui vient,
-dans quelle voiture, avec quelle note. `id` est le **profil** du chauffeur,
+vehicle: { class_key, brand, model, license_plate, color, description, photo_url } }`
+— qui vient, dans quelle voiture, avec quelle note. **`description`
+(v4.10.0)** est GÉNÉRÉE — *marque modèle couleur*, « Toyota Avensis rouge » :
+c'est ce que le passager guette, à afficher avec la **plaque** ;
+`photo_url` est la photo de couverture du véhicule, quand le chauffeur en a
+déposé une. `id` est le **profil** du chauffeur,
 celui dont `GET /agents/{id}/ratings` liste les avis. Absente sur la liste
 `GET /rides` : c'est le détail qui la porte. Pas de téléphone : la mise en
 relation passe par la conversation (§7).

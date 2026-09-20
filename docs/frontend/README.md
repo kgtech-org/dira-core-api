@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.9.0** · 19 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.10.0** · 20 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -267,6 +267,18 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.10.0 — 20 septembre 2026
+
+**Ajout rétrocompatible** — **le véhicule : couleur, description générée,
+galerie de photos.** Tout véhicule rendu (courses **et** livraison) porte
+`description`, générée par le serveur — *marque modèle couleur*, « Toyota
+Avensis rouge » — à afficher telle quelle, jamais à saisir ; `color` se
+propose au formulaire. `images[]` (8 au plus, jamais `null`) porte toutes
+les photos, `photo_url` la couverture (celle choisie, sinon la première) ;
+en modification, `images` remplace la galerie. La carte du chauffeur d'une
+course (`driver.vehicle`) porte `description` et `photo_url`.
+(`VTC-DRIVER.md` §2, `VTC-CLIENT.md` §5, `FOOD-DELIVERY.md` §2.)
 
 ### 4.9.0 — 19 septembre 2026
 
