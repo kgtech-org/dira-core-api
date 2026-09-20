@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.9.0** · 19 septembre 2026
+> **Version 4.10.0** · 20 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -171,7 +171,7 @@ session** : la résolution du démarrage suivant peut le changer.
 ```
 POST   /auth/register       { phone (E.164, avec le +), name, password, role: "driver", first_name?, last_name? }
 GET    /me · PATCH /me · PATCH /me/preferences
-POST   /agent/vehicles      { type, brand?, model?, license_plate?, color?, photo_url?, capacity? }
+POST   /agent/vehicles      { type, brand?, model?, license_plate?, color?, photo_url?, images?, capacity? }
 GET    /agent/vehicles
 PATCH  /agent/vehicles/{id}
 PATCH  /agent/active-vehicle   { vehicle_id }
@@ -182,6 +182,15 @@ PATCH  /agent/availability     { available }
 - **Un `422` nomme ses champs — v3.0.0.** `fields` liste les clés JSON en cause : soulignez ces cases. `reason: unknown_field` signifie que l'app envoie une clé que la route ne connaît pas — c'est refusé, pas ignoré, et c'est un bug à corriger côté app. `first_name` / `last_name` sont désormais **acceptés** à l'inscription.
 - **`account_suspended` (403)** à la connexion : le compte est suspendu, le mot de passe est bon — le dire tel quel.
 - `type` ∈ `moto` · `velo` · `voiture` · `pieton` · `tricycle`. `capacity` = courses simultanées.
+- **Couleur, description, photos (v4.10.0).** Chaque véhicule rendu porte
+  **`description`**, GÉNÉRÉE — *marque modèle couleur* (« Yamaha Crypton
+  rouge » ; sans marque ni modèle, le type parle : « moto rouge ») : à
+  afficher telle quelle, jamais à saisir. `color` se propose au formulaire
+  avec la marque et le modèle. **`images[]`** : toutes les photos (**8 au
+  plus**, jamais `null`), chacune téléversée d'abord par
+  `POST /uploads?kind=vehicle` → `{ url }` ; **`photo_url`** est la
+  couverture (celle choisie, sinon la première). En `PATCH`, `images`
+  **remplace** la galerie.
 
 ### Le compte — la photo, le nom d'affichage, le prénom et le nom (v4.8.1)
 

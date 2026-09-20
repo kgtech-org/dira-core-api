@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.9.0** · 19 septembre 2026
+> **Version 4.10.0** · 20 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -148,10 +148,27 @@ GET   /drivers/me                   → crée le profil au premier appel
 GET   /drivers/me/stats?date=YYYY-MM-DD&tz=Africa/Lome   → { rides, driver_xof, online_s }   (v3.1.0)
 PATCH /drivers/me/online            { "online": true | false }
 GET   /drivers/me/vehicles
-POST  /drivers/me/vehicles          { class_key, brand, model, license_plate, color, seats, photo_url }
-                                    photo_url : téléverser d'abord — POST /api/v1/uploads?kind=vehicle (SOCLE, v3.0.0)
+POST  /drivers/me/vehicles          { class_key, brand, model, license_plate, color, seats, photo_url?, images? }
+                                    images / photo_url : téléverser d'abord — POST /api/v1/uploads?kind=vehicle (SOCLE, v3.0.0)
 PATCH /drivers/me/active-vehicle    { "vehicle_id": "…" }
 ```
+
+> **Le véhicule — couleur, description, photos (v4.10.0).** Chaque véhicule
+> rendu porte :
+> - **`description`**, GÉNÉRÉE par le serveur — *marque modèle couleur* :
+>   « Toyota Avensis rouge ». Affichez-la telle quelle partout où un véhicule
+>   se nomme (liste, sélecteur, fiche) ; ne recomposez rien, ne la demandez
+>   jamais en saisie. `label` reste ce qu'on reconnaît dans la rue, avec la
+>   plaque (« Toyota Avensis · TG-4417 »).
+> - **`color`** : la couleur saisie au formulaire (« Rouge » — le serveur la
+>   met en minuscules dans la description). Proposez-la dans le formulaire de
+>   déclaration, au même titre que la marque et le modèle.
+> - **`images[]`** : toutes les photos du véhicule (extérieur, intérieur,
+>   plaque — **8 au plus**), jamais `null`, dans l'ordre de dépôt ;
+>   **`photo_url`** est la COUVERTURE (celle choisie, sinon la première).
+>   Formulaire : chaque photo passe d'abord par `POST /uploads?kind=vehicle`
+>   → `{ url }`, puis la liste des URLs part dans `images` ; `photo_url`
+>   facultatif. Un envoi qui échoue ne doit pas faire perdre la saisie.
 
 ```json
 { "id": "…", "user_id": "…", "active_vehicle_id": "…", "zone": "Lomé Centre",
