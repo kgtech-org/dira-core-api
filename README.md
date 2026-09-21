@@ -50,7 +50,7 @@ pkg/country     the COUNTRY layer: catalog, borders, request country, the `count
 > or the public reads. Borders are **embedded** (`borders.json`, geoBoundaries ADM0
 > simplified to ~100 m) so any service can locate a point without a database.
 > Which countries are **open** is decided in core's `countries` collection, from
-> the console — Togo, Senegal and Guinea are opened at first start
+> the console — Togo, Senegal, Guinea, Chad and Gabon are opened at first start
 > (`country.Preloaded`); the catalog (with currencies and phone prefixes) is code,
 > because opening a country needs a deployment anyway.
 

@@ -155,8 +155,8 @@ paths:
         PUBLIC. Les pays OUVERTS, avec leur fiche : nom, MONNAIE (code,
         symbole, décimales — ce qu'il faut pour afficher un montant),
         indicatif, langue, fuseau, centre. `default` nomme le pays du déploiement —
-        celui qu'une requête sans jeton ni en-tête reçoit. Trois pays sont
-        ouverts d'office : Togo, Sénégal, Guinée. Une application
+        celui qu'une requête sans jeton ni en-tête reçoit. Cinq pays sont
+        ouverts d'office : Togo, Sénégal, Guinée, Tchad, Gabon. Une application
         s'en sert avant toute connexion : proposer l'indicatif à
         l'inscription, dire « Dira n'est pas encore chez vous ».
       responses:
