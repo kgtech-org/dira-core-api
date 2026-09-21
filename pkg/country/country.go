@@ -45,7 +45,8 @@ type Info struct {
 }
 
 // Catalog est la liste des pays où Dira PEUT s'installer : l'UEMOA, la
-// Guinée, et les voisins anglophones ou de la zone CFA d'Afrique centrale.
+// Guinée, les voisins anglophones, et la zone CFA d'Afrique centrale
+// (Cameroun, Tchad, Gabon).
 //
 // ⚠️ Ce n'est pas la liste des pays où Dira EST installé — celle-là vit en
 // base, au socle (`internal/country`), et se règle depuis la console. Le
@@ -65,12 +66,14 @@ var Catalog = []Info{
 	{Code: "GH", Name: "Ghana", Currency: "GHS", PhonePrefix: "+233", Locale: "en", Timezone: "Africa/Accra", Center: [2]float64{-0.1870, 5.6037}},
 	{Code: "NG", Name: "Nigeria", Currency: "NGN", PhonePrefix: "+234", Locale: "en", Timezone: "Africa/Lagos", Center: [2]float64{3.3792, 6.5244}},
 	{Code: "CM", Name: "Cameroun", Currency: "XAF", PhonePrefix: "+237", Locale: "fr", Timezone: "Africa/Douala", Center: [2]float64{9.7679, 4.0511}},
+	{Code: "TD", Name: "Tchad", Currency: "XAF", PhonePrefix: "+235", Locale: "fr", Timezone: "Africa/Ndjamena", Center: [2]float64{15.0600, 12.1100}},
+	{Code: "GA", Name: "Gabon", Currency: "XAF", PhonePrefix: "+241", Locale: "fr", Timezone: "Africa/Libreville", Center: [2]float64{9.4500, 0.4100}},
 }
 
 // Preloaded sont les pays OUVERTS D'OFFICE au démarrage du socle : ceux où
 // Dira se lance. Ouverts s'ils n'ont jamais été enregistrés — fermer l'un
 // d'eux depuis la console tient, un redémarrage ne le rouvre pas.
-var Preloaded = []string{"TG", "SN", "GN"}
+var Preloaded = []string{"TG", "SN", "GN", "TD", "GA"}
 
 // Normalize rend le code en majuscules, ou "" si ce n'est pas un code alpha-2.
 //

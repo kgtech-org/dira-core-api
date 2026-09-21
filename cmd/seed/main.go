@@ -169,6 +169,8 @@ var countryOps = []struct {
 	{"TG", "Togo", "Exploitation Lomé", "ops.tg@dira.llc", "+22890000101"},
 	{"SN", "Sénégal", "Exploitation Dakar", "ops.sn@dira.llc", "+221770000101"},
 	{"GN", "Guinée", "Exploitation Conakry", "ops.gn@dira.llc", "+224620000101"},
+	{"TD", "Tchad", "Exploitation N'Djamena", "ops.td@dira.llc", "+23566000101"},
+	{"GA", "Gabon", "Exploitation Libreville", "ops.ga@dira.llc", "+24106000101"},
 }
 
 // envOr returns the environment value for key, or def when unset/blank.

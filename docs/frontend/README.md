@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.11.0** · 21 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.11.1** · 21 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -267,6 +267,15 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.11.1 — 21 septembre 2026
+
+**Sans changement de contrat** — **deux pays ouverts de plus : le Tchad
+(`TD`, +235, XAF, N'Djamena) et le Gabon (`GA`, +241, XAF, Libreville).**
+`GET /countries` les rend désormais d'office avec le Togo, le Sénégal et la
+Guinée ; l'indicatif décide du pays du compte à l'inscription ;
+`POST /me/country/resolve` les situe (frontières embarquées). Les montants y
+sont en francs CFA d'Afrique centrale (`XAF`, symbole `FCFA`, 0 décimale).
 
 ### 4.11.0 — 21 septembre 2026
 

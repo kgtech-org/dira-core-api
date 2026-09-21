@@ -19,6 +19,9 @@ func TestLocate(t *testing.T) {
 		{"Accra", -0.1870, 5.6037, "GH", true},
 		{"Lagos", 3.3792, 6.5244, "NG", true},
 		{"Douala", 9.7679, 4.0511, "CM", true},
+		{"N'Djamena", 15.0600, 12.1100, "TD", true},
+		{"Libreville", 9.4500, 0.4100, "GA", true},
+		{"Port-Gentil", 8.7815, -0.7193, "GA", true},
 		{"en mer devant Lomé", 1.2255, 5.9000, "", false},
 		{"Paris", 2.3522, 48.8566, "", false},
 	}
