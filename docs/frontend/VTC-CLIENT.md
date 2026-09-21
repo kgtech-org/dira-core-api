@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.12.0** · 21 septembre 2026
+> **Version 4.12.1** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -400,6 +400,8 @@ aucune réponse, et sont refusés en entrée) :
 GET /rides/{id}
 GET /rides?cursor=…     # l'historique de VOS courses, page par page
 ```
+
+L'historique rend **les plus récentes d'abord** — par date de création, puis identifiant (v4.12.1) ; `?cursor=` est l'identifiant de la dernière course reçue et rend la page suivante, plus ancienne.
 
 ### Quand personne ne répond — `dispatch_state` et la relance (v4.1.0)
 

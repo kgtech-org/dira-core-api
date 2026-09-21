@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.12.0** · 21 septembre 2026
+> **Version 4.12.1** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -336,6 +336,8 @@ POST /orders/{id}/cancel
 ```
 
 `?status=` prend plusieurs statuts séparés par des virgules — c'est l'onglet « en cours » qui en couvre six. Un statut inconnu est **refusé** plutôt que rendu vide.
+
+**Les plus récentes d'abord** (v4.12.1) : la liste est triée par date de création, la dernière commande en tête, et `?cursor=` (l'identifiant de la dernière ligne reçue) rend la page suivante, plus ancienne. Avant, la liste commençait par la plus ancienne — n'inversez plus rien côté application.
 
 Les neuf statuts :
 

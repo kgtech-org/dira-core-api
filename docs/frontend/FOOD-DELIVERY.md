@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.12.0** · 21 septembre 2026
+> **Version 4.12.1** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -376,7 +376,19 @@ POST /deliveries/{id}/accept
 POST /deliveries/{id}/pickups/{pickup_id}/done
 POST /deliveries/{id}/complete
 GET  /deliveries/{id}
+GET  /deliveries?status=&limit=&cursor=     # VOS courses, les plus récentes d'abord (v4.12.1)
 ```
+
+**`GET /deliveries`** rend les courses qui vous ont été **attribuées** — en
+cours et passées — triées par date de création, la dernière en tête ;
+`?cursor=` (l'identifiant de la dernière ligne reçue) rend la page suivante,
+plus ancienne. `?status=` prend plusieurs statuts séparés par des virgules
+(`accepted,picking_up,in_transit` = l'onglet « en cours »,
+`completed,cancelled` = l'historique) ; un statut inconnu est **refusé**.
+Chaque ligne a la forme de `/deliveries/available` (sans les collectes ni le
+client) : ouvrez `GET /deliveries/{id}` pour la course active. C'est aussi
+par là qu'une application **retrouve sa course en cours** après un
+redémarrage — plus besoin d'en garder l'identifiant en local.
 
 | Réponse | Signification | Conduite |
 |---|---|---|

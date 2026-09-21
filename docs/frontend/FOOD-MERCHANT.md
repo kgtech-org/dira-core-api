@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 4.12.0** · 21 septembre 2026
+> **Version 4.12.1** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -273,6 +273,8 @@ PATCH /stores/{id}/orders/{order_id}/status   { status: "preparing" | "ready" }
 `?status=` porte les onglets « Nouvelle / En préparation / Avec le livreur / Terminée ». Plusieurs statuts **élargissent**, et le filtre est appliqué par la **base** : filtrer une page déjà paginée donnerait des pages courtes et un curseur qui saute.
 
 `?q=` cherche dans les **noms de plats** de la commande — « le client qui avait pris du poulet ». Un identifiant complet retrouve la commande exacte.
+
+**La nouvelle est en tête** (v4.12.1) : triée par date de création, la plus récente d'abord — c'est ce que cette spec promettait, et jusqu'à la v4.12.0 le serveur rendait l'inverse. `?cursor=` (l'identifiant de la dernière ligne reçue) descend vers les plus anciennes.
 
 Seuls `preparing` et `ready` sont à la main du marchand. Le reste suit le livreur :
 `accepted` (il part au restaurant) → `picking_up` (il retire) → `in_transit`
