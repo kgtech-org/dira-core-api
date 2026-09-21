@@ -203,8 +203,22 @@ func (f *fakeRepo) ListTransactionsNewest(_ context.Context, walletID primitive.
 	return items, next, nil
 }
 
+// WithTransaction reproduit le SEUL effet de l'annulation dont un test
+// dépend : une clé réservée dans une transaction qui échoue redevient libre.
 func (f *fakeRepo) WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error {
-	return fn(ctx)
+	f.mu.Lock()
+	before := make(map[string]bool, len(f.operations))
+	for k, v := range f.operations {
+		before[k] = v
+	}
+	f.mu.Unlock()
+	err := fn(ctx)
+	if err != nil {
+		f.mu.Lock()
+		f.operations = before
+		f.mu.Unlock()
+	}
+	return err
 }
 
 func (f *fakeRepo) balanceOf(ownerID primitive.ObjectID) int {
@@ -723,6 +737,13 @@ func TestEquipmentChargeTakesAllOrWhatThereIs(t *testing.T) {
 	taken, err := svc.ChargeEquipment(ctx, owner, 2000, false, contract, "equipment:"+contract+":1")
 	require.NoError(t, err)
 	assert.Equal(t, 0, taken)
+	// … et la clé reste libre : une fois le solde crédité, le même balayage
+	// (même clé du jour) doit pouvoir prélever.
+	require.NoError(t, svc.CreditEarnings(ctx, owner, 1000, ReasonDeliveryFee, RefOrder, primitive.NewObjectID().Hex(), nil))
+	taken, err = svc.ChargeEquipment(ctx, owner, 2000, false, contract, "equipment:"+contract+":1")
+	require.NoError(t, err)
+	assert.Equal(t, 2000, taken)
+	require.NoError(t, svc.CreditEarnings(ctx, owner, 1000, ReasonDeliveryFee, RefOrder, primitive.NewObjectID().Hex(), nil))
 
 	// Avec partiel, ce qu'il y a.
 	taken, err = svc.ChargeEquipment(ctx, owner, 2000, true, contract, "equipment:"+contract+":2")
