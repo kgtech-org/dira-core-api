@@ -319,7 +319,7 @@ paths:
         ⚠️ Le type est celui DÉCLARÉ par la part multipart ; le serveur ne
         renifle pas le contenu.
       parameters:
-        - {in: query, name: kind, required: true, schema: {type: string, enum: [avatar, vehicle, dish, store, brand, feed, banner, class]}, description: "préfixe de la clé d'objet ; `class` = pictogrammes des modes de véhicule (console)"}
+        - {in: query, name: kind, required: true, schema: {type: string, enum: [avatar, vehicle, dish, store, brand, feed, banner, class, equipment]}, description: "préfixe de la clé d'objet ; `class` = pictogrammes des modes de véhicule, `equipment` = photos du matériel du catalogue (console)"}
         - {in: query, name: entity, schema: {type: string}, description: identifiant facultatif qui regroupe les objets}
       requestBody:
         required: true
