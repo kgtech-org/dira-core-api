@@ -25,6 +25,9 @@ var Kinds = map[string]bool{
 	// d'affichage et l'icône de carte, envoyées depuis la console. Images
 	// seules, petites : un pictogramme n'est pas une photo.
 	"class": true,
+	// Photos du MATÉRIEL du catalogue (internal/equipment) — gilet, sac,
+	// téléphone — envoyées depuis la console. Images seules.
+	"equipment": true,
 }
 
 // AllowedTypes maps accepted IMAGE content types to file extensions.
