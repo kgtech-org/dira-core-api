@@ -532,6 +532,35 @@ paths:
                 justification: {type: string, minLength: 3, maxLength: 500}
       responses:
         "200": {description: Wallet}
+  /admin/wallets:
+    get:
+      tags: [wallet]
+      summary: Les portefeuilles du pays courant — quatre soldes et le titulaire
+      parameters:
+        - {name: type, in: query, schema: {type: string, enum: [client, driver, merchant]}}
+        - {name: owner_id, in: query, schema: {type: string}}
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, maximum: 100}}
+      responses:
+        "200": {description: "Wallets — `balance` (jetons), `balance_xof`, `promo_xof`, `debt_xof`, `owner_name` pour un compte (une boutique reste un identifiant)"}
+  /admin/ledger:
+    get:
+      tags: [wallet]
+      summary: Les mouvements de tous les portefeuilles du pays courant, les derniers d'abord
+      description: >-
+        Chaque ligne dit son UNITÉ (`token` ou `xof`), son motif, ce qu'elle
+        paie (`ref_kind`, `ref_id`), son titulaire, et `ref` (la source d'un
+        paiement, `debt_delta` d'un mouvement de dette).
+      parameters:
+        - {name: wallet_id, in: query, schema: {type: string}}
+        - {name: owner_type, in: query, schema: {type: string, enum: [client, driver, merchant]}}
+        - {name: unit, in: query, schema: {type: string, enum: [token, xof]}}
+        - {name: reason, in: query, schema: {type: string}}
+        - {name: ref_kind, in: query, schema: {type: string}}
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, maximum: 100}}
+      responses:
+        "200": {description: Ledger rows}
   /admin/wallets/{ownerID}/settle-debt:
     post:
       tags: [wallet]

@@ -1,6 +1,7 @@
 package token
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -14,9 +15,32 @@ import (
 // Handler exposes the token HTTP endpoints.
 type Handler struct {
 	svc *Service
+	// backoffice : les lectures de la console — tous les portefeuilles du
+	// pays, tous les mouvements. Facultatif : le dépôt Mongo l'implémente.
+	backoffice BackOfficeReader
+	// names nomme les propriétaires des portefeuilles de COMPTES (clients,
+	// livreurs, chauffeurs) ; un portefeuille de boutique reste un
+	// identifiant — le socle ne sait pas ce qu'est un point de vente.
+	names NameResolver
+}
+
+// BackOfficeReader : les listes de la console.
+type BackOfficeReader interface {
+	ListWallets(ctx context.Context, walletType, ownerID, cursor string, limit int) ([]WalletRow, string, error)
+	ListLedgerFiltered(ctx context.Context, f LedgerFilter, cursor string, limit int) ([]LedgerRow, string, error)
+}
+
+// NameResolver rend les noms de comptes.
+type NameResolver interface {
+	UserNames(ctx context.Context, ids []string) (map[string]string, error)
 }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
+
+// SetBackOffice branche les listes de la console (câblage).
+func (h *Handler) SetBackOffice(r BackOfficeReader, names NameResolver) {
+	h.backoffice, h.names = r, names
+}
 
 // Mount registers the PORTEFEUILLE routes on the /api/v1 router.
 // authMW is the JWT middleware built at wiring time.
@@ -45,6 +69,9 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		// Solde d'UN portefeuille, prix unitaire compris. La console lisait
 		// jusqu'ici la liste complète des portefeuilles pour y chercher le
 		// sien : correct sur un jeu de démo, faux dès la deuxième page.
+		// La console : tous les portefeuilles du pays, tous les mouvements.
+		g.Get("/admin/wallets", h.adminWallets)
+		g.Get("/admin/ledger", h.adminLedger)
 		g.Get("/admin/wallets/{ownerID}", h.adminWallet)
 		// Les deux gestes de recharge, indexés sur le PROPRIÉTAIRE du
 		// portefeuille : un opérateur a une ligne de portefeuille sous les
@@ -94,6 +121,94 @@ func (h *Handler) adminPromo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, wallet)
+}
+
+// GET /admin/wallets?type=&owner_id=&cursor=&limit= — les portefeuilles du
+// pays courant, avec leurs quatre soldes et le nom du titulaire.
+func (h *Handler) adminWallets(w http.ResponseWriter, r *http.Request) {
+	if h.backoffice == nil {
+		httpx.Error(w, r, apperr.NotFound("not_found", "resource not found"))
+		return
+	}
+	q := r.URL.Query()
+	page := httpx.PageFromRequest(r)
+	items, next, err := h.backoffice.ListWallets(r.Context(), q.Get("type"), q.Get("owner_id"), page.Cursor, page.Limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	names := h.namesOf(r.Context(), items, func(i int) (string, string) { return items[i].OwnerID, items[i].Type })
+	type row struct {
+		WalletRow
+		OwnerName string `json:"owner_name,omitempty"`
+	}
+	out := make([]row, 0, len(items))
+	for _, it := range items {
+		out = append(out, row{WalletRow: it, OwnerName: names[it.OwnerID]})
+	}
+	httpx.List(w, out, next)
+}
+
+// GET /admin/ledger?wallet_id=&owner_type=&unit=&reason=&ref_kind=&cursor=&limit=
+// — les mouvements de tous les portefeuilles du pays courant, les derniers
+// d'abord, avec le titulaire.
+func (h *Handler) adminLedger(w http.ResponseWriter, r *http.Request) {
+	if h.backoffice == nil {
+		httpx.Error(w, r, apperr.NotFound("not_found", "resource not found"))
+		return
+	}
+	q := r.URL.Query()
+	page := httpx.PageFromRequest(r)
+	items, next, err := h.backoffice.ListLedgerFiltered(r.Context(), LedgerFilter{
+		WalletID: q.Get("wallet_id"), OwnerType: q.Get("owner_type"), Unit: q.Get("unit"),
+		Reason: q.Get("reason"), RefKind: q.Get("ref_kind"),
+	}, page.Cursor, page.Limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	names := h.namesOf(r.Context(), items, func(i int) (string, string) { return items[i].OwnerID, items[i].OwnerType })
+	type row struct {
+		LedgerRow
+		OwnerName string `json:"owner_name,omitempty"`
+	}
+	out := make([]row, 0, len(items))
+	for _, it := range items {
+		out = append(out, row{LedgerRow: it, OwnerName: names[it.OwnerID]})
+	}
+	httpx.List(w, out, next)
+}
+
+// namesOf nomme les titulaires qui sont des COMPTES (pas les boutiques).
+func (h *Handler) namesOf(ctx context.Context, items any, at func(i int) (id, kind string)) map[string]string {
+	if h.names == nil {
+		return nil
+	}
+	n := 0
+	switch v := items.(type) {
+	case []WalletRow:
+		n = len(v)
+	case []LedgerRow:
+		n = len(v)
+	}
+	seen := map[string]bool{}
+	var ids []string
+	for i := 0; i < n; i++ {
+		id, kind := at(i)
+		if kind == WalletTypeMerchant || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	names, err := h.names.UserNames(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	return names
 }
 
 // POST /admin/wallets/{ownerID}/settle-debt — { amount_xof, note } : une

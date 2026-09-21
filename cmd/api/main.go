@@ -406,6 +406,9 @@ func run(logger *slog.Logger) error {
 		// que si les collaborateurs sont branchés — ils ne le sont pas, et des
 		// routes qui échouent seraient pires que des routes absentes.
 		tokenHandler := token.NewHandler(tokenSvc)
+		// Les listes de la console (tous les portefeuilles, tous les
+		// mouvements du pays), avec le nom des titulaires qui sont des comptes.
+		tokenHandler.SetBackOffice(tokenRepo, userSvc)
 		tokenHandler.Mount(r, authMW)
 		tokenHandler.MountCatalogueSpending(r, authMW)
 		// ⚠️ La confirmation manuelle d'un encaissement n'est ouverte qu'HORS
