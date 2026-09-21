@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.12.1** · 21 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.13.0** · 21 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -267,6 +267,15 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.13.0 — 21 septembre 2026
+
+**Ajout rétrocompatible** — **les marqueurs de carte hors véhicules se
+règlent depuis la console** : `GET /map-markers` (public, socle) rend
+toujours quatre genres — `courier`, `client`, `merchant`, `stop` — avec
+deux images facultatives chacun, `icon_url` et `map_icon_url`, comme un
+mode de véhicule. Absentes, l'application garde son pictogramme. Chaque
+spec dit quel genre dessine quoi sur ses cartes.
 
 ### 4.12.1 — 21 septembre 2026
 

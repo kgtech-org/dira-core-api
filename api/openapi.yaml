@@ -50,6 +50,8 @@ servers:
 tags:
   - name: countries
     description: La couche pays — où Dira est ouvert, dans quel pays je suis
+  - name: map-markers
+    description: Les marqueurs de carte hors véhicules — livreur, client, marchand, arrêt — et leurs images
   - name: auth
     description: Inscription, connexion, rotation de jeton
   - name: users
@@ -251,6 +253,54 @@ paths:
         "404": {description: country_unknown — not in the catalog}
         "409": {description: country_default — the default country cannot be closed}
         "422": {description: unknown currency, or nothing to update}
+  /map-markers:
+    get:
+      tags: [map-markers]
+      summary: The platform's map markers — courier, client, merchant, stop — with their images
+      description: >-
+        PUBLIC, sans jeton : une application dessine des cartes avant même la
+        connexion. Toujours les QUATRE genres, dans cet ordre — `courier` (le
+        livreur ; le chauffeur VTC est dessiné par son mode de véhicule),
+        `client`, `merchant` (le point de vente, la collecte), `stop` (le
+        départ ou une étape d'une course, quand ce n'est ni le client ni un
+        marchand). Chacun porte deux images FACULTATIVES, comme un mode de
+        véhicule : `icon_url` (à côté d'un nom, dans une liste) et
+        `map_icon_url` (dans la pastille du marqueur). Absentes, gardez votre
+        pictogramme — le réglage ajoute, il ne retire rien. Mettez les images
+        en cache par URL : elles changent d'URL quand elles changent. Pour
+        toute la plateforme, pas par pays.
+      responses:
+        "200":
+          description: Markers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/MapMarker"}
+  /admin/map-markers/{kind}:
+    put:
+      tags: [admin, map-markers]
+      summary: Set (or clear) the images of a map marker
+      description: >-
+        Exploitation du socle. Les deux champs sont envoyés ensemble ; vide
+        = retirer l'image. Les images s'envoient par `POST /uploads?kind=marker`.
+      parameters:
+        - {name: kind, in: path, required: true, schema: {type: string, enum: [courier, client, merchant, stop]}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                icon_url: {type: string, format: uri}
+                map_icon_url: {type: string, format: uri}
+      responses:
+        "200": {description: Marker, content: {application/json: {schema: {$ref: "#/components/schemas/MapMarker"}}}}
+        "404": {description: marker_not_found — unknown kind}
   /me/preferences:
     patch:
       tags: [users]
@@ -328,7 +378,7 @@ paths:
         ⚠️ Le type est celui DÉCLARÉ par la part multipart ; le serveur ne
         renifle pas le contenu.
       parameters:
-        - {in: query, name: kind, required: true, schema: {type: string, enum: [avatar, vehicle, dish, store, brand, feed, banner, class, equipment]}, description: "préfixe de la clé d'objet ; `class` = pictogrammes des modes de véhicule, `equipment` = photos du matériel du catalogue (console)"}
+        - {in: query, name: kind, required: true, schema: {type: string, enum: [avatar, vehicle, dish, store, brand, feed, banner, class, equipment, marker]}, description: "préfixe de la clé d'objet ; `class` = pictogrammes des modes de véhicule, `equipment` = photos du matériel du catalogue, `marker` = pictogrammes des marqueurs de carte (console)"}
         - {in: query, name: entity, schema: {type: string}, description: identifiant facultatif qui regroupe les objets}
       requestBody:
         required: true
@@ -1217,6 +1267,14 @@ paths:
         "422": {description: status must be active or suspended}
 components:
   schemas:
+    MapMarker:
+      type: object
+      description: Un marqueur de carte hors véhicule et ses deux images facultatives.
+      properties:
+        kind: {type: string, enum: [courier, client, merchant, stop]}
+        icon_url: {type: string, format: uri, description: "à côté d'un nom, dans une liste"}
+        map_icon_url: {type: string, format: uri, description: "dans la pastille du marqueur"}
+        updated_at: {type: string, format: date-time}
     EquipmentPlan:
       type: object
       description: >-

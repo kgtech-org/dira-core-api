@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.12.1** · 21 septembre 2026
+> **Version 4.13.0** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -407,6 +407,31 @@ Attentes : reconnexion avec back-off, **interpolation** entre deux positions, et
 ⚠️ **La base d'URL du suivi est distincte de celle de l'API.** Deux variables d'environnement.
 
 ---
+
+Sur la carte du suivi : le livreur est `courier`, la boutique `merchant`, votre adresse `client`.
+
+### Les marqueurs de carte — `GET /map-markers` (v4.13.0)
+
+```
+GET /api/v1/map-markers          (public, SOCLE — sans `{PREFIX}`)
+```
+
+```json
+{ "items": [
+  { "kind": "courier",  "icon_url": "https://files.dira.llc/marker/…/courier.png", "map_icon_url": "https://files.dira.llc/marker/…/courier-map.png" },
+  { "kind": "client" }, { "kind": "merchant" }, { "kind": "stop" } ] }
+```
+
+Toujours les **quatre genres**, dans cet ordre : `courier` (le livreur — le
+chauffeur VTC est dessiné par son mode de véhicule, `GET /classes`),
+`client`, `merchant` (le point de vente, la collecte), `stop` (le départ ou
+une étape d'une course, quand ce n'est ni le client ni un marchand). Chacun
+porte deux images **facultatives**, réglées depuis la console : `icon_url`
+(à côté d'un nom, dans une liste) et `map_icon_url` (dans la pastille du
+marqueur). **Absentes, gardez votre pictogramme** — le réglage ajoute, il ne
+retire rien. Lisez la liste à l'ouverture, mettez les images en cache par
+URL (elles changent d'URL quand elles changent). Pour toute la plateforme,
+pas par pays.
 
 ## 6. Parler au livreur — sans échanger de numéros
 

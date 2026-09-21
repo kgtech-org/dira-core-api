@@ -28,6 +28,10 @@ var Kinds = map[string]bool{
 	// Photos du MATÉRIEL du catalogue (internal/equipment) — gilet, sac,
 	// téléphone — envoyées depuis la console. Images seules.
 	"equipment": true,
+	// Pictogrammes des MARQUEURS DE CARTE hors véhicules (internal/marker) :
+	// livreur, client, marchand, arrêt — deux images par genre, comme un
+	// mode. Images seules, petites.
+	"marker": true,
 }
 
 // AllowedTypes maps accepted IMAGE content types to file extensions.

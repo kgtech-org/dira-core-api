@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.12.1** · 21 septembre 2026
+> **Version 4.13.0** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -233,6 +233,31 @@ Les classes proposées à la déclaration viennent de `GET /classes` (public) :
 `icon_url` + `name` tels que servis** — les modes se règlent depuis la
 console, et un mode peut s'ajouter (v4.5.0). Le `class` d'un appel (§3)
 est la `key`.
+
+Sur la carte d'une course : le départ et chaque étape sont `stop`, l'arrivée `client`.
+
+### Les marqueurs de carte — `GET /map-markers` (v4.13.0)
+
+```
+GET /api/v1/map-markers          (public, SOCLE — sans `{PREFIX}`)
+```
+
+```json
+{ "items": [
+  { "kind": "courier",  "icon_url": "https://files.dira.llc/marker/…/courier.png", "map_icon_url": "https://files.dira.llc/marker/…/courier-map.png" },
+  { "kind": "client" }, { "kind": "merchant" }, { "kind": "stop" } ] }
+```
+
+Toujours les **quatre genres**, dans cet ordre : `courier` (le livreur — le
+chauffeur VTC est dessiné par son mode de véhicule, `GET /classes`),
+`client`, `merchant` (le point de vente, la collecte), `stop` (le départ ou
+une étape d'une course, quand ce n'est ni le client ni un marchand). Chacun
+porte deux images **facultatives**, réglées depuis la console : `icon_url`
+(à côté d'un nom, dans une liste) et `map_icon_url` (dans la pastille du
+marqueur). **Absentes, gardez votre pictogramme** — le réglage ajoute, il ne
+retire rien. Lisez la liste à l'ouverture, mettez les images en cache par
+URL (elles changent d'URL quand elles changent). Pour toute la plateforme,
+pas par pays.
 
 ---
 
