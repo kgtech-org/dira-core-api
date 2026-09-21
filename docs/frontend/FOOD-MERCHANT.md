@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 4.12.1** · 21 septembre 2026
+> **Version 4.13.0** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -656,6 +656,31 @@ La maquette porte `roleManager`, `roleKitchen`, `roleTill` et `roleDriver`. L'AP
 La liste dessinée montre un numéro par membre. `GET /me/staff` rend `name`, `role`, `store_id`, `capabilities` — **pas de téléphone**.
 
 > Le téléphone sert à **ouvrir** le compte (`POST /me/staff`), il n'est pas rendu ensuite. C'est délibéré : la liste du personnel n'est pas un annuaire, et un propriétaire qui la consulte cherche des **droits**, pas des contacts. Si l'écran en a réellement besoin, c'est un ajout à demander — pas un champ à deviner.
+
+Sur une carte de commande : le livreur est `courier`, votre point de vente `merchant`, l'adresse de remise `client`.
+
+### Les marqueurs de carte — `GET /map-markers` (v4.13.0)
+
+```
+GET /api/v1/map-markers          (public, SOCLE — sans `{PREFIX}`)
+```
+
+```json
+{ "items": [
+  { "kind": "courier",  "icon_url": "https://files.dira.llc/marker/…/courier.png", "map_icon_url": "https://files.dira.llc/marker/…/courier-map.png" },
+  { "kind": "client" }, { "kind": "merchant" }, { "kind": "stop" } ] }
+```
+
+Toujours les **quatre genres**, dans cet ordre : `courier` (le livreur — le
+chauffeur VTC est dessiné par son mode de véhicule, `GET /classes`),
+`client`, `merchant` (le point de vente, la collecte), `stop` (le départ ou
+une étape d'une course, quand ce n'est ni le client ni un marchand). Chacun
+porte deux images **facultatives**, réglées depuis la console : `icon_url`
+(à côté d'un nom, dans une liste) et `map_icon_url` (dans la pastille du
+marqueur). **Absentes, gardez votre pictogramme** — le réglage ajoute, il ne
+retire rien. Lisez la liste à l'ouverture, mettez les images en cache par
+URL (elles changent d'URL quand elles changent). Pour toute la plateforme,
+pas par pays.
 
 ### ❌ Le nom du livreur sur la carte de commande
 

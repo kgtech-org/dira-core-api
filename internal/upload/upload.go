@@ -63,7 +63,7 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	kind := r.URL.Query().Get("kind")
 	if !storage.Kinds[kind] {
-		httpx.Error(w, r, apperr.Validation("kind must be one of dish|store|brand|vehicle|avatar|feed|banner|class|equipment"))
+		httpx.Error(w, r, apperr.Validation("kind must be one of dish|store|brand|vehicle|avatar|feed|banner|class|equipment|marker"))
 		return
 	}
 	// Le plafond dépend du kind : une vidéo de feed pèse bien plus qu'une

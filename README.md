@@ -95,6 +95,7 @@ internal/payment mobile money (provider abstraction + mock)
 internal/notify  inbox, push devices, multilingual templates (FCM)
 internal/country which countries are open; "which country am I in?" (device position, then IP)
 internal/equipment vests, bags, phones sold / rented / lent to couriers and drivers — and how the money comes back (see below)
+internal/marker    the map markers that are not vehicles — courier, client, merchant, stop — two optional images each, set from the console (`GET /map-markers` public, `PUT /admin/map-markers/{kind}`)
 internal/config  core-only settings (the shared ones come from pkg/config)
 internal/indexes the MongoDB indexes this service owns
 api/openapi.yaml the contract, embedded in the binary

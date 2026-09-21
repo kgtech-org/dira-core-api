@@ -36,6 +36,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/internal/finance"
 	"github.com/kgtech-org/dira-core-api/internal/fleet"
 	"github.com/kgtech-org/dira-core-api/internal/indexes"
+	"github.com/kgtech-org/dira-core-api/internal/marker"
 	"github.com/kgtech-org/dira-core-api/internal/notify"
 	"github.com/kgtech-org/dira-core-api/internal/payment"
 	"github.com/kgtech-org/dira-core-api/internal/rating"
@@ -374,6 +375,10 @@ func run(logger *slog.Logger) error {
 		countryHandler := country.NewHandler(countrySvc)
 		countryHandler.Mount(r, authMW)
 		countryHandler.MountService(r, middleware.Service(cfg.ServiceToken))
+		// LES MARQUEURS DE CARTE hors véhicules — livreur, client, marchand,
+		// arrêt — lus par toute application qui dessine une carte, réglés
+		// depuis la console à côté des modes de véhicule.
+		marker.NewHandler(marker.NewService(mongo, auditRec)).Mount(r, authMW)
 		// L'ENVOI DE FICHIERS, pour tout rôle connecté : avatar, véhicule,
 		// document de conformité, et les objets des verticales (plat, point de
 		// vente, enseigne, vidéo de feed, bannière). Une porte, une règle.
