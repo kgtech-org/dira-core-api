@@ -51,6 +51,11 @@ var declaredSurface = []string{
 	// contrat, et si la personne est bloquée par un retard.
 	"/internal/equipment/collect",
 	"/internal/equipment/standing",
+	// LA FACTURATION par pays (jetons ou commission, quand débiter le
+	// client) que chaque verticale applique, et le JOURNAL comptable où
+	// elle déclare ce qui bouge chez elle (le grand livre des chauffeurs).
+	"/internal/finance/billing",
+	"/internal/finance/events",
 	// Les NOMS des flottes privées — et rien d'autre. Une verticale affiche
 	// « Flotte Sodigaz » à côté d'une plaque ; lui ouvrir la fiche entière lui
 	// confierait un contrat et une commission qu'elle n'a aucune raison de
@@ -71,6 +76,9 @@ var declaredSurface = []string{
 	"/internal/wallets/create",
 	"/internal/wallets/credit",
 	"/internal/wallets/credit-earnings",
+	// Ce qu'un solde n'a pas forcément : pris s'il y a, porté à la DETTE
+	// sinon — la commission d'une course en espèces, un paiement refusé.
+	"/internal/wallets/owe",
 	"/internal/wallets/pay",
 	"/internal/wallets/refund",
 }

@@ -6,6 +6,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/kgtech-org/dira-core-api/internal/country"
 	core "github.com/kgtech-org/dira-core-api/pkg/config"
@@ -60,6 +61,13 @@ type Config struct {
 	// `internal/country.HTTPLookup`.
 	CountryIPLookupURL   string
 	CountryIPLookupField string
+	// FinanceIntegrityInterval : la cadence du balayage d'intégrité des
+	// portefeuilles et du journal (soldes recalculés, écritures vérifiées).
+	FinanceIntegrityInterval time.Duration
+	// FinanceJournalSince : depuis quand chaque mouvement doit porter son
+	// écriture comptable — la mise en service du journal. Un mouvement plus
+	// ancien sans écriture n'est pas un écart.
+	FinanceJournalSince time.Time
 }
 
 // Load reads the environment, applies defaults and validates.
@@ -86,6 +94,17 @@ func Load() (*Config, error) {
 		CountryIPLookupField:  core.Env("COUNTRY_IP_LOOKUP_FIELD", country.DefaultIPLookupField),
 	}
 
+	if cfg.FinanceIntegrityInterval, err = core.Duration("FINANCE_INTEGRITY_INTERVAL", 15*time.Minute); err != nil {
+		return nil, err
+	}
+	// La mise en service du journal : le 21 septembre 2026. Réglable pour
+	// une base qui aurait été reprise plus tard.
+	cfg.FinanceJournalSince = time.Date(2026, 9, 21, 0, 0, 0, 0, time.UTC)
+	if raw := core.Env("FINANCE_JOURNAL_SINCE", ""); raw != "" {
+		if cfg.FinanceJournalSince, err = time.Parse("2006-01-02", raw); err != nil {
+			return nil, fmt.Errorf("config: FINANCE_JOURNAL_SINCE must be YYYY-MM-DD")
+		}
+	}
 	switch cfg.Env {
 	case "dev", "staging", "prod":
 	default:

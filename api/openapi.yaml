@@ -66,6 +66,15 @@ tags:
     description: Administration des comptes — commune aux deux verticales
   - name: uploads
     description: Envoi de fichiers — une porte pour toute la plateforme
+  - name: finance
+    description: |
+      LA COMPTABILITÉ. La FACTURATION par pays et par métier (des jetons à
+      l'acceptation ou une commission en pourcentage ; à quelle étape le
+      client est débité), le JOURNAL en partie double que chaque mouvement de
+      portefeuille écrit dans la même transaction, l'APERÇU (balance des
+      comptes, produits, dettes) et l'INTÉGRITÉ : un balayage recalcule
+      chaque solde depuis ses mouvements, vérifie le journal, et alerte le
+      staff (`staff_finance_alert`) — un solde modifié sans mouvement se voit.
 paths:
   /auth/register:
     post:
@@ -523,6 +532,148 @@ paths:
                 justification: {type: string, minLength: 3, maxLength: 500}
       responses:
         "200": {description: Wallet}
+  /admin/wallets/{ownerID}/settle-debt:
+    post:
+      tags: [wallet]
+      summary: Une dette réglée à l'agence (espèces, mobile money), hors solde
+      description: >-
+        `debt_xof` d'un portefeuille : la commission d'une course en espèces
+        que le solde n'a pas pu payer, un paiement refusé à la livraison.
+        Remboursée d'office sur le prochain crédit en argent ; ici, ce qui a
+        été réglé en main propre. Jamais plus que la dette (422).
+      parameters: [{name: ownerID, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount_xof]
+              properties:
+                amount_xof: {type: integer, minimum: 1}
+                note: {type: string, maxLength: 300}
+      responses:
+        "200": {description: Wallet — `debt_xof` mis à jour}
+  /admin/finance/billing:
+    get:
+      tags: [finance]
+      summary: La facturation du pays courant
+      description: >-
+        Par métier (`rides`, `deliveries`) : `agent_charge` ∈ tokens |
+        commission, `commission_pct`, la grille de jetons (`tokens_per_ride`,
+        `tokens_per_km`, `tokens_min`, `tokens_max` — la livraison garde sa
+        grille `platform_pricing` quand ils sont à zéro), `client_charge_at` ∈
+        request | accept | start | complete (portefeuille Dira seulement —
+        le mobile money se paie d'avance, les espèces à la remise),
+        `debt_limit_xof`. Défauts : courses en commission à la classe, client
+        débité à l'acceptation ; livraison en jetons, client débité à la
+        commande. Les verticales le lisent (`GET /internal/finance/billing`).
+      responses:
+        "200":
+          description: Billing
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Billing"}
+    put:
+      tags: [finance]
+      summary: Régler la facturation du pays courant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rides: {$ref: "#/components/schemas/VerticalBilling"}
+                deliveries: {$ref: "#/components/schemas/VerticalBilling"}
+      responses:
+        "200": {description: Billing}
+        "422": {description: "`invalid billing` — `reason` dit quoi"}
+  /admin/finance/overview:
+    get:
+      tags: [finance]
+      summary: L'aperçu comptable d'une période
+      description: >-
+        La balance des comptes du plan (débit, crédit, solde — un passif est
+        ce que la plateforme doit, un produit ce qu'elle a gagné), les
+        indicateurs (`kpis` : produits par nature, charges, net, passifs,
+        créances, transit, à classer, encaissé), le détail par motif et par
+        jour, l'état des portefeuilles à l'instant (`wallets`), le nombre de
+        constats ouverts et le dernier balayage. `balanced` dit si la période
+        s'équilibre. Défaut : le dernier mois.
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date}}
+        - {name: to, in: query, schema: {type: string, format: date}}
+      responses:
+        "200": {description: Overview}
+  /admin/finance/journal:
+    get:
+      tags: [finance]
+      summary: Le journal — une écriture par mouvement, en partie double
+      parameters:
+        - {name: account, in: query, schema: {type: string}, description: un compte du plan (`GET /admin/finance/accounts`)}
+        - {name: reason, in: query, schema: {type: string}}
+        - {name: service, in: query, schema: {type: string, enum: [core, vtc, food]}}
+        - {name: ref_kind, in: query, schema: {type: string}}
+        - {name: ref_id, in: query, schema: {type: string}}
+        - {name: owner_id, in: query, schema: {type: string}}
+        - {name: unit, in: query, schema: {type: string, enum: [xof, token]}}
+        - {name: from, in: query, schema: {type: string, format: date}}
+        - {name: to, in: query, schema: {type: string, format: date}}
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, maximum: 200}}
+      responses:
+        "200":
+          description: Entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {$ref: "#/components/schemas/AccountingEntry"}}
+                  next_cursor: {type: string}
+  /admin/finance/accounts:
+    get:
+      tags: [finance]
+      summary: Le plan comptable (code, nature, libellé)
+      responses:
+        "200": {description: Accounts}
+  /admin/finance/findings:
+    get:
+      tags: [finance]
+      summary: Les constats du balayage d'intégrité
+      description: >-
+        `wallet_drift` (un solde stocké ≠ la somme de ses mouvements — jetons,
+        argent, promo ou dette), `negative_balance`, `missing_entry` (un
+        mouvement sans écriture), `entry_unbalanced`, `trial_unbalanced` (la
+        balance générale). Dédoublonnés par empreinte, `occurrences` et
+        `last_seen_at` disent depuis quand ; un écart disparu passe
+        `resolved` au balayage suivant. `status` ∈ open | acknowledged |
+        resolved (défaut : non résolus).
+      parameters: [{name: status, in: query, schema: {type: string}}]
+      responses:
+        "200": {description: Findings, avec `last_run`}
+  /admin/finance/findings/{id}/ack:
+    post:
+      tags: [finance]
+      summary: Prendre acte d'un constat (avec une note)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        content:
+          application/json:
+            schema: {type: object, properties: {note: {type: string, maxLength: 500}}}
+      responses:
+        "200": {description: Finding}
+  /admin/finance/integrity/run:
+    post:
+      tags: [finance]
+      summary: Lancer le balayage d'intégrité maintenant
+      description: >-
+        Le même que celui qui tourne à cadence fixe
+        (`FINANCE_INTEGRITY_INTERVAL`, 15 min). Chaque constat NOUVEAU alerte
+        le staff de portée `core` du pays (`staff_finance_alert`).
+      responses:
+        "200": {description: "Run : portefeuilles vus, écritures, constats, nouveaux, résolus"}
   /payments/providers:
     get:
       tags: [payments]
@@ -1143,6 +1294,50 @@ components:
         due_xof: {type: integer}
         overdue_xof: {type: integer}
         blocked: {type: boolean, description: "le retard passe le seuil : plus de mise en ligne"}
+    VerticalBilling:
+      type: object
+      properties:
+        agent_charge: {type: string, enum: [tokens, commission]}
+        commission_pct: {type: integer, minimum: 0, maximum: 100}
+        tokens_per_ride: {type: integer}
+        tokens_per_km: {type: integer}
+        tokens_min: {type: integer}
+        tokens_max: {type: integer}
+        client_charge_at: {type: string, enum: [request, accept, start, complete]}
+        debt_limit_xof: {type: integer}
+    Billing:
+      type: object
+      properties:
+        country: {type: string}
+        rides: {$ref: "#/components/schemas/VerticalBilling"}
+        deliveries: {$ref: "#/components/schemas/VerticalBilling"}
+        updated_by: {type: string}
+        updated_at: {type: string, format: date-time}
+    AccountingEntry:
+      type: object
+      properties:
+        id: {type: string}
+        country: {type: string}
+        at: {type: string, format: date-time}
+        service: {type: string, enum: [core, vtc, food]}
+        reason: {type: string}
+        ref_kind: {type: string}
+        ref_id: {type: string}
+        transaction_id: {type: string}
+        wallet_id: {type: string}
+        owner_id: {type: string}
+        unit: {type: string, enum: [xof, token]}
+        amount: {type: integer, description: en francs — les jetons sont valorisés au prix du jeton}
+        tokens: {type: integer}
+        description: {type: string}
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              account: {type: string}
+              debit: {type: integer}
+              credit: {type: integer}
     EquipmentSettings:
       type: object
       properties:

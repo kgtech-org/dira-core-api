@@ -58,6 +58,7 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		// (promotionnel) pour un client — la fiche d'un compte.
 		g.Get("/admin/wallets/{ownerID}/transactions", h.adminTransactions)
 		g.Post("/admin/wallets/{ownerID}/promo", h.adminPromo)
+		g.Post("/admin/wallets/{ownerID}/settle-debt", h.adminSettleDebt)
 	})
 }
 
@@ -88,6 +89,30 @@ func (h *Handler) adminPromo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	wallet, err := h.svc.PromoByOperator(r.Context(), userID, chi.URLParam(r, "ownerID"), req.AmountXOF, req.Justification)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, wallet)
+}
+
+// POST /admin/wallets/{ownerID}/settle-debt — { amount_xof, note } : une
+// dette réglée à l'agence (espèces, mobile money), hors solde.
+func (h *Handler) adminSettleDebt(w http.ResponseWriter, r *http.Request) {
+	userID, _, err := caller(r)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	var req struct {
+		AmountXOF int    `json:"amount_xof" validate:"required,gt=0"`
+		Note      string `json:"note" validate:"omitempty,max=300"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	wallet, err := h.svc.SettleDebt(r.Context(), userID, chi.URLParam(r, "ownerID"), req.AmountXOF, req.Note)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

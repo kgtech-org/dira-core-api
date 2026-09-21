@@ -159,6 +159,17 @@ func (f *fakeRepo) TakeMoney(_ context.Context, walletID primitive.ObjectID, amo
 	return taken, nil
 }
 
+func (f *fakeRepo) AdjustDebt(_ context.Context, walletID primitive.ObjectID, delta int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	w, ok := f.wallets[walletID]
+	if !ok || w.DebtXOF+delta < 0 {
+		return errors.New("wallet not found or debt below zero")
+	}
+	w.DebtXOF += delta
+	return nil
+}
+
 func (f *fakeRepo) InsertTransaction(_ context.Context, t *Transaction) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -769,4 +780,78 @@ func TestEquipmentChargeTakesAllOrWhatThereIs(t *testing.T) {
 		}
 	}
 	assert.Equal(t, []string{RefEquipment, RefEquipment}, reasons)
+}
+
+// La COMMISSION et la DETTE : un gain arrive net de commission ; une course
+// en espèces prend ce qu'il y a et porte le reste à la dette ; le prochain
+// gain rembourse d'abord.
+func TestCommissionAndDebt(t *testing.T) {
+	repo := newFakeRepo()
+	svc, _, _, _ := newTestService(repo)
+	ctx := context.Background()
+	owner := primitive.NewObjectID().Hex()
+	require.NoError(t, svc.CreateWallet(ctx, owner, WalletTypeDriver))
+	order := primitive.NewObjectID().Hex()
+
+	// Un gain de 1 000 avec 150 de commission : 850 restent.
+	retained, repaid, err := svc.CreditEarningsNet(ctx, owner, 1000, 150, ReasonDeliveryFee, RefOrder, order, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 150, retained)
+	assert.Equal(t, 0, repaid)
+	w, _ := svc.WalletOf(ctx, owner)
+	assert.Equal(t, 850, w.BalanceXOF)
+	// Rejoué : rien deux fois.
+	_, _, err = svc.CreditEarningsNet(ctx, owner, 1000, 150, ReasonDeliveryFee, RefOrder, order, nil)
+	require.NoError(t, err)
+	w, _ = svc.WalletOf(ctx, owner)
+	assert.Equal(t, 850, w.BalanceXOF)
+
+	// Une course en espèces : 1 200 de commission, le solde n'en a que 850.
+	cash := primitive.NewObjectID().Hex()
+	paid, owed, err := svc.Owe(ctx, owner, 1200, ReasonCommission, ReasonCommissionDue, RefOrder, cash)
+	require.NoError(t, err)
+	assert.Equal(t, 850, paid)
+	assert.Equal(t, 350, owed)
+	w, _ = svc.WalletOf(ctx, owner)
+	assert.Equal(t, 0, w.BalanceXOF)
+	assert.Equal(t, 350, w.DebtXOF)
+
+	// Le gain suivant rembourse la dette d'abord.
+	next := primitive.NewObjectID().Hex()
+	retained, repaid, err = svc.CreditEarningsNet(ctx, owner, 500, 0, ReasonDeliveryFee, RefOrder, next, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 0, retained)
+	assert.Equal(t, 350, repaid)
+	w, _ = svc.WalletOf(ctx, owner)
+	assert.Equal(t, 150, w.BalanceXOF)
+	assert.Equal(t, 0, w.DebtXOF)
+
+	// Ce que le grand livre dit : les mouvements de dette portent leur delta
+	// et disent s'ils ont touché le solde.
+	var due, repaidTx int
+	for _, tx := range repo.transactions {
+		switch tx.Reason {
+		case ReasonCommissionDue:
+			due++
+			assert.Equal(t, 350, tx.Ref["debt_delta"])
+			assert.Equal(t, true, tx.Ref["no_balance"])
+		case ReasonDebtRepaid:
+			repaidTx++
+			assert.Equal(t, -350, tx.Ref["debt_delta"])
+			assert.Nil(t, tx.Ref["no_balance"], "remboursé sur le solde : le solde a bougé")
+		}
+	}
+	assert.Equal(t, 1, due)
+	assert.Equal(t, 1, repaidTx)
+
+	// Une dette réglée à l'agence ne touche pas le solde.
+	_, owed, err = svc.Owe(ctx, owner, 500, ReasonCommission, ReasonCommissionDue, RefOrder, primitive.NewObjectID().Hex())
+	require.NoError(t, err)
+	assert.Equal(t, 350, owed, "150 pris sur le solde, 350 dus")
+	resp, err := svc.SettleDebt(ctx, "admin", owner, 350, "espèces à l'agence")
+	require.NoError(t, err)
+	assert.Equal(t, 0, resp.DebtXOF)
+	assert.Equal(t, 0, resp.BalanceXOF)
+	_, err = svc.SettleDebt(ctx, "admin", owner, 1, "trop")
+	assert.Error(t, err, "on ne rembourse pas plus que la dette")
 }

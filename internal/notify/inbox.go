@@ -47,7 +47,7 @@ func categoryOf(key string) string {
 	case KeyDriverCall:
 		return CategoryDriverCall
 	case KeyStaffDispatchFailed, KeyStaffDocumentSubmitted, KeyStaffDriverPending,
-		KeyStaffTicketOpened, KeyStaffLostItemAnswered, KeyStaffEquipOverdue, KeyStaffEquipRequested:
+		KeyStaffTicketOpened, KeyStaffLostItemAnswered, KeyStaffEquipOverdue, KeyStaffEquipRequested, KeyStaffFinanceAlert:
 		return CategoryStaff
 	case KeyEquipmentProposed, KeyEquipmentHandedOver, KeyEquipmentDue, KeyEquipmentCharged,
 		KeyEquipmentOverdue, KeyEquipmentBlocked, KeyEquipmentReturned:

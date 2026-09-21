@@ -18,13 +18,25 @@ import (
 // (unique index on owner_id). Fakes must reproduce this behaviour.
 var ErrDuplicateWallet = errors.New("token: wallet already exists for owner")
 
+// Journal reçoit chaque mouvement écrit, DANS la transaction qui l'écrit :
+// l'écriture comptable et le mouvement vivent ou meurent ensemble. La
+// comptabilité (`internal/finance`) l'implémente.
+type Journal interface {
+	Post(ctx context.Context, tx *Transaction, w *Wallet) error
+}
+
 // Repository implements Repo on MongoDB.
 type Repository struct {
 	mongo        *db.Mongo
 	wallets      *mongo.Collection
 	transactions *mongo.Collection
 	operations   *mongo.Collection
+	journal      Journal
 }
+
+// SetJournal branche la comptabilité. Sans elle, les mouvements s'écrivent
+// sans écriture — le balayage d'intégrité le signale.
+func (r *Repository) SetJournal(j Journal) { r.journal = j }
 
 func NewRepository(m *db.Mongo) *Repository {
 	return &Repository{
@@ -131,6 +143,23 @@ func (r *Repository) CreditField(ctx context.Context, walletID primitive.ObjectI
 	return nil
 }
 
+// AdjustDebt déplace la DETTE d'un portefeuille — positif l'augmente,
+// négatif la rembourse, jamais en dessous de zéro.
+func (r *Repository) AdjustDebt(ctx context.Context, walletID primitive.ObjectID, delta int) error {
+	filter := bson.M{"_id": walletID}
+	if delta < 0 {
+		filter["debt_xof"] = bson.M{"$gte": -delta}
+	}
+	res, err := r.wallets.UpdateOne(ctx, filter, bson.M{"$inc": bson.M{"debt_xof": delta}, "$set": bson.M{"updated_at": time.Now().UTC()}})
+	if err != nil {
+		return fmt.Errorf("token: adjust debt: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return fmt.Errorf("token: adjust debt: wallet %s not found or debt below %d", walletID.Hex(), -delta)
+	}
+	return nil
+}
+
 // InsertTransaction appends a wallet transaction.
 func (r *Repository) InsertTransaction(ctx context.Context, t *Transaction) error {
 	res, err := r.transactions.InsertOne(ctx, t)
@@ -139,6 +168,17 @@ func (r *Repository) InsertTransaction(ctx context.Context, t *Transaction) erro
 	}
 	if id, ok := res.InsertedID.(primitive.ObjectID); ok {
 		t.ID = id
+	}
+	if r.journal != nil {
+		// Le portefeuille dit QUI (client, marchand, agent) et OÙ (pays) :
+		// c'est ce qui décide des comptes de l'écriture.
+		var w Wallet
+		if err := r.wallets.FindOne(ctx, bson.M{"_id": t.WalletID}).Decode(&w); err != nil {
+			return fmt.Errorf("token: wallet of transaction: %w", err)
+		}
+		if err := r.journal.Post(ctx, t, &w); err != nil {
+			return fmt.Errorf("token: journal: %w", err)
+		}
 	}
 	return nil
 }
