@@ -759,7 +759,8 @@ func TestEquipmentChargeTakesAllOrWhatThereIs(t *testing.T) {
 	w, err := svc.WalletOf(ctx, owner)
 	require.NoError(t, err)
 	assert.Equal(t, 500, w.BalanceXOF)
-	// Le grand livre dit « matériel », rattaché au contrat.
+	// Le grand livre dit « matériel », rattaché au contrat — une ligne par
+	// prélèvement effectif (2 000 puis 1 500), aucune pour ce qui n'a rien pris.
 	var reasons []string
 	for _, tx := range repo.transactions {
 		if tx.Reason == ReasonEquipment {
@@ -767,5 +768,5 @@ func TestEquipmentChargeTakesAllOrWhatThereIs(t *testing.T) {
 			assert.Equal(t, contract, tx.RefID.Hex())
 		}
 	}
-	assert.Equal(t, []string{RefEquipment}, reasons)
+	assert.Equal(t, []string{RefEquipment, RefEquipment}, reasons)
 }
