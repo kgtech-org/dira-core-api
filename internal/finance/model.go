@@ -116,7 +116,7 @@ const (
 const (
 	// Actifs.
 	AccMobileMoney     = "mobile_money"     // ce que les prestataires de paiement ont encaissé pour nous
-	AccAgentReceivable = "agent_receivable" // ce que les agents nous doivent (commission sur espèces, dettes)
+	AccAgentReceivable = "agent_receivable" // ce que les agents et clients nous doivent (commission sur espèces, paiements dus)
 	// Passifs.
 	AccClientWallets    = "client_wallets"     // l'argent des clients sur leur Dira Cash
 	AccPromoCredits     = "promo_credits"      // le crédit offert, pas encore dépensé
@@ -157,7 +157,7 @@ type Account struct {
 // Chart est le plan comptable, dans l'ordre de lecture.
 var Chart = []Account{
 	{AccMobileMoney, KindAsset, "Mobile money encaissé"},
-	{AccAgentReceivable, KindAsset, "Dû par les agents"},
+	{AccAgentReceivable, KindAsset, "Créances (agents, clients)"},
 	{AccClientWallets, KindLiability, "Soldes clients (Dira Cash)"},
 	{AccPromoCredits, KindLiability, "Crédits promotionnels"},
 	{AccMerchantPayables, KindLiability, "Dû aux marchands"},

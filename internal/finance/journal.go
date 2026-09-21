@@ -137,11 +137,24 @@ func EntryFor(tx *token.Transaction, w *token.Wallet, tokenPriceXOF int) *Entry 
 		} else {
 			e.Lines = lines(walletAcc, AccRevenueEquipment, amount)
 		}
-	case ReasonCommission:
-		// Une commission retenue sur ce que l'on versait à l'agent.
+	case token.ReasonCommission:
+		// Une commission retenue sur ce que l'on versait à l'agent, ou prise
+		// sur son solde pour une course en espèces.
 		e.Lines = lines(walletAcc, AccRevenueCommission, amount)
-	case ReasonDebtRepaid:
-		e.Lines = lines(walletAcc, AccAgentReceivable, amount)
+	case token.ReasonCommissionDue:
+		// Le solde n'a pas suffi : la commission devient une créance.
+		e.Lines = lines(AccAgentReceivable, AccRevenueCommission, amount)
+	case token.ReasonPaymentDue:
+		// Un paiement refusé à l'étape réglée : la course ou la commande est
+		// due par le client.
+		e.Lines = lines(AccAgentReceivable, clearing, amount)
+	case token.ReasonDebtRepaid:
+		if settled, _ := tx.Ref["settled"].(string); settled != "" {
+			// Réglé à l'agence : de l'argent entre, la créance s'éteint.
+			e.Lines = lines(AccMobileMoney, AccAgentReceivable, amount)
+		} else {
+			e.Lines = lines(walletAcc, AccAgentReceivable, amount)
+		}
 	default:
 		if credit {
 			e.Lines = lines(AccSuspense, walletAcc, amount)
@@ -151,16 +164,6 @@ func EntryFor(tx *token.Transaction, w *token.Wallet, tokenPriceXOF int) *Entry 
 	}
 	return e
 }
-
-// Motifs d'argent que ce module ajoute au grand livre des portefeuilles.
-const (
-	// ReasonCommission : la part de la plateforme retenue sur un gain versé
-	// à un agent en mode `commission`.
-	ReasonCommission = "commission"
-	// ReasonDebtRepaid : ce qu'un agent rembourse de sa dette (commission sur
-	// espèces) — retenu sur un gain ou réglé à l'agence.
-	ReasonDebtRepaid = "debt_repaid"
-)
 
 func lines(debit, credit string, amount int) []Line {
 	return []Line{{Account: debit, Debit: amount}, {Account: credit, Credit: amount}}
