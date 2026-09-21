@@ -75,6 +75,12 @@ type Wallets interface {
 	Pay(ctx context.Context, userID string, amountXOF int, refKind, refID string) error
 	Refund(ctx context.Context, userID string, amountXOF int, refKind, refID string) error
 	CreditEarnings(ctx context.Context, ownerID string, amountXOF int, reason, refKind, refID string, ref map[string]any) error
+	// CreditEarningsNet : le même gain, net d'une COMMISSION retenue dans le
+	// même mouvement, et la dette remboursée sur ce qui reste.
+	CreditEarningsNet(ctx context.Context, ownerID string, amountXOF, commissionXOF int, reason, refKind, refID string, ref map[string]any) (retained, repaid int, err error)
+	// Owe : ce qu'un solde n'a pas forcément — pris s'il y a, porté à la
+	// DETTE sinon (commission d'une course en espèces, paiement refusé).
+	Owe(ctx context.Context, ownerID string, amountXOF int, reason, dueReason, refKind, refID string) (paid, owed int, err error)
 	// WalletOf LIT un portefeuille par son propriétaire — ce qu'une
 	// verticale demande avant d'engager un chauffeur sur une course que le
 	// solde devra payer à l'acceptation.
@@ -192,6 +198,7 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/wallets/refund", h.refundRef)
 		g.Post("/internal/wallets/balance", h.balance)
 		g.Post("/internal/wallets/credit-earnings", h.creditEarnings)
+		g.Post("/internal/wallets/owe", h.owe)
 
 		g.Post("/internal/notifications/send", h.notify)
 		g.Post("/internal/notifications/staff", h.notifyStaff)
@@ -310,13 +317,16 @@ func (h *Handler) byPhone(w http.ResponseWriter, r *http.Request) {
 // TRAÇABLE, et c'est la seule chose qui permette d'expliquer un débit six mois
 // plus tard. Un mouvement sans référence est indiscernable d'une erreur.
 type walletRequest struct {
-	OwnerID string         `json:"owner_id" validate:"required,len=24,hexadecimal"`
-	Amount  int            `json:"amount" validate:"required,gt=0"`
-	Reason  string         `json:"reason" validate:"omitempty,max=60"`
-	RefID   string         `json:"ref_id" validate:"omitempty,len=24,hexadecimal"`
-	RefKind string         `json:"ref_kind" validate:"omitempty,oneof=order ride tip ride_adjustment"`
-	Ref     map[string]any `json:"ref"`
-	Type    string         `json:"type" validate:"omitempty,oneof=driver merchant client"`
+	OwnerID string `json:"owner_id" validate:"required,len=24,hexadecimal"`
+	Amount  int    `json:"amount" validate:"required,gt=0"`
+	// CommissionXOF : la part de la plateforme retenue sur `credit-earnings`
+	// (mode `commission` de la verticale). Zéro = tout revient à l'agent.
+	CommissionXOF int            `json:"commission_xof" validate:"omitempty,min=0"`
+	Reason        string         `json:"reason" validate:"omitempty,max=60"`
+	RefID         string         `json:"ref_id" validate:"omitempty,len=24,hexadecimal"`
+	RefKind       string         `json:"ref_kind" validate:"omitempty,oneof=order ride tip ride_adjustment"`
+	Ref           map[string]any `json:"ref"`
+	Type          string         `json:"type" validate:"omitempty,oneof=driver merchant client"`
 }
 
 func (h *Handler) createWallet(w http.ResponseWriter, r *http.Request) {
@@ -379,7 +389,11 @@ func (h *Handler) balance(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) creditEarnings(w http.ResponseWriter, r *http.Request) {
 	h.move(w, r, func(ctx context.Context, req walletRequest) error {
-		if err := h.wallets.CreditEarnings(ctx, req.OwnerID, req.Amount, req.Reason, req.RefKind, req.RefID, req.Ref); err != nil {
+		if req.CommissionXOF > 0 {
+			if _, _, err := h.wallets.CreditEarningsNet(ctx, req.OwnerID, req.Amount, req.CommissionXOF, req.Reason, req.RefKind, req.RefID, req.Ref); err != nil {
+				return err
+			}
+		} else if err := h.wallets.CreditEarnings(ctx, req.OwnerID, req.Amount, req.Reason, req.RefKind, req.RefID, req.Ref); err != nil {
 			return err
 		}
 		// Les FRAIS DE LIVRAISON d'un livreur : le matériel retient sa part
@@ -393,6 +407,31 @@ func (h *Handler) creditEarnings(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
+}
+
+// POST /internal/wallets/owe {owner_id, amount, reason, due_reason, ref_kind, ref_id}
+// — ce que le solde peut payer est pris, le reste devient une dette. Rend
+// {paid_xof, owed_xof, debt_xof}.
+func (h *Handler) owe(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		walletRequest
+		DueReason string `json:"due_reason" validate:"required,oneof=commission_due payment_due"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	paid, owed, err := h.wallets.Owe(r.Context(), req.OwnerID, req.Amount, req.Reason, req.DueReason, req.RefKind, req.RefID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	wallet, err := h.wallets.WalletOf(r.Context(), req.OwnerID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"paid_xof": paid, "owed_xof": owed, "debt_xof": wallet.DebtXOF})
 }
 
 // move décode, exécute, et rend le code d'erreur MÉTIER tel quel.

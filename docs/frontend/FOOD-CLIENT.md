@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.11.1** · 21 septembre 2026
+> **Version 4.12.0** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -304,6 +304,18 @@ POST /orders
 
 `wallet` : la commande est créée en attente, débitée, **puis** confirmée. Solde insuffisant → **`402 insufficient_funds`**, et la commande est **annulée**. N'affichez pas de commande en attente dans ce cas.
 
+> **Le pays peut débiter le portefeuille PLUS TARD (v4.12.0).** Quand la
+> facturation du pays le règle, la commande `wallet` naît **confirmée sans
+> débit** (`status: paid`, `settled: false`) et porte **`charge_at`** :
+> `accept` (un livreur accepte), `start` (commande retirée) ou `complete`
+> (livrée). L'argent part à cette étape — affichez « débité à … » sur la
+> commande. Avant la livraison, un solde insuffisant **annule** la commande
+> (`cancelled`, `payment_failed`, push `order_cancelled`). À la livraison, le
+> repas est chez le client : l'impayé devient sa **dette** (`GET /wallet` →
+> `debt_xof`), remboursée **d'office sur sa prochaine recharge** — dites-le
+> lui plutôt que d'afficher un solde qui « disparaît » au moment de
+> recharger. Sans `charge_at`, rien ne change : débité à la commande.
+
 ### Payer en ligne — **SOCLE** (sans `/food`)
 
 ```
@@ -536,6 +548,7 @@ POST /payments/initiate   { purpose: "wallet_topup", ref_id: <user_id>, amount, 
 
 - **`promo_xof` est ce que la plateforme a offert**, servi à part. Affichez « dont X offerts » — ne l'additionnez pas vous-même.
 - **`spendable_xof` est le nombre sur lequel se décide un achat.** Calculé par le serveur pour que deux applications ne l'additionnent pas différemment.
+- **`debt_xof` (v4.12.0) est ce que le client DOIT** : une commande ou une course au portefeuille débitée à la livraison (`charge_at`) que le solde n'a pas couverte. Remboursée d'office sur la prochaine recharge — affichez « dont X de dette à régler » quand il est non nul, et **avant** la recharge, ce qu'il en restera.
 - Le promotionnel se dépense **en premier**.
 - ⚠️ **Un client n'a pas de jetons.** `balance` reste à zéro, et `POST /wallet/purchase` lui est **refusé** (`403`) : les jetons sont le droit d'entrée d'un livreur et l'outil de promotion d'un marchand.
 - La recharge n'est créditée qu'à la **confirmation** du prestataire.

@@ -126,6 +126,44 @@ api/openapi.yaml the contract, embedded in the binary
 > (negative = deposit refund). A sweep every minute ages the lines, opens
 > the next rent period, reminds, charges and alerts.
 
+> **Finance (`internal/finance`) — the books.** Three things live together:
+>
+> - **billing per country and per vertical** (`finance_billing`,
+>   `GET/PUT /admin/finance/billing`, read by the verticals on
+>   `GET /internal/finance/billing`): how the platform earns on an agent —
+>   `tokens` at acceptance or a `commission` percentage, retained on what it
+>   pays him or carried to his **debt** when the money never transits (cash)
+>   — and **at which step the client is charged** (`request`, `accept`,
+>   `start`, `complete`; Dira wallet only). Defaults are today's behaviour:
+>   rides on class commission charged at acceptance, deliveries on tokens
+>   charged at order;
+> - a **double-entry journal** (`accounting_entries`): every wallet
+>   transaction writes its entry **in the same Mongo transaction**
+>   (`token.Repository.SetJournal`), mapped by `finance.EntryFor` onto a
+>   short chart of accounts (client wallets, promo, merchant/agent payables,
+>   prepaid tokens, order/ride clearing, commission/token/equipment revenue,
+>   promo/credit expenses, receivables, mobile money); the verticals post what
+>   moves on their own ledgers (`POST /internal/finance/events`: a settled
+>   ride, a payout, an adjustment). `GET /admin/finance/overview` is the
+>   trial balance, KPIs, per-reason and per-day totals, and the wallets'
+>   stored totals; `GET /admin/finance/journal` lists entries;
+> - the **integrity sweep** (`FINANCE_INTEGRITY_INTERVAL`, 15 min, and
+>   `POST /admin/finance/integrity/run`): every stored balance (tokens,
+>   money, promo, debt) is recomputed from its transactions, entries must
+>   balance, every transaction since the journal went live must have one,
+>   the trial balance must balance. Findings are deduplicated by fingerprint
+>   (`finance_findings`, `wallet_drift`, `missing_entry`, …), a NEW one
+>   alerts the `core`-scoped staff (`staff_finance_alert`), a vanished one
+>   resolves itself. A balance edited straight in the database is caught on
+>   the next pass.
+>
+> Debt (`wallet.debt_xof`, `POST /internal/wallets/owe`) is what a balance
+> could not pay: taken later on the next money credit
+> (`CreditEarningsNet`, top-ups), or settled at the agency
+> (`POST /admin/wallets/{ownerID}/settle-debt`). Debt movements carry
+> `ref.debt_delta` (and `ref.no_balance` when the balance did not move) —
+> that is what the sweep reads.
+
 ⚠️ **The JWT secret is the SAME as the verticals'.** That is what lets each of them verify
 a token **locally**, without calling core — a per-request verification would make this
 service the single point of failure of the whole platform.
@@ -141,9 +179,12 @@ wallet, open an account, notify someone in their name. No person ever calls them
 | `POST /internal/accounts/{contact,names,by-phone}` | read a name, a phone, an id — nothing more |
 | `POST /internal/accounts/{ensure,ensure-merchant}` | open an account; `ensure` takes any role, so it can create an admin |
 | `POST /internal/accounts/search` | ids of accounts whose name or phone contains a text, by role, in the request's country — for a vertical's search bar |
-| `POST /internal/wallets/{create,consume,credit,pay,refund,credit-earnings}` | move money |
+| `POST /internal/wallets/{create,consume,credit,pay,refund,credit-earnings}` | move money (`credit-earnings` takes `commission_xof`: the platform's share retained in the same movement) |
 | `POST /internal/wallets/balance` | read a balance — what the VTC checks before calling drivers for a ride the balance will pay at acceptance |
 | `POST /internal/notifications/send` | send one templated message |
+| `GET /internal/finance/billing?country=` | the country's billing rules (tokens or commission, when the client is charged) |
+| `POST /internal/finance/events` | what moved on a vertical's own ledger, for the journal (`ride_settled`, `ledger_entry`) |
+| `POST /internal/wallets/owe` | what a balance may not have: taken if there, carried to the wallet's debt otherwise |
 | `POST /internal/equipment/collect` | what the agent's equipment contracts take from an earning (couriers: charged on the Dira balance right here; VTC drivers: the amount the vertical books on its ledger, negative = deposit given back) |
 | `POST /internal/equipment/standing` | outstanding / due / overdue amounts and `blocked` — what a vertical checks before letting someone go online |
 | `POST /internal/audit` | one audit entry from a vertical, stored as is with its `service` — the console reads every service's entries at `GET /admin/audit` |

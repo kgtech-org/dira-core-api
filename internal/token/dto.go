@@ -18,6 +18,9 @@ type WalletResponse struct {
 	// jetons — « solde 42 » ne dirait plus si l'on peut propulser un plat ou
 	// retirer 42 francs.
 	BalanceXOF int `json:"balance_xof"`
+	// DebtXOF : ce que ce portefeuille DOIT à la plateforme (commission sur
+	// espèces, paiement refusé). Remboursé d'office sur le prochain crédit.
+	DebtXOF int `json:"debt_xof"`
 	// PromoXOF est ce que la PLATEFORME a offert. Servi À PART et jamais
 	// additionné : l'écran doit pouvoir dire « dont X offerts », et les deux
 	// ne se remboursent pas pareil.
@@ -38,6 +41,7 @@ func newWalletResponse(w *Wallet, tokenPriceXOF int) WalletResponse {
 		Balance:       w.Balance,
 		TokenPriceXOF: tokenPriceXOF,
 		BalanceXOF:    w.BalanceXOF,
+		DebtXOF:       w.DebtXOF,
 		PromoXOF:      w.PromoXOF,
 		SpendableXOF:  w.BalanceXOF + w.PromoXOF,
 		UpdatedAt:     w.UpdatedAt,

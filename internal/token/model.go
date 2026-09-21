@@ -84,6 +84,20 @@ const (
 	// un livreur — une échéance prélevée sur son solde, une retenue sur ses
 	// gains, ou la caution qui lui est rendue. La référence est le contrat.
 	ReasonEquipment = "equipment"
+	// ReasonCommission : la part de la plateforme retenue sur un gain versé
+	// à un agent (mode `commission`), ou prise sur son solde pour une course
+	// en espèces.
+	ReasonCommission = "commission"
+	// ReasonCommissionDue : la commission d'une course en espèces que le
+	// solde n'a pas pu payer — portée à la DETTE (`debt_xof`). Le mouvement
+	// porte `ref.debt: true` : il ne bouge pas le solde, il bouge la dette.
+	ReasonCommissionDue = "commission_due"
+	// ReasonPaymentDue : un paiement au portefeuille refusé à la livraison
+	// (client sans provision à l'étape réglée) — porté à sa dette.
+	ReasonPaymentDue = "payment_due"
+	// ReasonDebtRepaid : la dette remboursée, prise sur un crédit qui arrive
+	// (gain, recharge) ou réglée à l'agence.
+	ReasonDebtRepaid = "debt_repaid"
 )
 
 // Ce à quoi un mouvement se rattache.
@@ -145,7 +159,16 @@ type Wallet struct {
 	// Séparé de BalanceXOF et non additionné : les deux ne se remboursent pas
 	// pareil. Rendre de l'argent qu'on n'a jamais reçu serait une perte
 	// sèche, et l'écran doit pouvoir dire « dont X offerts ».
-	PromoXOF  int       `bson:"promo_xof,omitempty"`
+	PromoXOF int `bson:"promo_xof,omitempty"`
+	// DebtXOF est ce que le propriétaire DOIT à la plateforme et qu'aucun
+	// solde n'a pu payer : la commission d'une course ou d'une livraison
+	// réglée en espèces (mode `commission`), un paiement au portefeuille
+	// refusé à la livraison. Remboursé d'office sur le prochain crédit en
+	// argent ; au-delà d'un plafond, la verticale ne l'appelle plus.
+	//
+	// Un champ à part, et non un solde négatif : « solde −1 500 » se lit mal
+	// et un solde qui peut être négatif n'est plus une garantie pour rien.
+	DebtXOF   int       `bson:"debt_xof,omitempty"`
 	UpdatedAt time.Time `bson:"updated_at"`
 }
 

@@ -41,6 +41,8 @@ type Repo interface {
 	// TakeMoney débite l'ARGENT RÉEL seulement, tout ou ce qu'il y a
 	// (`partial`) : les retenues de matériel. Rend ce qui a été pris.
 	TakeMoney(ctx context.Context, walletID primitive.ObjectID, amount int, partial bool) (int, error)
+	// AdjustDebt déplace la dette (positif = doit plus, négatif = rembourse).
+	AdjustDebt(ctx context.Context, walletID primitive.ObjectID, delta int) error
 	ListTransactions(ctx context.Context, walletID primitive.ObjectID, limit int, cursor string) ([]Transaction, string, error)
 	// ListTransactionsNewest : les derniers mouvements d'abord — la fiche.
 	ListTransactionsNewest(ctx context.Context, walletID primitive.ObjectID, limit int, cursor string) ([]Transaction, string, error)

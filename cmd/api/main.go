@@ -33,6 +33,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/internal/config"
 	"github.com/kgtech-org/dira-core-api/internal/country"
 	"github.com/kgtech-org/dira-core-api/internal/equipment"
+	"github.com/kgtech-org/dira-core-api/internal/finance"
 	"github.com/kgtech-org/dira-core-api/internal/fleet"
 	"github.com/kgtech-org/dira-core-api/internal/indexes"
 	"github.com/kgtech-org/dira-core-api/internal/notify"
@@ -170,6 +171,15 @@ func run(logger *slog.Logger) error {
 	tokenRepo := token.NewRepository(mongo)
 	tokenSvc := token.NewService(tokenRepo, nil, paymentSvc, nil, nil,
 		token.DefaultTokenPriceXOF, token.DefaultBoostCost, nil)
+	// LA COMPTABILITÉ : chaque mouvement du grand livre des portefeuilles
+	// écrit son écriture en partie double, dans la même transaction. La
+	// facturation par pays (jetons ou commission, quand débiter le client)
+	// et le balayage d'intégrité vivent au même endroit.
+	financeRepo := finance.NewRepository(mongo)
+	if err := financeRepo.EnsureIndexes(ctx); err != nil {
+		logger.Warn("finance: indexes not ensured", "error", err)
+	}
+	tokenRepo.SetJournal(finance.NewJournal(financeRepo, token.DefaultTokenPriceXOF))
 	userRepo := user.NewRepository(mongo)
 	userSvc := user.NewService(userRepo, tokens, tokenSvc)
 	userSvc.SetDefaultCountry(cfg.CountryDefault)
@@ -326,6 +336,12 @@ func run(logger *slog.Logger) error {
 	// livre des courses par la verticale (`/internal/equipment/collect`).
 	// Un balayage par minute vieillit les échéances, ouvre les périodes de
 	// loyer, rappelle, prélève, prévient.
+	financeSvc := finance.NewService(financeRepo, auditRec, cfg.FinanceJournalSince)
+	financeSvc.SetStaffAlerter(staffAlerts{staff: staffSvc, notify: notifySvc})
+	// Le balayage d'intégrité : les soldes recalculés, le journal vérifié,
+	// à cadence fixe — et à la demande depuis la console.
+	go financeSvc.RunEvery(ctx, cfg.FinanceIntegrityInterval)
+
 	equipmentSvc := equipment.NewService(equipment.NewRepository(mongo), tokenSvc, userSvc)
 	equipmentSvc.SetNotifier(notifySvc)
 	equipmentSvc.SetStaffAlerter(staffAlerts{staff: staffSvc, notify: notifySvc})
@@ -374,6 +390,9 @@ func run(logger *slog.Logger) error {
 		// ailleurs : les verticales y écrivent par la surface de service.
 		auditlog.NewHandler(auditRec).Mount(r, authMW)
 		equipment.NewHandler(equipmentSvc).Mount(r, authMW)
+		financeH := finance.NewHandler(financeSvc)
+		financeH.Mount(r, authMW)
+		financeH.MountInternal(r, middleware.Service(cfg.ServiceToken))
 		notify.NewHandler(notifySvc).Mount(r, authMW)
 		// LE PORTEFEUILLE : `/wallet` pour la personne, `/admin/wallets/...`
 		// pour l'exploitation. Il n'était monté NULLE PART — ni ici, ni dans
@@ -387,6 +406,9 @@ func run(logger *slog.Logger) error {
 		// que si les collaborateurs sont branchés — ils ne le sont pas, et des
 		// routes qui échouent seraient pires que des routes absentes.
 		tokenHandler := token.NewHandler(tokenSvc)
+		// Les listes de la console (tous les portefeuilles, tous les
+		// mouvements du pays), avec le nom des titulaires qui sont des comptes.
+		tokenHandler.SetBackOffice(tokenRepo, userSvc)
 		tokenHandler.Mount(r, authMW)
 		tokenHandler.MountCatalogueSpending(r, authMW)
 		// ⚠️ La confirmation manuelle d'un encaissement n'est ouverte qu'HORS

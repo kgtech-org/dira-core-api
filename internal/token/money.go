@@ -3,6 +3,7 @@ package token
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -129,7 +130,26 @@ func (s *Service) TopUp(ctx context.Context, userID string, amountXOF int, ref m
 	// La recharge porte déjà son unicité : le module de paiement n'appelle ceci
 	// qu'une fois par paiement abouti, et l'index unique sur `provider_ref`
 	// l'empêche d'aboutir deux fois.
-	return s.moveMoney(ctx, userID, "balance_xof", amountXOF, KindPurchase, ReasonWalletTopup, "", "", "", ref)
+	if err := s.moveMoney(ctx, userID, "balance_xof", amountXOF, KindPurchase, ReasonWalletTopup, "", "", "", ref); err != nil {
+		return err
+	}
+	// Une dette (un paiement refusé à la livraison) se rembourse sur la
+	// recharge qui suit, d'office. Rejouable sans risque : ce qui est pris
+	// est borné par la dette qui reste.
+	return s.RepayDebt(ctx, userID)
+}
+
+// RepayDebt prend sur le solde en argent ce que le portefeuille doit, au
+// plus ce qu'il y a. Rend ce qui a été remboursé.
+func (s *Service) RepayDebt(ctx context.Context, ownerID string) error {
+	wallet, err := s.findWallet(ctx, ownerID)
+	if err != nil || wallet.DebtXOF <= 0 {
+		return err
+	}
+	return s.repo.WithTransaction(ctx, func(txCtx context.Context) error {
+		_, err := s.repayDebt(txCtx, wallet, nil, "", time.Now().UTC())
+		return err
+	})
 }
 
 // CreditPromo offre un crédit promotionnel — geste commercial, compensation,
@@ -348,4 +368,205 @@ func (s *Service) RefundEquipment(ctx context.Context, ownerID string, amountXOF
 		return apperr.Validation("amount must be positive")
 	}
 	return s.moveMoney(ctx, ownerID, "balance_xof", amountXOF, KindPurchase, ReasonEquipment, RefEquipment, contractID, key, nil)
+}
+
+// --- la COMMISSION et la DETTE ---
+//
+// En mode `commission`, la plateforme se paie sur ce qu'elle verse : un gain
+// arrive, sa part est retenue dans le même mouvement. Quand l'argent ne passe
+// pas par elle (une course en espèces), la commission est prise sur le solde
+// s'il y en a, et le reste devient une DETTE, remboursée d'office sur le
+// prochain crédit.
+
+// CreditEarningsNet crédite un gain et retient la commission dans la même
+// transaction — puis rembourse la dette éventuelle sur ce qui reste.
+// Idempotent par (bénéficiaire, référence, motif). Rend la commission
+// retenue et la dette remboursée.
+func (s *Service) CreditEarningsNet(ctx context.Context, ownerID string, amountXOF, commissionXOF int, reason, refKind, refID string, ref map[string]any) (retained, repaid int, err error) {
+	if amountXOF <= 0 {
+		return 0, 0, apperr.Validation("amount must be positive")
+	}
+	if commissionXOF < 0 || commissionXOF > amountXOF {
+		return 0, 0, apperr.Validation("commission must be between 0 and the amount")
+	}
+	wallet, err := s.findWallet(ctx, ownerID)
+	if err != nil {
+		return 0, 0, err
+	}
+	refOID, err := parseRef(refKind, refID)
+	if err != nil {
+		return 0, 0, err
+	}
+	now := time.Now().UTC()
+	err = s.repo.WithTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.repo.ClaimOperation(txCtx, earningsKey(ownerID, refKind, refID, reason)); err != nil {
+			return err
+		}
+		if err := s.repo.CreditField(txCtx, wallet.ID, "balance_xof", amountXOF); err != nil {
+			return apperr.Internal(err)
+		}
+		if err := s.repo.InsertTransaction(txCtx, &Transaction{
+			WalletID: wallet.ID, Kind: KindPurchase, Reason: reason, Amount: amountXOF, Unit: UnitXOF,
+			RefID: refOID, RefKind: refKind, Ref: ref, CreatedAt: now,
+		}); err != nil {
+			return apperr.Internal(err)
+		}
+		if commissionXOF > 0 {
+			taken, err := s.repo.TakeMoney(txCtx, wallet.ID, commissionXOF, false)
+			if err != nil {
+				return apperr.Internal(err)
+			}
+			if taken != commissionXOF {
+				return apperr.Internal(fmt.Errorf("token: commission not retained on a fresh credit"))
+			}
+			retained = taken
+			if err := s.repo.InsertTransaction(txCtx, &Transaction{
+				WalletID: wallet.ID, Kind: KindConsume, Reason: ReasonCommission, Amount: taken, Unit: UnitXOF,
+				RefID: refOID, RefKind: refKind, Ref: map[string]any{"on": reason}, CreatedAt: now,
+			}); err != nil {
+				return apperr.Internal(err)
+			}
+		}
+		repaid, err = s.repayDebt(txCtx, wallet, refOID, refKind, now)
+		return err
+	})
+	if errors.Is(err, errOperationApplied) {
+		slog.InfoContext(ctx, "token: earnings replayed, not applied twice", "owner_id", ownerID, "ref_kind", refKind, "ref_id", refID)
+		return 0, 0, nil
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	s.record(ctx, "token.money", wallet.ID.Hex(), map[string]any{
+		"amount_xof": amountXOF, "commission_xof": retained, "debt_repaid_xof": repaid, "reason": reason, "owner_id": ownerID,
+	})
+	return retained, repaid, nil
+}
+
+// repayDebt prend sur le solde en argent ce que le portefeuille doit, au plus
+// ce qu'il y a — dans la transaction de l'appelant.
+func (s *Service) repayDebt(txCtx context.Context, wallet *Wallet, refOID *primitive.ObjectID, refKind string, now time.Time) (int, error) {
+	if wallet.DebtXOF <= 0 {
+		return 0, nil
+	}
+	taken, err := s.repo.TakeMoney(txCtx, wallet.ID, wallet.DebtXOF, true)
+	if err != nil {
+		return 0, apperr.Internal(err)
+	}
+	if taken == 0 {
+		return 0, nil
+	}
+	if err := s.repo.AdjustDebt(txCtx, wallet.ID, -taken); err != nil {
+		return 0, apperr.Internal(err)
+	}
+	if err := s.repo.InsertTransaction(txCtx, &Transaction{
+		WalletID: wallet.ID, Kind: KindConsume, Reason: ReasonDebtRepaid, Amount: taken, Unit: UnitXOF,
+		RefID: refOID, RefKind: refKind, Ref: map[string]any{"debt_delta": -taken}, CreatedAt: now,
+	}); err != nil {
+		return 0, apperr.Internal(err)
+	}
+	wallet.DebtXOF -= taken
+	return taken, nil
+}
+
+// Owe fait payer une somme que le solde n'a pas forcément : ce qu'il y a
+// est pris tout de suite (`reason`), le reste devient une DETTE
+// (`dueReason`). Idempotent par (motif, référence). Rend ce qui a été pris
+// et ce qui est devenu dette.
+//
+// Un mouvement de dette porte `ref.debt_delta` (ce qu'il ajoute ou retire à
+// la dette) et `ref.no_balance: true` quand il ne touche PAS le solde :
+// c'est ce que le balayage d'intégrité lit pour recalculer les deux.
+func (s *Service) Owe(ctx context.Context, ownerID string, amountXOF int, reason, dueReason, refKind, refID string) (paid, owed int, err error) {
+	if amountXOF <= 0 {
+		return 0, 0, apperr.Validation("amount must be positive")
+	}
+	wallet, err := s.findWallet(ctx, ownerID)
+	if err != nil {
+		return 0, 0, err
+	}
+	refOID, err := parseRef(refKind, refID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if refOID == nil {
+		return 0, 0, apperr.Validation("an amount owed needs a reference")
+	}
+	now := time.Now().UTC()
+	err = s.repo.WithTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.repo.ClaimOperation(txCtx, "owe:"+reason+":"+refKind+":"+refID); err != nil {
+			return err
+		}
+		taken, err := s.repo.TakeMoney(txCtx, wallet.ID, amountXOF, true)
+		if err != nil {
+			return apperr.Internal(err)
+		}
+		paid = taken
+		if taken > 0 {
+			if err := s.repo.InsertTransaction(txCtx, &Transaction{
+				WalletID: wallet.ID, Kind: KindConsume, Reason: reason, Amount: taken, Unit: UnitXOF,
+				RefID: refOID, RefKind: refKind, CreatedAt: now,
+			}); err != nil {
+				return apperr.Internal(err)
+			}
+		}
+		if rest := amountXOF - taken; rest > 0 {
+			owed = rest
+			if err := s.repo.AdjustDebt(txCtx, wallet.ID, rest); err != nil {
+				return apperr.Internal(err)
+			}
+			if err := s.repo.InsertTransaction(txCtx, &Transaction{
+				WalletID: wallet.ID, Kind: KindConsume, Reason: dueReason, Amount: rest, Unit: UnitXOF,
+				RefID: refOID, RefKind: refKind, Ref: map[string]any{"debt_delta": rest, "no_balance": true}, CreatedAt: now,
+			}); err != nil {
+				return apperr.Internal(err)
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, errOperationApplied) {
+		slog.InfoContext(ctx, "token: amount owed replayed, not applied twice", "owner_id", ownerID, "ref_kind", refKind, "ref_id", refID)
+		return 0, 0, nil
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	s.record(ctx, "token.owe", wallet.ID.Hex(), map[string]any{
+		"amount_xof": amountXOF, "paid_xof": paid, "owed_xof": owed, "reason": reason, "owner_id": ownerID,
+	})
+	return paid, owed, nil
+}
+
+// SettleDebt enregistre un remboursement de dette réglé HORS solde — à
+// l'agence, en espèces ou mobile money. Réservé à l'exploitation.
+func (s *Service) SettleDebt(ctx context.Context, actorID, ownerID string, amountXOF int, note string) (*WalletResponse, error) {
+	if amountXOF <= 0 {
+		return nil, apperr.Validation("amount must be positive")
+	}
+	wallet, err := s.findWallet(ctx, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	if amountXOF > wallet.DebtXOF {
+		return nil, apperr.Validation("amount above the debt").WithMeta(map[string]any{"debt_xof": wallet.DebtXOF})
+	}
+	now := time.Now().UTC()
+	err = s.repo.WithTransaction(ctx, func(txCtx context.Context) error {
+		if err := s.repo.AdjustDebt(txCtx, wallet.ID, -amountXOF); err != nil {
+			return apperr.Internal(err)
+		}
+		return s.repo.InsertTransaction(txCtx, &Transaction{
+			WalletID: wallet.ID, Kind: KindConsume, Reason: ReasonDebtRepaid, Amount: amountXOF, Unit: UnitXOF,
+			Ref: map[string]any{"debt_delta": -amountXOF, "no_balance": true, "settled": "agency", "note": note, "by": actorID}, CreatedAt: now,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.record(ctx, "token.debt.settle", wallet.ID.Hex(), map[string]any{"amount_xof": amountXOF, "note": note, "owner_id": ownerID, "by": actorID})
+	resp, err := s.WalletOf(ctx, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }

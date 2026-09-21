@@ -175,6 +175,10 @@ const (
 	KeyEquipmentReturned   = "equipment_returned"
 	KeyStaffEquipOverdue   = "staff_equipment_overdue"
 	KeyStaffEquipRequested = "staff_equipment_requested"
+	// LA COMPTABILITÉ (`internal/finance`) : le balayage d'intégrité a
+	// trouvé un écart — un solde qui ne vaut plus ses mouvements, une
+	// écriture déséquilibrée, un mouvement sans écriture.
+	KeyStaffFinanceAlert = "staff_finance_alert"
 )
 
 // defaults sont les gabarits COMPILÉS, servis tant que la base n'en porte pas.
@@ -538,6 +542,15 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "Equipment overdue — [who]", Body: "[amount] unpaid for [item]."},
 		},
 	},
+	KeyStaffFinanceAlert: {
+		Key:         KeyStaffFinanceAlert,
+		Description: "STAFF — le balayage d'intégrité des portefeuilles et du journal a trouvé un écart.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Intégrité financière : [kind]", Body: "[who] — [detail]. À vérifier dans Finance › Intégrité."},
+			LocaleEN: {Title: "Financial integrity: [kind]", Body: "[who] — [detail]. Check Finance › Integrity."},
+		},
+	},
 	KeyStaffEquipRequested: {
 		Key:         KeyStaffEquipRequested,
 		Description: "STAFF — un agent demande du matériel depuis l'application.",
@@ -632,6 +645,7 @@ var provided = map[string][]string{
 	KeyEquipmentReturned:      {"item", "refund", "owed"},
 	KeyStaffEquipOverdue:      {"who", "item", "amount"},
 	KeyStaffEquipRequested:    {"who", "item", "mode"},
+	KeyStaffFinanceAlert:      {"kind", "who", "detail"},
 }
 
 // Provided rend les variables que la plateforme remplit pour une clé.
