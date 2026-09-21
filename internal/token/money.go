@@ -285,6 +285,10 @@ func parseRef(refKind, refID string) (*primitive.ObjectID, error) {
 // réglage du contrat, jamais un défaut. Rend ce qui a été PRIS (zéro quand
 // le solde est vide) ; la clé rend le mouvement rejouable sans double
 // débit, comme tout mouvement d'argent.
+// errNothingTaken annule la transaction d'un prélèvement qui n'a rien pris,
+// pour que sa clé d'idempotence reste disponible.
+var errNothingTaken = errors.New("token: nothing taken")
+
 func (s *Service) ChargeEquipment(ctx context.Context, ownerID string, amountXOF int, allowPartial bool, contractID, key string) (int, error) {
 	if amountXOF <= 0 {
 		return 0, apperr.Validation("amount must be positive")
@@ -310,15 +314,22 @@ func (s *Service) ChargeEquipment(ctx context.Context, ownerID string, amountXOF
 		}
 		taken = n
 		if n == 0 {
-			return nil
+			// Rien pris : la clé n'est PAS consommée — un solde vide ce matin
+			// peut être crédité ce soir, et le balayage doit pouvoir réessayer.
+			return errNothingTaken
 		}
 		return s.repo.InsertTransaction(txCtx, &Transaction{
 			WalletID: wallet.ID, Kind: KindConsume, Reason: ReasonEquipment, Amount: n, Unit: UnitXOF,
 			RefID: refOID, RefKind: RefEquipment, CreatedAt: time.Now().UTC(),
 		})
 	})
+	if errors.Is(err, errNothingTaken) {
+		return 0, nil
+	}
 	if errors.Is(err, errOperationApplied) {
-		slog.InfoContext(ctx, "token: equipment charge replayed, not applied twice", "key", key, "owner_id", ownerID)
+		// Le balayage repasse toutes les minutes : une clé déjà servie est
+		// la norme, pas un événement — en debug seulement.
+		slog.DebugContext(ctx, "token: equipment charge replayed, not applied twice", "key", key, "owner_id", ownerID)
 		return 0, nil
 	}
 	if err != nil {
