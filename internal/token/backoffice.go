@@ -134,8 +134,15 @@ func (r *Repository) ListLedgerFiltered(ctx context.Context, f LedgerFilter, cur
 		if unit == "" {
 			unit = UnitToken
 		}
+		// Toujours positif : `kind` dit le sens. Les jetons consommés sont
+		// stockés en négatif, les francs débités en positif — la console
+		// applique le signe elle-même et ne doit pas le recevoir deux fois.
+		amount := d.Amount
+		if amount < 0 {
+			amount = -amount
+		}
 		row := LedgerRow{
-			ID: d.ID.Hex(), WalletID: d.WalletID.Hex(), Kind: d.Kind, Reason: d.Reason, Amount: d.Amount, Unit: unit,
+			ID: d.ID.Hex(), WalletID: d.WalletID.Hex(), Kind: d.Kind, Reason: d.Reason, Amount: amount, Unit: unit,
 			RefKind: d.RefKind, Ref: d.Ref, OwnerID: d.Wallet.OwnerID.Hex(), OwnerType: d.Wallet.Type, CreatedAt: d.CreatedAt,
 		}
 		if d.RefID != nil {
