@@ -308,7 +308,12 @@ type WalletSums struct {
 // le grand livre — la définition du solde ; le champ stocké n'en est que le
 // cache.
 func (r *Repository) SumTransactions(ctx context.Context) (map[primitive.ObjectID]WalletSums, error) {
-	signed := bson.M{"$cond": bson.A{bson.M{"$eq": bson.A{"$kind", "purchase"}}, "$amount", bson.M{"$multiply": bson.A{"$amount", -1}}}}
+	// Le SENS vient de `kind`, jamais du signe stocké : les jetons consommés
+	// sont écrits en négatif, les francs débités en positif. Prendre
+	// `-amount` d'un débit de −2 jetons donnait +2 — et un constat
+	// `wallet_drift` sur chaque livreur qui avait accepté une commande.
+	abs := bson.M{"$abs": "$amount"}
+	signed := bson.M{"$cond": bson.A{bson.M{"$eq": bson.A{"$kind", "purchase"}}, abs, bson.M{"$multiply": bson.A{abs, -1}}}}
 	isToken := bson.M{"$or": bson.A{bson.M{"$eq": bson.A{"$unit", "token"}}, bson.M{"$eq": bson.A{bson.M{"$ifNull": bson.A{"$unit", ""}}, ""}}}}
 	isPromo := bson.M{"$or": bson.A{
 		bson.M{"$eq": bson.A{"$reason", "promo_credit"}},

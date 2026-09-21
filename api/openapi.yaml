@@ -550,7 +550,9 @@ paths:
       description: >-
         Chaque ligne dit son UNITÉ (`token` ou `xof`), son motif, ce qu'elle
         paie (`ref_kind`, `ref_id`), son titulaire, et `ref` (la source d'un
-        paiement, `debt_delta` d'un mouvement de dette).
+        paiement, `debt_delta` d'un mouvement de dette). `amount` est TOUJOURS
+        positif : le sens vient de `kind` (`purchase` crédite, `consume`
+        débite).
       parameters:
         - {name: wallet_id, in: query, schema: {type: string}}
         - {name: owner_type, in: query, schema: {type: string, enum: [client, driver, merchant]}}
