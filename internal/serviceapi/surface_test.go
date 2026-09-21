@@ -47,6 +47,10 @@ var declaredSurface = []string{
 	// vérifier sans tenir sa propre liste. Le catalogue et les frontières,
 	// eux, sont dans `pkg/country`, partagés par le code.
 	"/internal/countries",
+	// Le MATÉRIEL loué ou vendu aux agents : ce qu'un gain doit rendre au
+	// contrat, et si la personne est bloquée par un retard.
+	"/internal/equipment/collect",
+	"/internal/equipment/standing",
 	// Les NOMS des flottes privées — et rien d'autre. Une verticale affiche
 	// « Flotte Sodigaz » à côté d'une plaque ; lui ouvrir la fiche entière lui
 	// confierait un contrat et une commission qu'elle n'a aucune raison de

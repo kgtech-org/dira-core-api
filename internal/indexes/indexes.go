@@ -132,6 +132,13 @@ var applicationIndexes = []db.Index{
 	{Collection: "audit_logs", Keys: db.K("action", 1, "_id", -1)},
 	{Collection: "audit_logs", Keys: db.K("resource.id", 1, "_id", -1)},
 	{Collection: "audit_logs", Keys: db.K("created_at", -1)},
+
+	// --- le matériel (internal/equipment) ---
+	{Collection: "equipment_items", Keys: db.K("country", 1, "active", 1, "_id", -1)},
+	{Collection: "equipment_contracts", Keys: db.K("user_id", 1, "status", 1, "_id", 1)},
+	{Collection: "equipment_contracts", Keys: db.K("country", 1, "status", 1, "_id", -1)},
+	{Collection: "equipment_contracts", Keys: db.K("status", 1, "next_period_at", 1)},
+	{Collection: "equipment_contracts", Keys: db.K("item_id", 1, "_id", -1)},
 }
 
 // Ensure pose les index du socle. Idempotent : Mongo ignore un index déjà

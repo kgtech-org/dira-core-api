@@ -80,6 +80,10 @@ const (
 	// `payment` : au relevé, « pourboire 500 F » se lit, « paiement 500 F »
 	// sur une course déjà payée se conteste.
 	ReasonTip = "tip"
+	// ReasonEquipment : le MATÉRIEL (gilet, sac, téléphone) loué ou vendu à
+	// un livreur — une échéance prélevée sur son solde, une retenue sur ses
+	// gains, ou la caution qui lui est rendue. La référence est le contrat.
+	ReasonEquipment = "equipment"
 )
 
 // Ce à quoi un mouvement se rattache.
@@ -98,6 +102,9 @@ const (
 	// sienne, et chaque ajustement est un mouvement distinct — deux arrêts
 	// ajoutés sont deux débits, pas un rejeu.
 	RefRideAdjustment = "ride_adjustment"
+	// RefEquipment : un CONTRAT de matériel (`internal/equipment`). Chaque
+	// prélèvement et chaque remboursement de caution s'y rattache.
+	RefEquipment = "equipment"
 )
 
 // Unités du grand livre.

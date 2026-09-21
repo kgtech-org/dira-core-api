@@ -271,3 +271,46 @@ func (r *Repository) SpendMoney(ctx context.Context, walletID primitive.ObjectID
 	}
 	return fromPromo, amount - fromPromo, nil
 }
+
+// TakeMoney debits `balance_xof` by `amount`, or by what there is when
+// `partial` — in ONE atomic operation, condition and debit together. Rend ce
+// qui a été pris ; zéro quand le solde est vide (ou insuffisant sans partiel).
+//
+// L'argent réel seulement, jamais le promotionnel : une retenue de matériel
+// n'est pas un achat sur la plateforme, et le crédit offert à un livreur
+// n'est pas fait pour rembourser un gilet.
+func (r *Repository) TakeMoney(ctx context.Context, walletID primitive.ObjectID, amount int, partial bool) (int, error) {
+	if amount <= 0 {
+		return 0, fmt.Errorf("token: take: amount must be positive")
+	}
+	filter := bson.M{"_id": walletID}
+	takeExpr := any(amount)
+	if partial {
+		filter["balance_xof"] = bson.M{"$gt": 0}
+		takeExpr = bson.M{"$min": []any{bson.M{"$ifNull": []any{"$balance_xof", 0}}, amount}}
+	} else {
+		filter["balance_xof"] = bson.M{"$gte": amount}
+	}
+	var before Wallet
+	err := r.wallets.FindOneAndUpdate(ctx, filter,
+		mongo.Pipeline{
+			{{Key: "$set", Value: bson.M{"__take": takeExpr}}},
+			{{Key: "$set", Value: bson.M{
+				"balance_xof": bson.M{"$subtract": []any{bson.M{"$ifNull": []any{"$balance_xof", 0}}, "$__take"}},
+				"updated_at":  time.Now().UTC(),
+			}}},
+			{{Key: "$unset", Value: "__take"}},
+		},
+		options.FindOneAndUpdate().SetReturnDocument(options.Before),
+	).Decode(&before)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return 0, nil // rien à prendre : pas un échec, un solde vide
+	}
+	if err != nil {
+		return 0, fmt.Errorf("token: take money: %w", err)
+	}
+	if partial && before.BalanceXOF < amount {
+		return before.BalanceXOF, nil
+	}
+	return amount, nil
+}

@@ -689,6 +689,208 @@ paths:
       parameters: [{name: id, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Reviews}
+  # ---------------------------------------------------------------- matériel
+  /equipment/catalogue:
+    get:
+      tags: [equipment]
+      summary: Items offered to me (driver / courier)
+      description: >-
+        Le MATÉRIEL — gilet, sac, téléphone, casque — vendu, loué ou prêté aux
+        livreurs et chauffeurs. `vertical` dit de quel métier on relève (le
+        rôle est `driver` pour les deux). Actifs, de mon pays, pour ma
+        verticale.
+      parameters: [{name: vertical, in: query, required: true, schema: {type: string, enum: [food, vtc]}}]
+      responses:
+        "200": {description: Items, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: "#/components/schemas/EquipmentItem"}}}}}}}
+  /equipment/requests:
+    post:
+      tags: [equipment]
+      summary: Ask for an item from the app
+      description: >-
+        Ouvert par pays (`agent_can_request`). Crée un contrat `requested` que
+        l'exploitation qualifie ; l'équipe est alertée
+        (`staff_equipment_requested`).
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [vertical, item_id, mode], properties: {vertical: {type: string, enum: [food, vtc]}, item_id: {type: string}, mode: {type: string, enum: [sale, rental, loan]}, quantity: {type: integer, minimum: 1, maximum: 10}, note: {type: string, maxLength: 1000}}}}}
+      responses:
+        "201": {description: Contract, content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentContract"}}}}
+        "403": {description: equipment_requests_closed}
+        "409": {description: equipment_mode_not_allowed · equipment_not_offered}
+  /me/equipment:
+    get:
+      tags: [equipment]
+      summary: My contracts and where I stand
+      responses:
+        "200": {description: Contracts + standing, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: "#/components/schemas/EquipmentContract"}}, standing: {$ref: "#/components/schemas/EquipmentStanding"}}}}}}
+  /me/equipment/{id}/accept:
+    post:
+      tags: [equipment]
+      summary: Accept the terms of a proposed contract
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Contract, content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentContract"}}}}
+        "409": {description: equipment_bad_status}
+  /me/equipment/{id}/pay:
+    post:
+      tags: [equipment]
+      summary: Pay from my Dira balance (couriers)
+      description: >-
+        Borné à ce qui reste dû. Un chauffeur VTC n'a pas de solde ici :
+        `409 equipment_no_wallet` — son matériel se règle au grand livre des
+        courses.
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [amount_xof], properties: {amount_xof: {type: integer, minimum: 1}}}}}
+      responses:
+        "200": {description: Contract, content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentContract"}}}}
+        "402": {description: insufficient_funds}
+        "409": {description: equipment_no_wallet · equipment_nothing_owed}
+  /admin/equipment/settings:
+    get:
+      tags: [admin]
+      summary: Equipment settings of the country (defaults every contract starts from)
+      responses:
+        "200": {description: Settings, content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentSettings"}}}}
+    put:
+      tags: [admin]
+      summary: Update the settings (audited)
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, properties: {allowed_modes: {type: array, items: {type: string, enum: [sale, rental, loan]}}, agent_can_request: {type: boolean}, require_acceptance: {type: boolean}, max_earnings_percent: {type: integer}, default_deposit_percent: {type: integer}, staff_alert_overdue: {type: boolean}, defaults: {$ref: "#/components/schemas/EquipmentPlan"}}}}}
+      responses:
+        "200": {description: Settings, content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentSettings"}}}}
+  /admin/equipment/items:
+    get:
+      tags: [admin]
+      summary: The catalogue of the country
+      parameters: [{name: active, in: query, schema: {type: boolean}}]
+      responses:
+        "200": {description: Items}
+    post:
+      tags: [admin]
+      summary: Add an item
+      responses:
+        "201": {description: Item, content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentItem"}}}}
+  /admin/equipment/items/{id}:
+    patch:
+      tags: [admin]
+      summary: Update an item (whole body)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Item}
+  /admin/equipment/contracts:
+    get:
+      tags: [admin]
+      summary: Contracts of the country
+      parameters:
+        - {name: user_id, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string}}
+        - {name: vertical, in: query, schema: {type: string, enum: [food, vtc]}}
+        - {name: item_id, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        "200": {description: Contracts, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: "#/components/schemas/EquipmentContract"}}, next_cursor: {type: string}}}}}}
+    post:
+      tags: [admin]
+      summary: Prepare a contract for a person
+      description: >-
+        Les réglages tombent en cascade — le contrat, puis l'article, puis le
+        pays — et chaque montant absent vient de l'article. `hand_over_now`
+        remet à la création (l'échéancier démarre, ce qui est dû à la remise
+        est prélevé si le plan le permet). Sinon l'agent reçoit
+        `equipment_contract_proposed` et accepte dans l'app quand
+        `require_acceptance` l'exige.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [user_id, vertical, item_id, mode], properties: {user_id: {type: string}, vertical: {type: string, enum: [food, vtc]}, item_id: {type: string}, quantity: {type: integer}, serial: {type: string}, mode: {type: string, enum: [sale, rental, loan]}, price_xof: {type: integer}, deposit_xof: {type: integer}, plan: {$ref: "#/components/schemas/EquipmentPlan"}, notes: {type: string}, hand_over_now: {type: boolean}}}}}
+      responses:
+        "201": {description: Contract, content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentContract"}}}}
+        "409": {description: equipment_mode_not_allowed · equipment_not_offered · equipment_out_of_stock}
+        "422": {description: plan.* (fields) — earnings_percent over max…}
+  /admin/equipment/contracts/{id}:
+    get:
+      tags: [admin]
+      summary: One contract
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Contract, content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentContract"}}}}
+    patch:
+      tags: [admin]
+      summary: Serial, notes, plan — price and deposit before hand-over only
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Contract}
+        "409": {description: equipment_handed_over}
+  /admin/equipment/contracts/{id}/qualify:
+    post:
+      tags: [admin]
+      summary: Turn a request into a draft the agent must accept
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Contract}
+  /admin/equipment/contracts/{id}/hand-over:
+    post:
+      tags: [admin]
+      summary: The item is handed over — the schedule starts
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Contract}
+        "409": {description: equipment_not_accepted · equipment_bad_status · equipment_out_of_stock}
+  /admin/equipment/contracts/{id}/payments:
+    post:
+      tags: [admin]
+      summary: Record a payment received by hand (cash, transfer, mobile money seen) or a waiver
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [amount_xof, source], properties: {amount_xof: {type: integer, minimum: 1}, source: {type: string, enum: [manual, mobile_money, waiver]}, note: {type: string}}}}}
+      responses:
+        "200": {description: Contract}
+  /admin/equipment/contracts/{id}/return:
+    post:
+      tags: [admin]
+      summary: The item comes back — condition, damage fee, deposit refund
+      description: >-
+        La caution est rendue (moins les dégâts) quand le plan le dit ou que
+        `refund_deposit` le demande : sur le solde Dira d'un livreur à
+        l'instant ; au grand livre d'un chauffeur VTC à la prochaine course.
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        content: {application/json: {schema: {type: object, properties: {condition: {type: string}, damage_fee_xof: {type: integer, minimum: 0}, refund_deposit: {type: boolean}}}}}
+      responses:
+        "200": {description: Contract}
+  /admin/equipment/contracts/{id}/cancel:
+    post:
+      tags: [admin]
+      summary: Cancel a contract that was never handed over
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Contract}
+        "409": {description: equipment_bad_status — a live contract ends by a return or a default}
+  /admin/equipment/contracts/{id}/default:
+    post:
+      tags: [admin]
+      summary: Close a contract as unpaid
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Contract}
+  /admin/equipment/contracts/{id}/lines/{n}/waive:
+    post:
+      tags: [admin]
+      summary: Waive one schedule line (a late fee, an instalment)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}, {name: n, in: path, required: true, schema: {type: integer}}]
+      responses:
+        "200": {description: Contract}
+  /admin/equipment/standing/{userID}:
+    get:
+      tags: [admin]
+      summary: Where a person stands, all contracts together
+      parameters: [{name: userID, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Standing, content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentStanding"}}}}
   /admin/audit:
     get:
       tags: [admin]
@@ -833,6 +1035,129 @@ paths:
         "422": {description: status must be active or suspended}
 components:
   schemas:
+    EquipmentPlan:
+      type: object
+      description: >-
+        COMMENT l'argent revient. Tout est facultatif et défaut aux réglages du
+        pays ; un contrat ne porte que ce qu'il surcharge.
+      properties:
+        schedule: {type: string, enum: [upfront, installments, per_period, none], description: "comptant à la remise · N échéances · un loyer par période · rien"}
+        installments: {type: integer, minimum: 0, maximum: 60}
+        period: {type: string, enum: [daily, weekly, biweekly, monthly]}
+        first_due_days: {type: integer, minimum: 0, description: "jours entre la remise et la première échéance"}
+        collect_from_earnings: {type: boolean, description: "retenir sur chaque gain"}
+        collect_from_wallet: {type: boolean, description: "prélever le solde Dira à l'échéance (livreurs) / porter au grand livre à la prochaine course (chauffeurs)"}
+        allow_partial: {type: boolean, description: "prendre ce qu'il y a quand le solde ne couvre pas"}
+        earnings_percent: {type: integer, minimum: 0, maximum: 100}
+        earnings_fixed_xof: {type: integer, minimum: 0}
+        min_left_xof: {type: integer, minimum: 0, description: "ce qu'on laisse au moins à l'agent sur un gain"}
+        daily_cap_xof: {type: integer, minimum: 0}
+        weekly_cap_xof: {type: integer, minimum: 0}
+        earnings_only_when_due: {type: boolean, description: "ne retenir que l'échu (sinon la retenue rembourse en avance)"}
+        grace_days: {type: integer, minimum: 0}
+        late_fee_xof: {type: integer, minimum: 0}
+        late_fee_percent: {type: integer, minimum: 0, maximum: 100}
+        block_after_days: {type: integer, minimum: 0, description: "0 = jamais bloqué"}
+        reminder_days: {type: integer, minimum: 0}
+        deposit_refundable: {type: boolean}
+    EquipmentItem:
+      type: object
+      properties:
+        id: {type: string}
+        country: {type: string}
+        kind: {type: string, enum: [vest, bag, phone, helmet, box, other]}
+        name: {type: string}
+        description: {type: string}
+        photos: {type: array, items: {type: string}}
+        audiences: {type: array, items: {type: string, enum: [food, vtc]}, description: "vide = les deux"}
+        sale_price_xof: {type: integer}
+        rental_daily_xof: {type: integer}
+        rental_weekly_xof: {type: integer}
+        rental_monthly_xof: {type: integer}
+        deposit_xof: {type: integer}
+        stock: {type: integer}
+        track_stock: {type: boolean}
+        active: {type: boolean}
+        default_plan: {$ref: "#/components/schemas/EquipmentPlan"}
+    EquipmentContract:
+      type: object
+      properties:
+        id: {type: string}
+        user_id: {type: string}
+        user_name: {type: string, description: ADMIN seulement}
+        vertical: {type: string, enum: [food, vtc]}
+        item_id: {type: string}
+        item_name: {type: string}
+        item_kind: {type: string}
+        quantity: {type: integer}
+        serial: {type: string}
+        mode: {type: string, enum: [sale, rental, loan]}
+        plan: {$ref: "#/components/schemas/EquipmentPlan"}
+        status: {type: string, enum: [requested, draft, accepted, active, returned, completed, defaulted, cancelled]}
+        price_xof: {type: integer, description: "prix total (vente) ou loyer par période (location)"}
+        deposit_xof: {type: integer}
+        paid_xof: {type: integer}
+        outstanding_xof: {type: integer}
+        due_xof: {type: integer}
+        overdue_since: {type: string, format: date-time}
+        blocked: {type: boolean}
+        schedule:
+          type: array
+          items:
+            type: object
+            properties:
+              n: {type: integer}
+              kind: {type: string, enum: [deposit, installment, period, damage]}
+              due_at: {type: string, format: date-time}
+              amount_xof: {type: integer}
+              late_fee_xof: {type: integer}
+              paid_xof: {type: integer}
+              owed_xof: {type: integer}
+              paid_at: {type: string, format: date-time}
+              status: {type: string, enum: [pending, due, overdue, paid, waived]}
+        payments:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: string}
+              at: {type: string, format: date-time}
+              amount_xof: {type: integer, description: "négatif = rendu à l'agent"}
+              source: {type: string, enum: [earnings, wallet, ledger, mobile_money, manual, waiver, refund]}
+              ref_kind: {type: string}
+              ref_id: {type: string}
+              note: {type: string}
+              pending: {type: boolean}
+        return_condition: {type: string}
+        damage_fee_xof: {type: integer}
+        next_period_at: {type: string, format: date-time}
+        notes: {type: string}
+        handed_at: {type: string, format: date-time}
+        returned_at: {type: string, format: date-time}
+        created_at: {type: string, format: date-time}
+    EquipmentStanding:
+      type: object
+      properties:
+        contracts: {type: integer}
+        outstanding_xof: {type: integer}
+        due_xof: {type: integer}
+        overdue_xof: {type: integer}
+        blocked: {type: boolean, description: "le retard passe le seuil : plus de mise en ligne"}
+    EquipmentSettings:
+      type: object
+      properties:
+        country: {type: string}
+        allowed_modes: {type: array, items: {type: string}}
+        agent_can_request: {type: boolean}
+        require_acceptance: {type: boolean}
+        max_earnings_percent: {type: integer}
+        default_deposit_percent: {type: integer}
+        staff_alert_overdue: {type: boolean}
+        defaults: {$ref: "#/components/schemas/EquipmentPlan"}
+        kinds: {type: array, items: {type: string}}
+        modes: {type: array, items: {type: string}}
+        periods: {type: array, items: {type: string}}
+        schedules: {type: array, items: {type: string}}
     Country:
       type: object
       properties:

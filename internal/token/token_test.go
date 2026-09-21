@@ -139,6 +139,26 @@ func (f *fakeRepo) SpendMoney(_ context.Context, walletID primitive.ObjectID, am
 	return fromPromo, amount - fromPromo, nil
 }
 
+// TakeMoney : l'argent réel seulement, tout ou ce qu'il y a.
+func (f *fakeRepo) TakeMoney(_ context.Context, walletID primitive.ObjectID, amount int, partial bool) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	w, ok := f.wallets[walletID]
+	if !ok {
+		return 0, errors.New("wallet not found")
+	}
+	if w.BalanceXOF >= amount {
+		w.BalanceXOF -= amount
+		return amount, nil
+	}
+	if !partial || w.BalanceXOF <= 0 {
+		return 0, nil
+	}
+	taken := w.BalanceXOF
+	w.BalanceXOF = 0
+	return taken, nil
+}
+
 func (f *fakeRepo) InsertTransaction(_ context.Context, t *Transaction) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -686,4 +706,45 @@ func TestAdminLedgerIsNewestFirstAndPromoIsApart(t *testing.T) {
 	assert.Equal(t, ReasonPromoCredit, items[0].Reason, "le plus récent d'abord")
 	assert.Equal(t, "xof", items[0].Unit)
 	assert.Equal(t, ReasonWalletTopup, items[1].Reason)
+}
+
+// --- le matériel : une retenue bornée, rejouable, sur l'argent réel seulement --
+
+func TestEquipmentChargeTakesAllOrWhatThereIs(t *testing.T) {
+	repo := newFakeRepo()
+	svc, _, _, _ := newTestService(repo)
+	ctx := context.Background()
+	owner := primitive.NewObjectID().Hex()
+	require.NoError(t, svc.CreateWallet(ctx, owner, WalletTypeDriver))
+	require.NoError(t, svc.CreditEarnings(ctx, owner, 1500, ReasonDeliveryFee, RefOrder, primitive.NewObjectID().Hex(), nil))
+	contract := primitive.NewObjectID().Hex()
+
+	// Sans partiel, un solde insuffisant ne prend RIEN — pas une erreur.
+	taken, err := svc.ChargeEquipment(ctx, owner, 2000, false, contract, "equipment:"+contract+":1")
+	require.NoError(t, err)
+	assert.Equal(t, 0, taken)
+
+	// Avec partiel, ce qu'il y a.
+	taken, err = svc.ChargeEquipment(ctx, owner, 2000, true, contract, "equipment:"+contract+":2")
+	require.NoError(t, err)
+	assert.Equal(t, 1500, taken)
+
+	// Rejouer la même clé ne prend pas deux fois.
+	require.NoError(t, svc.CreditEarnings(ctx, owner, 500, ReasonDeliveryFee, RefOrder, primitive.NewObjectID().Hex(), nil))
+	taken, err = svc.ChargeEquipment(ctx, owner, 500, false, contract, "equipment:"+contract+":2")
+	require.NoError(t, err)
+	assert.Equal(t, 0, taken)
+
+	w, err := svc.WalletOf(ctx, owner)
+	require.NoError(t, err)
+	assert.Equal(t, 500, w.BalanceXOF)
+	// Le grand livre dit « matériel », rattaché au contrat.
+	var reasons []string
+	for _, tx := range repo.transactions {
+		if tx.Reason == ReasonEquipment {
+			reasons = append(reasons, tx.RefKind)
+			assert.Equal(t, contract, tx.RefID.Hex())
+		}
+	}
+	assert.Equal(t, []string{RefEquipment}, reasons)
 }

@@ -38,6 +38,9 @@ type Repo interface {
 	// SpendMoney débite l'argent d'un portefeuille, le promotionnel d'abord,
 	// en UNE opération atomique.
 	SpendMoney(ctx context.Context, walletID primitive.ObjectID, amount int) (fromPromo, fromCash int, err error)
+	// TakeMoney débite l'ARGENT RÉEL seulement, tout ou ce qu'il y a
+	// (`partial`) : les retenues de matériel. Rend ce qui a été pris.
+	TakeMoney(ctx context.Context, walletID primitive.ObjectID, amount int, partial bool) (int, error)
 	ListTransactions(ctx context.Context, walletID primitive.ObjectID, limit int, cursor string) ([]Transaction, string, error)
 	// ListTransactionsNewest : les derniers mouvements d'abord — la fiche.
 	ListTransactionsNewest(ctx context.Context, walletID primitive.ObjectID, limit int, cursor string) ([]Transaction, string, error)
