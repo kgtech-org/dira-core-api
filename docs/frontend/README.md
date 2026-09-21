@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.12.0** · 21 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.12.1** · 21 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -267,6 +267,21 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.12.1 — 21 septembre 2026
+
+**Correctif** — **les listes de courses et de commandes rendent les plus
+récentes d'abord**, par date de création puis identifiant : `GET /orders`
+(client — rendait les plus ANCIENNES d'abord), `GET /stores/{id}/orders`
+(marchand — idem, alors que cette spec promettait « la nouvelle en tête »),
+`GET /rides` (passager et chauffeur — triait par identifiant, ce qui rangeait
+mal un jeu de données antidaté). Le curseur ne change pas de forme
+(`?cursor=<id de la dernière ligne>`).
+
+**Ajout** — **`GET /deliveries`** pour le livreur : SES courses, en cours et
+passées, les plus récentes d'abord, `?status=` à virgules comme ailleurs.
+Jusqu'ici il n'avait que le pot commun (`/deliveries/available`) et la
+course par identifiant.
 
 ### 4.12.0 — 21 septembre 2026
 

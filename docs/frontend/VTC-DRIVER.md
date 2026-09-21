@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.12.0** · 21 septembre 2026
+> **Version 4.12.1** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -195,6 +195,11 @@ PATCH /drivers/me/active-vehicle    { "vehicle_id": "…" }
 > fuseau** (`tz`, défaut `Africa/Lome`) ; `online_s` est le temps en ligne du
 > jour, période en cours comprise. Remplace le calcul depuis
 > `GET /rides?limit=50` et le compteur local du téléphone.
+
+> **`GET /rides?limit=&cursor=`** — VOS courses, **les plus récentes
+> d'abord** (date de création puis identifiant, v4.12.1) ; `?cursor=` est
+> l'identifiant de la dernière course reçue et rend la page suivante, plus
+> ancienne.
 
 > ⚠️ **`online` et `status` sont DEUX AXES, et ils doivent le rester.**
 > `status` est ce que l'administration a décidé (`pending`, `active`,
