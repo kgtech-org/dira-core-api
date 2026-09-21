@@ -321,12 +321,12 @@ type walletRequest struct {
 	Amount  int    `json:"amount" validate:"required,gt=0"`
 	// CommissionXOF : la part de la plateforme retenue sur `credit-earnings`
 	// (mode `commission` de la verticale). Zéro = tout revient à l'agent.
-	CommissionXOF int    `json:"commission_xof" validate:"omitempty,min=0"`
-	Reason        string `json:"reason" validate:"omitempty,max=60"`
-	RefID   string         `json:"ref_id" validate:"omitempty,len=24,hexadecimal"`
-	RefKind string         `json:"ref_kind" validate:"omitempty,oneof=order ride tip ride_adjustment"`
-	Ref     map[string]any `json:"ref"`
-	Type    string         `json:"type" validate:"omitempty,oneof=driver merchant client"`
+	CommissionXOF int            `json:"commission_xof" validate:"omitempty,min=0"`
+	Reason        string         `json:"reason" validate:"omitempty,max=60"`
+	RefID         string         `json:"ref_id" validate:"omitempty,len=24,hexadecimal"`
+	RefKind       string         `json:"ref_kind" validate:"omitempty,oneof=order ride tip ride_adjustment"`
+	Ref           map[string]any `json:"ref"`
+	Type          string         `json:"type" validate:"omitempty,oneof=driver merchant client"`
 }
 
 func (h *Handler) createWallet(w http.ResponseWriter, r *http.Request) {
