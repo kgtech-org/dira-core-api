@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.10.0** · 20 septembre 2026
+> **Version 4.11.0** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -9,7 +9,7 @@
 
 | | Rôle |
 |---|---|
-| **Socle** | connexion, profil, notifications, avis reçus — base `…/api/v1/` |
+| **Socle** | connexion, profil, **matériel**, notifications, avis reçus — base `…/api/v1/` |
 | **Courses** | profil chauffeur, véhicules, courses, conversation, grand livre — base `…/api/v1/vtc/` |
 | **Suivi** (`dira-tracking`) | émission des positions, **réception des appels de course** |
 | **SIG** (`dira-maps`) | itinéraire routier — **du JSON, aucune vue de carte** |
@@ -211,7 +211,8 @@ PATCH /drivers/me/active-vehicle    { "vehicle_id": "…" }
 |---|---|
 | `409` compte non `active` | l'administration ne l'a pas encore validé |
 | `409` aucun véhicule actif | le passager doit savoir ce qui vient le chercher |
-| `402 debt_limit_reached` | la dette a franchi le plafond — voir §6 |
+| `402 debt_over_limit` | la dette a franchi le plafond — voir §6 |
+| `402 equipment_overdue` | une échéance de **matériel** est en retard au-delà du seuil du contrat — voir §6 bis (v4.11.0) |
 
 ⚠️ **La classe du véhicule décide de ce que vous pouvez prendre (v4.6.0).**
 Un véhicule sert les courses de **son mode et des modes avant lui** dans
@@ -677,6 +678,11 @@ GET /drivers/me/statement?limit=50
 >
 > `balance_xof` **négatif** = vous devez. Au-delà de `max_debt_xof`,
 > `over_limit` passe à `true` et **vous ne recevez plus aucun appel**.
+>
+> Une ligne **`kind: "equipment"`** (v4.11.0) est une **retenue pour le
+> matériel** (gilet, casque, téléphone vendu ou loué par Dira — §6 bis) :
+> négative quand on retient sur une course, positive quand on vous rend une
+> caution. `reason` nomme l'article (« matériel : Casque Dira »).
 
 **Affichez la dette en permanence**, pas dans un écran caché. Un chauffeur qui
 cesse de recevoir des courses sans comprendre pourquoi croit à une panne.
@@ -684,6 +690,182 @@ cesse de recevoir des courses sans comprendre pourquoi croit à une panne.
 `owing` et `over_limit` sont **rendus calculés** : le signe d'un nombre se lit
 mal en un coup d'œil, et « dois-je de l'argent ? » ne doit pas dépendre d'une
 comparaison que chaque application refait à sa façon.
+
+---
+
+## 6 bis. Le MATÉRIEL — gilet, casque, téléphone (v4.11.0) — **SOCLE** (sans `/vtc`)
+
+> Dira vend, loue ou prête du matériel à ses chauffeurs. Le contrat, l'échéancier
+> et les paiements sont tenus par le **socle** (`…/api/v1/`, pas `/vtc`) ; ce
+> que vous devez est **retenu sur vos gains** et apparaît dans votre relevé
+> (`kind: "equipment"`, §6).
+
+```
+GET  /equipment/catalogue?vertical=vtc      → { items: [ … ] }        ce que Dira propose dans votre pays
+POST /equipment/requests                    { item_id, mode, quantity?, note? }   → 201 contrat `requested`
+GET  /me/equipment                          → { items: [ contrats ], standing }
+POST /me/equipment/{id}/accept              → le contrat `accepted`
+POST /me/equipment/{id}/pay                 { amount_xof }   ← ⚠️ 409 `equipment_no_wallet` pour un chauffeur (voir plus bas)
+```
+
+**`vertical=vtc` est obligatoire** sur le catalogue et sur une demande : un
+article peut être réservé aux livreurs ou aux chauffeurs (`audiences`), et le
+socle ne devine pas depuis quelle application vous parlez. Rôle `driver`
+exigé partout ; `X-Dira-Country` fixe le pays du catalogue et des réglages.
+
+### Le catalogue
+
+```json
+{ "id": "…", "kind": "vest", "name": "Gilet réfléchissant Dira", "description": "…",
+  "photos": [ "https://…" ], "audiences": [ "vtc", "food" ],
+  "sale_price_xof": 6000, "rental_daily_xof": 0, "rental_weekly_xof": 500, "rental_monthly_xof": 1500,
+  "deposit_xof": 2000, "stock": 12, "track_stock": true, "active": true }
+```
+
+`kind` ∈ `vest` · `bag` · `phone` · `helmet` · `box` · `other`. Un prix à `0`
+= **pas proposé sous ce mode** : un article dont `sale_price_xof` vaut `0`
+ne s'achète pas, un article sans loyer ne se loue pas ; n'affichez que les
+modes possibles. `deposit_xof` est la caution demandée à la remise (rendue
+au retour si le contrat le prévoit). `stock` n'a de sens que si
+`track_stock` est vrai ; à `0`, l'article s'affiche mais la remise attendra.
+
+### Demander un article — quand le pays l'autorise
+
+`POST /equipment/requests { "item_id", "mode": "sale" | "rental" | "loan", "quantity"?, "note"? }`.
+Réponses à prévoir : `403 equipment_requests_closed` (le pays n'ouvre pas les
+demandes depuis l'application — **cachez le bouton, ne le grisez pas**, le
+chauffeur passera par l'agence), `409 equipment_mode_not_allowed` (mode
+fermé dans ce pays), `409 equipment_not_offered` (article sans prix sous ce
+mode), `404` (article inactif ou réservé à l'autre verticale). Le contrat
+rendu est `requested` : **rien n'est dû** tant que l'exploitation ne l'a pas
+qualifié puis remis.
+
+### Vos contrats — `GET /me/equipment`
+
+```json
+{ "items": [ {
+    "id": "…", "vertical": "vtc", "item_id": "…", "item_name": "Casque Dira", "item_kind": "helmet",
+    "quantity": 1, "serial": "HD-0042", "mode": "sale", "status": "active",
+    "price_xof": 15000, "deposit_xof": 5000,
+    "paid_xof": 5300, "outstanding_xof": 14700, "due_xof": 0, "overdue_since": null, "blocked": false,
+    "plan": { "schedule": "installments", "installments": 4, "period": "weekly", "first_due_days": 7,
+              "collect_from_earnings": true, "collect_from_wallet": false, "allow_partial": true,
+              "earnings_percent": 15, "earnings_fixed_xof": 0, "min_left_xof": 1000,
+              "daily_cap_xof": 0, "weekly_cap_xof": 0, "earnings_only_when_due": false,
+              "grace_days": 3, "late_fee_xof": 0, "late_fee_percent": 0, "block_after_days": 10,
+              "reminder_days": 2, "deposit_refundable": true },
+    "schedule": [
+      { "n": 1, "kind": "deposit",     "due_at": "…", "amount_xof": 5000, "late_fee_xof": 0, "paid_xof": 5000, "owed_xof": 0,    "paid_at": "…", "status": "paid" },
+      { "n": 2, "kind": "installment", "due_at": "…", "amount_xof": 3750, "late_fee_xof": 0, "paid_xof": 300,  "owed_xof": 3450, "status": "pending" },
+      { "n": 3, "kind": "installment", "due_at": "…", "amount_xof": 3750, "late_fee_xof": 0, "paid_xof": 0,    "owed_xof": 3750, "status": "pending" } ],
+    "payments": [
+      { "id": "…", "at": "…", "amount_xof": 5000, "source": "manual", "note": "espèces à l'agence" },
+      { "id": "…", "at": "…", "amount_xof": 300,  "source": "ledger", "ref_kind": "ride", "ref_id": "…" } ],
+    "next_period_at": null, "notes": "", "requested_at": null, "accepted_at": "…", "handed_at": "…",
+    "returned_at": null, "closed_at": null, "created_at": "…", "updated_at": "…" } ],
+  "standing": { "contracts": 1, "outstanding_xof": 14700, "due_xof": 0, "overdue_xof": 0, "blocked": false } }
+```
+
+**Les statuts** : `requested` (vous l'avez demandé) → `draft` (Dira vous le
+propose : **à accepter**) → `accepted` → `active` (remis, l'échéancier
+court) → `returned` (rendu, il peut rester à payer) → `completed` ;
+`cancelled` avant remise ; `defaulted` = contentieux (à afficher tel quel,
+sans bouton).
+
+**Les modes** : `sale` — l'article est à vous une fois payé, `price_xof` est
+le **total** ; `rental` — `price_xof` est le **loyer par période**
+(`plan.period` : `daily` · `weekly` · `biweekly` · `monthly`), une ligne
+`period` s'ajoute à chaque échéance jusqu'au retour, `next_period_at` dit
+quand ; `loan` — rien n'est dû hors caution et dégâts éventuels.
+
+**Les quatre totaux sont calculés par le serveur, ne les recalculez pas** :
+`paid_xof` (tout ce qui a été réglé, caution comprise), `outstanding_xof`
+(tout ce qui reste, échu ou non, pénalités comprises), `due_xof` (ce qui
+est **échu** aujourd'hui), `overdue_since` (depuis quand la plus ancienne
+échéance est en retard, `null` sinon), `blocked` (voir plus bas).
+`standing` les additionne sur tous vos contrats : **c'est le bandeau à
+afficher**, un chauffeur ne doit pas additionner ses contrats à la main.
+
+Chaque ligne de `schedule` porte `kind` (`deposit` la caution, due à la
+remise · `installment` une part du prix · `period` un loyer · `damage` des
+dégâts constatés au retour), `status` (`pending` · `due` · `overdue` ·
+`paid` · `waived` — remise gracieuse), `late_fee_xof` (pénalité de retard,
+ajoutée **une fois** quand le délai de grâce est dépassé), `owed_xof` ce qui
+reste sur la ligne.
+
+### Accepter
+
+Un contrat `draft` vous est notifié (**`equipment_contract_proposed`**) :
+affichez l'article, le mode, le prix, la caution, **l'échéancier** et
+surtout **la retenue sur gains** (`plan.earnings_percent` % de chaque course
+et/ou `earnings_fixed_xof` par course, jamais au-delà de ce qui est dû, en
+laissant au moins `min_left_xof` sur chaque gain), puis un bouton
+`POST /me/equipment/{id}/accept`. Autre statut : `409 equipment_bad_status`.
+Pas de refus depuis l'application : on n'accepte pas, et l'exploitation
+annule. Après acceptation, **rien ne démarre avant la remise physique** ;
+`handed_at` et **`equipment_handed_over`** marquent le départ.
+
+### Comment vous payez — la RETENUE sur le relevé
+
+Un chauffeur n'a pas de solde Dira à débiter : ce qu'il doit se règle **sur le
+relevé de courses** (§6). À chaque course réglée, le socle calcule la retenue
+(`plan`), et le service des courses inscrit une ligne **`kind: "equipment"`,
+`amount_xof` négatif, `ride_id` de la course** dans `GET /drivers/me/statement`
+— exactement comme une commission. Le contrat enregistre un paiement
+`source: "ledger"` avec `ref_kind: "ride"`, et vous recevez
+**`equipment_charged`** (« 300 F ont été pris sur votre relevé pour Casque
+Dira »). **Les retenues font partie de la dette** : elles pèsent sur
+`balance_xof` et donc sur `max_debt_xof`.
+
+Un règlement direct reste possible **hors application** : espèces ou mobile
+money à l'agence, enregistrés par l'exploitation (`source: manual` ·
+`mobile_money`), ou une remise gracieuse (`waiver`). `POST /me/equipment/{id}/pay`
+répond **`409 equipment_no_wallet`** pour un chauffeur : **ne proposez pas
+ce bouton** dans l'application chauffeur (il sert aux livreurs, qui ont un
+solde).
+
+Le loyer (`rental`) se retient de la même façon ; quand une période s'ouvre
+sans course, la ligne attend (`pending` → `due` → `overdue`).
+
+### Le retard — et le BLOCAGE
+
+- `reminder_days` jours avant une échéance : **`equipment_due`**.
+- Échéance dépassée + `grace_days` : la ligne passe `overdue`, la pénalité
+  (`late_fee_xof` et/ou `late_fee_percent` %) s'ajoute une fois, vous recevez
+  **`equipment_overdue`**.
+- Retard de plus de `block_after_days` jours (si > 0) : `blocked: true`,
+  **`equipment_blocked`**, et **`PATCH /drivers/me/online { online: true }`
+  répond `402 equipment_overdue`** — au même titre que `402 debt_over_limit`.
+  Le chauffeur reste libre de terminer une course en cours. L'écran de mise
+  en ligne doit dire **pourquoi** et renvoyer vers l'écran du matériel :
+  `standing.blocked` et, contrat par contrat, `overdue_since` + `due_xof`.
+  Le blocage se lève dès que plus rien n'est en retard (règlement à
+  l'agence, remise gracieuse, ou retenue sur une course terminée).
+
+### Le retour
+
+L'exploitation enregistre le retour : le contrat passe `returned`,
+`return_condition` décrit l'état, une ligne `damage` apparaît si des dégâts
+sont facturés, et la **caution** est rendue si `plan.deposit_refundable`
+(moins les dégâts). Pour un chauffeur, ce remboursement est un paiement
+**négatif, `pending: true`** dans `payments[]` — il sera compensé sur le
+relevé à la prochaine course (ligne `equipment` **positive**) ou versé à
+l'agence. Vous recevez **`equipment_returned`** (« Caution rendue : 5000 F.
+Reste dû : 0 F »). Un contrat rendu où rien ne reste dû passe `completed`.
+
+### Notifications (catégorie `support` — non coupable)
+
+| Clé | Quand | Données |
+|---|---|---|
+| `equipment_contract_proposed` | un contrat `draft` attend votre accord | `{ type: "equipment", contract_id, vertical }` |
+| `equipment_handed_over` | remise faite, échéancier lancé | idem |
+| `equipment_due` | `reminder_days` avant une échéance | idem |
+| `equipment_charged` | une retenue ou un prélèvement a eu lieu | idem |
+| `equipment_overdue` | une échéance est en retard | idem |
+| `equipment_blocked` | mise en ligne bloquée | idem |
+| `equipment_returned` | retour enregistré, caution rendue | idem |
+
+`data.contract_id` ouvre le contrat ; toutes viennent avec `data.type: "equipment"`.
 
 ---
 
@@ -696,6 +878,7 @@ comparaison que chaque application refait à sa façon.
 | `PATCH /me/preferences` | `locale` ∈ `fr` · `en` (autre : 422), `theme` |
 | `POST /uploads?kind=vehicle` · `?kind=avatar` | les photos — **v3.0.0** : les courses n'avaient **aucune** porte d'envoi, c'est désormais celle du socle, pour tout le monde |
 | `GET /wallet` · `/wallet/transactions` | le portefeuille Dira |
+| `GET /equipment/catalogue` · `GET /me/equipment` · `POST /me/equipment/{id}/accept` | le **matériel** vendu, loué ou prêté par Dira — §6 bis (v4.11.0) |
 | `GET /me/notifications` · `POST /me/devices` | les notifications |
 | `GET /agents/{id}/ratings` | vos avis — `id` = votre **profil** (`GET /drivers/me` → `id`) |
 

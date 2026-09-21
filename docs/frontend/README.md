@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.10.0** · 20 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.11.0** · 21 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -8,9 +8,9 @@
 |---|---|---|
 | [`FOOD-CLIENT.md`](FOOD-CLIENT.md) | livraison | client — découverte, commande, suivi, compte |
 | [`FOOD-MERCHANT.md`](FOOD-MERCHANT.md) | livraison | marchand — enseigne, points de vente, catalogue, commandes |
-| [`FOOD-DELIVERY.md`](FOOD-DELIVERY.md) | livraison | **livreur** — véhicules, appel de course, collectes, portefeuille |
+| [`FOOD-DELIVERY.md`](FOOD-DELIVERY.md) | livraison | **livreur** — véhicules, appel de course, collectes, portefeuille, matériel |
 | [`VTC-CLIENT.md`](VTC-CLIENT.md) | courses | client — devis, course, suivi, conversation |
-| [`VTC-DRIVER.md`](VTC-DRIVER.md) | courses | **chauffeur** — véhicules, appel de 30 s, course, **dette** |
+| [`VTC-DRIVER.md`](VTC-DRIVER.md) | courses | **chauffeur** — véhicules, appel de 30 s, course, **dette**, matériel |
 
 > ⚠️ **Le nom du fichier dit la VERTICALE.** « Livreur » et « chauffeur » se
 > traduisent tous les deux par *driver* : un document nommé `DRIVER.md` à côté
@@ -267,6 +267,46 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.11.0 — 21 septembre 2026
+
+**Ajout rétrocompatible** — **LE MATÉRIEL : vente, location, prêt aux
+agents, avec toutes les modalités de prélèvement et de remboursement.**
+Le socle tient un catalogue par pays (`kind` vest · bag · phone · helmet ·
+box · other, prix de vente, loyers jour/semaine/mois, caution, stock,
+audiences `food` · `vtc`), des contrats (`sale` · `rental` · `loan`) avec
+un **plan** entièrement paramétrable — échéancier (`upfront`,
+`installments` × période, `per_period`, `none`), première échéance à N
+jours, canaux de recouvrement cumulables (retenue sur gains en % et/ou
+fixe, minimum laissé, plafonds jour/semaine, seulement l'échu ou en
+avance ; prélèvement sur le solde, partiel ou non), retard (grâce,
+pénalité fixe/%, blocage de la mise en ligne après N jours, rappel N jours
+avant), caution remboursable — hérité en cascade réglages du pays →
+article → contrat. Chaque contrat rend ses totaux calculés (`paid_xof`,
+`outstanding_xof`, `due_xof`, `overdue_since`, `blocked`) et `standing`
+les cumule.
+
+Côté agent (rôle `driver`, socle sans `/vtc` ni `/food`) :
+`GET /equipment/catalogue?vertical=`, `POST /equipment/requests` (si le
+pays l'ouvre), `GET /me/equipment`, `POST /me/equipment/{id}/accept`,
+`POST /me/equipment/{id}/pay` (livreurs, sur `balance_xof` ; chauffeurs :
+`409 equipment_no_wallet`). **Livreurs** : retenue sur les frais de
+livraison crédités et prélèvements sur le solde, mouvements
+`reason: "equipment"` dans `GET /wallet/transactions`, caution rendue sur
+le solde. **Chauffeurs** : retenue portée au relevé de courses
+(`kind: "equipment"`, négatif ; caution rendue en positif), elle compte
+dans la dette. Blocage : `PATCH /drivers/me/online` et
+`PATCH /agent/availability` répondent **`402 equipment_overdue`**.
+Notifications de catégorie `support` : `equipment_contract_proposed`,
+`equipment_handed_over`, `equipment_due`, `equipment_charged`,
+`equipment_overdue`, `equipment_blocked`, `equipment_returned` ; staff :
+`staff_equipment_requested`, `staff_equipment_overdue`.
+(`VTC-DRIVER.md` §2, §6, §6 bis ; `FOOD-DELIVERY.md` §2, §8, §8 bis.)
+
+Correction au passage : la mise en ligne d'un chauffeur au-delà du plafond
+de dette répond `402 debt_over_limit` (le tableau de `VTC-DRIVER.md` §2
+disait `debt_limit_reached`, qui est le code de l'**acceptation** d'une
+course).
 
 ### 4.10.0 — 20 septembre 2026
 

@@ -162,6 +162,19 @@ const (
 	KeyTicketResolved        = "ticket_resolved"
 	KeyStaffTicketOpened     = "staff_ticket_opened"
 	KeyStaffLostItemAnswered = "staff_lost_item_answered"
+	// LE MATÉRIEL (`internal/equipment`) : un contrat proposé à accepter, la
+	// remise, le rappel d'échéance, ce qui a été prélevé ou retenu, le
+	// retard, le blocage, le retour et la caution — et les alertes de
+	// l'équipe.
+	KeyEquipmentProposed   = "equipment_contract_proposed"
+	KeyEquipmentHandedOver = "equipment_handed_over"
+	KeyEquipmentDue        = "equipment_due"
+	KeyEquipmentCharged    = "equipment_charged"
+	KeyEquipmentOverdue    = "equipment_overdue"
+	KeyEquipmentBlocked    = "equipment_blocked"
+	KeyEquipmentReturned   = "equipment_returned"
+	KeyStaffEquipOverdue   = "staff_equipment_overdue"
+	KeyStaffEquipRequested = "staff_equipment_requested"
 )
 
 // defaults sont les gabarits COMPILÉS, servis tant que la base n'en porte pas.
@@ -453,6 +466,87 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "Lost item [answer] — [ref]", Body: "[who] answered: [item] [answer]."},
 		},
 	},
+	KeyEquipmentProposed: {
+		Key:         KeyEquipmentProposed,
+		Description: "MATÉRIEL — un contrat (achat, location, prêt) est proposé à l'agent : à accepter dans l'application.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Matériel : contrat à accepter", Body: "Dira vous propose [item] ([mode]). Lisez les conditions et acceptez-les dans l'application."},
+			LocaleEN: {Title: "Equipment: contract to accept", Body: "Dira offers you [item] ([mode]). Read the terms and accept them in the app."},
+		},
+	},
+	KeyEquipmentHandedOver: {
+		Key:         KeyEquipmentHandedOver,
+		Description: "MATÉRIEL — l'article a été remis, l'échéancier démarre.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Matériel remis", Body: "[item] vous a été remis. Reste à régler : [outstanding]. Le détail est dans l'application."},
+			LocaleEN: {Title: "Equipment handed over", Body: "[item] was handed to you. Left to pay: [outstanding]. Details are in the app."},
+		},
+	},
+	KeyEquipmentDue: {
+		Key:         KeyEquipmentDue,
+		Description: "MATÉRIEL — rappel avant une échéance.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Échéance le [date]", Body: "[amount] pour [item] sont dus le [date]."},
+			LocaleEN: {Title: "Payment due on [date]", Body: "[amount] for [item] are due on [date]."},
+		},
+	},
+	KeyEquipmentCharged: {
+		Key:         KeyEquipmentCharged,
+		Description: "MATÉRIEL — un montant a été prélevé sur le solde ou retenu sur un gain.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Matériel : [amount] réglés", Body: "[amount] ont été pris sur [source] pour [item]."},
+			LocaleEN: {Title: "Equipment: [amount] paid", Body: "[amount] were taken from [source] for [item]."},
+		},
+	},
+	KeyEquipmentOverdue: {
+		Key:         KeyEquipmentOverdue,
+		Description: "MATÉRIEL — une échéance est en retard.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Matériel : échéance en retard", Body: "[amount] pour [item] sont en retard. Réglez-les depuis l'application pour éviter un blocage."},
+			LocaleEN: {Title: "Equipment: payment overdue", Body: "[amount] for [item] are overdue. Pay from the app to avoid being blocked."},
+		},
+	},
+	KeyEquipmentBlocked: {
+		Key:         KeyEquipmentBlocked,
+		Description: "MATÉRIEL — le retard dépasse le seuil : plus de mise en ligne tant que ce n'est pas réglé.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Mise en ligne bloquée", Body: "[amount] pour [item] restent impayés. Vous ne pouvez plus vous mettre en ligne tant que ce n'est pas réglé."},
+			LocaleEN: {Title: "Going online blocked", Body: "[amount] for [item] remain unpaid. You cannot go online until it is settled."},
+		},
+	},
+	KeyEquipmentReturned: {
+		Key:         KeyEquipmentReturned,
+		Description: "MATÉRIEL — l'article a été rendu ; la caution revient, ce qui reste dû reste dû.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Matériel rendu", Body: "[item] a été rendu. Caution rendue : [refund]. Reste dû : [owed]."},
+			LocaleEN: {Title: "Equipment returned", Body: "[item] was returned. Deposit refunded: [refund]. Still owed: [owed]."},
+		},
+	},
+	KeyStaffEquipOverdue: {
+		Key:         KeyStaffEquipOverdue,
+		Description: "STAFF — un agent est en retard sur son matériel.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Matériel en retard — [who]", Body: "[amount] impayés pour [item]."},
+			LocaleEN: {Title: "Equipment overdue — [who]", Body: "[amount] unpaid for [item]."},
+		},
+	},
+	KeyStaffEquipRequested: {
+		Key:         KeyStaffEquipRequested,
+		Description: "STAFF — un agent demande du matériel depuis l'application.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Demande de matériel — [who]", Body: "[who] demande [item] ([mode])."},
+			LocaleEN: {Title: "Equipment request — [who]", Body: "[who] requests [item] ([mode])."},
+		},
+	},
 	KeyDeliveryCancelled: {
 		Key:         KeyDeliveryCancelled,
 		Description: "La commande a été annulée sous le livreur qui la portait — message au LIVREUR.",
@@ -529,6 +623,15 @@ var provided = map[string][]string{
 	KeyTicketResolved:         {"reference"},
 	KeyStaffTicketOpened:      {"kind", "ref", "who"},
 	KeyStaffLostItemAnswered:  {"ref", "who", "answer", "item"},
+	KeyEquipmentProposed:      {"item", "mode"},
+	KeyEquipmentHandedOver:    {"item", "outstanding"},
+	KeyEquipmentDue:           {"item", "amount", "date"},
+	KeyEquipmentCharged:       {"item", "amount", "source"},
+	KeyEquipmentOverdue:       {"item", "amount"},
+	KeyEquipmentBlocked:       {"item", "amount"},
+	KeyEquipmentReturned:      {"item", "refund", "owed"},
+	KeyStaffEquipOverdue:      {"who", "item", "amount"},
+	KeyStaffEquipRequested:    {"who", "item", "mode"},
 }
 
 // Provided rend les variables que la plateforme remplit pour une clé.

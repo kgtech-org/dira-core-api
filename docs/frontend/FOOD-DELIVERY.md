@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.10.0** · 20 septembre 2026
+> **Version 4.11.0** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -34,7 +34,7 @@ Ce parcours parle à **quatre serveurs** depuis la v2.0.0 — le socle et la liv
 
 | | Rôle |
 |---|---|
-| **Socle** (`dira-core-api`) | connexion, profil, **portefeuille**, paiements, notifications, avis reçus — base `…/api/v1/` |
+| **Socle** (`dira-core-api`) | connexion, profil, **portefeuille**, paiements, **matériel**, notifications, avis reçus — base `…/api/v1/` |
 | **Livraison** (`dira-food-api`) | véhicules, courses, collectes, conversation, conformité — base `…/api/v1/food/`, REST **et** WebSocket |
 | **Suivi** (`dira-tracking`) | émission des positions GPS, **réception des appels de course** |
 | **SIG** (`dira-maps`) | itinéraire routier, géocodage inverse — **du JSON, aucune vue de carte** |
@@ -254,6 +254,11 @@ PATCH  /agent/availability     { available }
 > dès la disponibilité**, pas seulement en course ; sur `tracking_stale`,
 > le dire au livreur ; sur un retrait `stale` (`available: false` alors
 > qu'il ne l'a pas demandé), proposer de se redéclarer d'un geste.
+>
+> **`402 equipment_overdue`** (v4.11.0) : la prise de service est refusée
+> parce qu'une échéance de **matériel** (gilet, sac, téléphone — §8 bis) est
+> en retard au-delà du seuil du contrat. Dites-le et ouvrez l'écran du
+> matériel, avec le bouton payer.
 
 ---
 
@@ -612,7 +617,191 @@ POST /wallet/purchase   { tokens }
 - Le solde de jetons doit être visible **en permanence** dans l'en-tête : c'est la ressource qui conditionne le métier. Un livreur qui le découvre vide au moment d'accepter a déjà perdu la course.
 - Chaque acceptation produit un mouvement `order_accept`. **Le montant varie.**
 - `balance_xof` reçoit les **frais de livraison** des courses **prépayées**. En espèces, rien n'y transite : le livreur a l'argent en main.
+- Un mouvement **`reason: "equipment"`** (`unit: "xof"`, `ref_kind: "equipment"`, v4.11.0) est une retenue — ou, positif, un remboursement de caution — pour le **matériel** vendu ou loué par Dira (§8 bis).
 - La recharge ne crédite qu'**après confirmation** du prestataire : suivez `GET /payments/{id}`.
+
+---
+
+## 8 bis. Le MATÉRIEL — gilet, sac, téléphone (v4.11.0) — **SOCLE** (sans `/food`)
+
+> Dira vend, loue ou prête du matériel à ses livreurs. Le contrat, l'échéancier
+> et les paiements sont tenus par le **socle** (`…/api/v1/`, pas `/food`) ; ce
+> que vous devez est **retenu sur vos frais de livraison** et **prélevé sur
+> `balance_xof`**, et vous pouvez **payer depuis l'application**.
+
+```
+GET  /equipment/catalogue?vertical=food     → { items: [ … ] }        ce que Dira propose dans votre pays
+POST /equipment/requests                    { item_id, mode, quantity?, note? }   → 201 contrat `requested`
+GET  /me/equipment                          → { items: [ contrats ], standing }
+POST /me/equipment/{id}/accept              → le contrat `accepted`
+POST /me/equipment/{id}/pay                 { amount_xof }   → le contrat, payé depuis `balance_xof`
+```
+
+**`vertical=food` est obligatoire** sur le catalogue et sur une demande : un
+article peut être réservé aux livreurs ou aux chauffeurs (`audiences`), et le
+socle ne devine pas depuis quelle application vous parlez. Rôle `driver`
+exigé partout ; `X-Dira-Country` fixe le pays du catalogue et des réglages.
+
+### Le catalogue
+
+```json
+{ "id": "…", "kind": "bag", "name": "Sac isotherme Dira 45 L", "description": "…",
+  "photos": [ "https://…" ], "audiences": [ "food" ],
+  "sale_price_xof": 20000, "rental_daily_xof": 0, "rental_weekly_xof": 1000, "rental_monthly_xof": 3500,
+  "deposit_xof": 5000, "stock": 8, "track_stock": true, "active": true }
+```
+
+`kind` ∈ `vest` · `bag` · `phone` · `helmet` · `box` · `other`. Un prix à `0`
+= **pas proposé sous ce mode** : un article dont `sale_price_xof` vaut `0`
+ne s'achète pas, un article sans loyer ne se loue pas ; n'affichez que les
+modes possibles. `deposit_xof` est la caution demandée à la remise (rendue
+au retour si le contrat le prévoit). `stock` n'a de sens que si
+`track_stock` est vrai ; à `0`, l'article s'affiche mais la remise attendra.
+
+### Demander un article — quand le pays l'autorise
+
+`POST /equipment/requests { "item_id", "mode": "sale" | "rental" | "loan", "quantity"?, "note"? }`.
+Réponses à prévoir : `403 equipment_requests_closed` (le pays n'ouvre pas les
+demandes depuis l'application — **cachez le bouton, ne le grisez pas**, le
+livreur passera par l'agence), `409 equipment_mode_not_allowed` (mode fermé
+dans ce pays), `409 equipment_not_offered` (article sans prix sous ce
+mode), `404` (article inactif ou réservé à l'autre verticale). Le contrat
+rendu est `requested` : **rien n'est dû** tant que l'exploitation ne l'a pas
+qualifié puis remis.
+
+### Vos contrats — `GET /me/equipment`
+
+```json
+{ "items": [ {
+    "id": "…", "vertical": "food", "item_id": "…", "item_name": "Sac isotherme Dira 45 L", "item_kind": "bag",
+    "quantity": 1, "serial": "", "mode": "sale", "status": "active",
+    "price_xof": 20000, "deposit_xof": 5000,
+    "paid_xof": 5300, "outstanding_xof": 19700, "due_xof": 0, "overdue_since": null, "blocked": false,
+    "plan": { "schedule": "installments", "installments": 4, "period": "weekly", "first_due_days": 7,
+              "collect_from_earnings": true, "collect_from_wallet": true, "allow_partial": true,
+              "earnings_percent": 15, "earnings_fixed_xof": 0, "min_left_xof": 500,
+              "daily_cap_xof": 0, "weekly_cap_xof": 0, "earnings_only_when_due": false,
+              "grace_days": 3, "late_fee_xof": 0, "late_fee_percent": 0, "block_after_days": 10,
+              "reminder_days": 2, "deposit_refundable": true },
+    "schedule": [
+      { "n": 1, "kind": "deposit",     "due_at": "…", "amount_xof": 5000, "late_fee_xof": 0, "paid_xof": 5000, "owed_xof": 0,    "paid_at": "…", "status": "paid" },
+      { "n": 2, "kind": "installment", "due_at": "…", "amount_xof": 5000, "late_fee_xof": 0, "paid_xof": 300,  "owed_xof": 4700, "status": "pending" },
+      { "n": 3, "kind": "installment", "due_at": "…", "amount_xof": 5000, "late_fee_xof": 0, "paid_xof": 0,    "owed_xof": 5000, "status": "pending" } ],
+    "payments": [
+      { "id": "…", "at": "…", "amount_xof": 5000, "source": "wallet" },
+      { "id": "…", "at": "…", "amount_xof": 300,  "source": "earnings", "ref_kind": "order", "ref_id": "…" } ],
+    "next_period_at": null, "notes": "", "requested_at": null, "accepted_at": "…", "handed_at": "…",
+    "returned_at": null, "closed_at": null, "created_at": "…", "updated_at": "…" } ],
+  "standing": { "contracts": 1, "outstanding_xof": 19700, "due_xof": 0, "overdue_xof": 0, "blocked": false } }
+```
+
+**Les statuts** : `requested` (vous l'avez demandé) → `draft` (Dira vous le
+propose : **à accepter**) → `accepted` → `active` (remis, l'échéancier
+court) → `returned` (rendu, il peut rester à payer) → `completed` ;
+`cancelled` avant remise ; `defaulted` = contentieux (à afficher tel quel,
+sans bouton).
+
+**Les modes** : `sale` — l'article est à vous une fois payé, `price_xof` est
+le **total** ; `rental` — `price_xof` est le **loyer par période**
+(`plan.period` : `daily` · `weekly` · `biweekly` · `monthly`), une ligne
+`period` s'ajoute à chaque échéance jusqu'au retour, `next_period_at` dit
+quand ; `loan` — rien n'est dû hors caution et dégâts éventuels.
+
+**Les quatre totaux sont calculés par le serveur, ne les recalculez pas** :
+`paid_xof` (tout ce qui a été réglé, caution comprise), `outstanding_xof`
+(tout ce qui reste, échu ou non, pénalités comprises), `due_xof` (ce qui
+est **échu** aujourd'hui), `overdue_since` (depuis quand la plus ancienne
+échéance est en retard, `null` sinon), `blocked` (voir plus bas).
+`standing` les additionne sur tous vos contrats : **c'est le bandeau à
+afficher**, un livreur ne doit pas additionner ses contrats à la main.
+
+Chaque ligne de `schedule` porte `kind` (`deposit` la caution, due à la
+remise · `installment` une part du prix · `period` un loyer · `damage` des
+dégâts constatés au retour), `status` (`pending` · `due` · `overdue` ·
+`paid` · `waived` — remise gracieuse), `late_fee_xof` (pénalité de retard,
+ajoutée **une fois** quand le délai de grâce est dépassé), `owed_xof` ce qui
+reste sur la ligne.
+
+### Accepter
+
+Un contrat `draft` vous est notifié (**`equipment_contract_proposed`**) :
+affichez l'article, le mode, le prix, la caution, **l'échéancier** et
+surtout **les prélèvements** (`plan.earnings_percent` % de chaque frais de
+livraison et/ou `earnings_fixed_xof` par course, jamais au-delà de ce qui
+est dû, en laissant au moins `min_left_xof` sur chaque gain ; et, si
+`collect_from_wallet`, l'échu pris sur `balance_xof`), puis un bouton
+`POST /me/equipment/{id}/accept`. Autre statut : `409 equipment_bad_status`.
+Pas de refus depuis l'application : on n'accepte pas, et l'exploitation
+annule. Après acceptation, **rien ne démarre avant la remise physique** ;
+`handed_at` et **`equipment_handed_over`** marquent le départ.
+
+### Comment vous payez — trois canaux, cumulables
+
+1. **La retenue sur les frais de livraison** (`collect_from_earnings`). À
+   chaque course **prépayée** dont les frais vous sont crédités (§8), le socle
+   retient la part du plan **avant** de créditer : `balance_xof` reçoit les
+   frais, puis un mouvement **`reason: "equipment"`, `unit: "xof"`,
+   `ref_kind: "equipment"`, `ref_id` = le contrat** apparaît dans
+   `GET /wallet/transactions`, et le contrat enregistre un paiement
+   `source: "earnings"` avec `ref_kind: "order"`. Une course en **espèces** ne
+   retient rien — l'argent ne transite pas par Dira.
+2. **Le prélèvement sur le solde** (`collect_from_wallet`) : quand une
+   échéance arrive (ou que la remise réclame la caution), le socle prend
+   l'échu sur `balance_xof` — tout, ou ce qu'il y a si `allow_partial`, jamais
+   le solde promotionnel. Même mouvement `reason: "equipment"`.
+3. **Le paiement depuis l'application** : `POST /me/equipment/{id}/pay
+   { "amount_xof" }` prend sur `balance_xof`, plafonné à ce qui reste dû ;
+   `402 insufficient_funds` si `balance_xof` ne couvre pas le montant —
+   dites-le tel quel : **`POST /wallet/purchase` ne crédite que des jetons**,
+   le solde en argent vient des courses prépayées ; proposez alors le montant
+   disponible, ou l'agence. `409 equipment_nothing_owed` si tout est réglé,
+   `409 equipment_bad_status` hors `active` · `returned`.
+
+À chaque prélèvement vous recevez **`equipment_charged`** (« 300 F ont été
+pris sur vos gains pour Sac isotherme »). Espèces ou mobile money **à
+l'agence** restent possibles, enregistrés par l'exploitation
+(`source: manual` · `mobile_money`), comme la remise gracieuse (`waiver`).
+
+Le loyer (`rental`) se règle de la même façon, période après période.
+
+### Le retard — et le BLOCAGE
+
+- `reminder_days` jours avant une échéance : **`equipment_due`**.
+- Échéance dépassée + `grace_days` : la ligne passe `overdue`, la pénalité
+  (`late_fee_xof` et/ou `late_fee_percent` %) s'ajoute une fois, vous recevez
+  **`equipment_overdue`**.
+- Retard de plus de `block_after_days` jours (si > 0) : `blocked: true`,
+  **`equipment_blocked`**, et **`PATCH /agent/availability { available: true }`
+  répond `402 equipment_overdue`**. La course en cours se termine
+  normalement. L'écran de prise de service doit dire **pourquoi** et
+  renvoyer vers l'écran du matériel : `standing.blocked` et, contrat par
+  contrat, `overdue_since` + `due_xof`, avec le bouton **payer**. Le blocage
+  se lève dès que plus rien n'est en retard.
+
+### Le retour
+
+L'exploitation enregistre le retour : le contrat passe `returned`,
+`return_condition` décrit l'état, une ligne `damage` apparaît si des dégâts
+sont facturés, et la **caution** est rendue si `plan.deposit_refundable`
+(moins les dégâts) : un paiement **négatif** `source: "refund"` dans
+`payments[]`, et **`balance_xof` est crédité aussitôt** (mouvement
+`reason: "equipment"` positif). Vous recevez **`equipment_returned`**
+(« Caution rendue : 5000 F. Reste dû : 0 F »). Un contrat rendu où rien ne
+reste dû passe `completed`.
+
+### Notifications (catégorie `support` — non coupable)
+
+| Clé | Quand | Données |
+|---|---|---|
+| `equipment_contract_proposed` | un contrat `draft` attend votre accord | `{ type: "equipment", contract_id, vertical }` |
+| `equipment_handed_over` | remise faite, échéancier lancé | idem |
+| `equipment_due` | `reminder_days` avant une échéance | idem |
+| `equipment_charged` | une retenue ou un prélèvement a eu lieu | idem |
+| `equipment_overdue` | une échéance est en retard | idem |
+| `equipment_blocked` | prise de service bloquée | idem |
+| `equipment_returned` | retour enregistré, caution rendue | idem |
+
+`data.contract_id` ouvre le contrat ; toutes viennent avec `data.type: "equipment"`.
 
 ---
 

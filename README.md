@@ -94,10 +94,37 @@ internal/token   token wallets and ledger
 internal/payment mobile money (provider abstraction + mock)
 internal/notify  inbox, push devices, multilingual templates (FCM)
 internal/country which countries are open; "which country am I in?" (device position, then IP)
+internal/equipment vests, bags, phones sold / rented / lent to couriers and drivers — and how the money comes back (see below)
 internal/config  core-only settings (the shared ones come from pkg/config)
 internal/indexes the MongoDB indexes this service owns
 api/openapi.yaml the contract, embedded in the binary
 ```
+
+> **`internal/equipment` — the equipment desk.** The exploitation keeps a
+> catalogue per country (kind, sale price, rental rates per period, deposit,
+> stock, audiences), and binds an agent to an item under a **contract**
+> (`sale` · `rental` · `loan`) whose **plan** says how the money comes back —
+> every knob has a country default (`/admin/equipment/settings`), the item
+> may override it, the contract may override both:
+>
+> - the **schedule**: up front at hand-over, N instalments (period, first
+>   due), one rent per period until return, or nothing (loan);
+> - the **channels**: a percentage and/or a fixed amount taken from **every
+>   earning** (bounded by what is left to the agent, daily and weekly caps,
+>   "only what is due" or ahead of schedule), an automatic charge of the
+>   **Dira balance** on the due date (all or partial), a payment by the agent
+>   from the app, cash or mobile money recorded by the exploitation, waivers;
+> - the **lateness**: grace days, a late fee (fixed and/or percent) added
+>   once, a reminder before the due date, and a **block** of going online
+>   after N days overdue (`/internal/equipment/standing`);
+> - the **deposit**: due at hand-over, refunded on return minus damage.
+>
+> Couriers are charged here (their money is the Dira balance, and the
+> deduction runs the moment `credit-earnings` pays a delivery fee). VTC
+> drivers have their money on the rides ledger: the vertical calls
+> `/internal/equipment/collect` at each settlement and books what comes back
+> (negative = deposit refund). A sweep every minute ages the lines, opens
+> the next rent period, reminds, charges and alerts.
 
 ⚠️ **The JWT secret is the SAME as the verticals'.** That is what lets each of them verify
 a token **locally**, without calling core — a per-request verification would make this
@@ -117,6 +144,8 @@ wallet, open an account, notify someone in their name. No person ever calls them
 | `POST /internal/wallets/{create,consume,credit,pay,refund,credit-earnings}` | move money |
 | `POST /internal/wallets/balance` | read a balance — what the VTC checks before calling drivers for a ride the balance will pay at acceptance |
 | `POST /internal/notifications/send` | send one templated message |
+| `POST /internal/equipment/collect` | what the agent's equipment contracts take from an earning (couriers: charged on the Dira balance right here; VTC drivers: the amount the vertical books on its ledger, negative = deposit given back) |
+| `POST /internal/equipment/standing` | outstanding / due / overdue amounts and `blocked` — what a vertical checks before letting someone go online |
 | `POST /internal/audit` | one audit entry from a vertical, stored as is with its `service` — the console reads every service's entries at `GET /admin/audit` |
 | `POST /internal/notifications/staff` | one operations alert to every active staff member whose scope covers the vertical (and country, unless direction) — `staff_dispatch_failed`, `staff_document_submitted`, `staff_driver_pending`, `staff_ticket_opened`, `staff_lost_item_answered` |
 | `POST /internal/payments/initiate` | start a payment on a client's behalf (WhatsApp) |

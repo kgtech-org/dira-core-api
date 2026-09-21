@@ -32,6 +32,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/internal/callback"
 	"github.com/kgtech-org/dira-core-api/internal/config"
 	"github.com/kgtech-org/dira-core-api/internal/country"
+	"github.com/kgtech-org/dira-core-api/internal/equipment"
 	"github.com/kgtech-org/dira-core-api/internal/fleet"
 	"github.com/kgtech-org/dira-core-api/internal/indexes"
 	"github.com/kgtech-org/dira-core-api/internal/notify"
@@ -318,6 +319,31 @@ func run(logger *slog.Logger) error {
 	// ne contrôle donnerait à l'exploitation la certitude d'avoir restreint
 	// quelqu'un qui ne l'est pas.
 	staffSvc := staff.NewService(staff.NewRepository(mongo), staff.FromAccounts{Reader: userAccounts{svc: userSvc}})
+
+	// LE MATÉRIEL — gilets, sacs, téléphones vendus, loués ou prêtés aux
+	// livreurs et chauffeurs, et surtout COMMENT l'argent revient : sur le
+	// solde Dira (livreurs, ici), retenu sur les gains, ou porté au grand
+	// livre des courses par la verticale (`/internal/equipment/collect`).
+	// Un balayage par minute vieillit les échéances, ouvre les périodes de
+	// loyer, rappelle, prélève, prévient.
+	equipmentSvc := equipment.NewService(equipment.NewRepository(mongo), tokenSvc, userSvc)
+	equipmentSvc.SetNotifier(notifySvc)
+	equipmentSvc.SetStaffAlerter(staffAlerts{staff: staffSvc, notify: notifySvc})
+	equipmentSvc.SetAuditor(auditRec)
+	go func() {
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				tctx, cancel := context.WithTimeout(ctx, 50*time.Second)
+				equipmentSvc.RunDue(tctx)
+				cancel()
+			}
+		}
+	}()
 	staffSvc.SetAuditor(auditRec)
 	// ⚠️ Réglé APRÈS construction, pour casser le cycle : le staff a besoin
 	// des comptes, et les comptes ont besoin des portées.
@@ -347,6 +373,7 @@ func run(logger *slog.Logger) error {
 		// LE JOURNAL D'AUDIT de toute la plateforme, lu ici et nulle part
 		// ailleurs : les verticales y écrivent par la surface de service.
 		auditlog.NewHandler(auditRec).Mount(r, authMW)
+		equipment.NewHandler(equipmentSvc).Mount(r, authMW)
 		notify.NewHandler(notifySvc).Mount(r, authMW)
 		// LE PORTEFEUILLE : `/wallet` pour la personne, `/admin/wallets/...`
 		// pour l'exploitation. Il n'était monté NULLE PART — ni ici, ni dans
@@ -394,6 +421,7 @@ func run(logger *slog.Logger) error {
 		// verticale.
 		internalAPI.SetStaff(staffSvc)
 		internalAPI.SetJournal(auditRec)
+		internalAPI.SetEquipment(equipmentSvc)
 		internalAPI.Mount(r, middleware.Service(cfg.ServiceToken))
 	})
 
@@ -614,5 +642,23 @@ func onlyUnder(prefix string, mw func(http.Handler) http.Handler) func(http.Hand
 			}
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// staffAlerts prévient les membres du staff dont le périmètre couvre une
+// verticale — le même chemin que `POST /internal/notifications/staff`, pour
+// un module du socle.
+type staffAlerts struct {
+	staff  *staff.Service
+	notify *notify.Service
+}
+
+func (a staffAlerts) AlertStaff(ctx context.Context, scope, country, key string, vars, data map[string]string) {
+	ids, err := a.staff.Recipients(ctx, scope, country)
+	if err != nil {
+		return
+	}
+	for _, id := range ids {
+		a.notify.Notify(ctx, id, key, vars, data)
 	}
 }

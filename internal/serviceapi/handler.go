@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/kgtech-org/dira-core-api/internal/equipment"
 	"github.com/kgtech-org/dira-core-api/internal/payment"
 	"github.com/kgtech-org/dira-core-api/internal/token"
 	"github.com/kgtech-org/dira-core-api/internal/user"
@@ -133,6 +134,14 @@ type Handler struct {
 	backoffice BackOffice
 	staff      StaffDirectory
 	journal    Journal
+	equipment  Equipment
+}
+
+// Equipment est le guichet du MATÉRIEL : ce qu'une verticale retient sur un
+// gain (ou rend), et où en est une personne avant de la laisser en ligne.
+type Equipment interface {
+	Collect(ctx context.Context, userID, vertical string, earning int, refKind, refID string) (*equipment.CollectResponse, error)
+	Standing(ctx context.Context, userID string) (*equipment.StandingResponse, error)
 }
 
 // Journal est le journal d'audit UNIQUE de la plateforme : ce qu'une
@@ -159,6 +168,9 @@ func (h *Handler) SetStaff(s StaffDirectory) { h.staff = s }
 // SetJournal branche le journal d'audit (câblage).
 func (h *Handler) SetJournal(j Journal) { h.journal = j }
 
+// SetEquipment branche le guichet du matériel (câblage).
+func (h *Handler) SetEquipment(e Equipment) { h.equipment = e }
+
 // Mount registers the routes under a middleware that checks the service token.
 func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler) {
 	r.Group(func(g chi.Router) {
@@ -184,6 +196,8 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/notifications/send", h.notify)
 		g.Post("/internal/notifications/staff", h.notifyStaff)
 		g.Post("/internal/audit", h.recordAudit)
+		g.Post("/internal/equipment/collect", h.equipmentCollect)
+		g.Post("/internal/equipment/standing", h.equipmentStanding)
 		g.Post("/internal/push/data", h.signal)
 		g.Post("/internal/payments/initiate", h.initiatePayment)
 
@@ -365,7 +379,19 @@ func (h *Handler) balance(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) creditEarnings(w http.ResponseWriter, r *http.Request) {
 	h.move(w, r, func(ctx context.Context, req walletRequest) error {
-		return h.wallets.CreditEarnings(ctx, req.OwnerID, req.Amount, req.Reason, req.RefKind, req.RefID, req.Ref)
+		if err := h.wallets.CreditEarnings(ctx, req.OwnerID, req.Amount, req.Reason, req.RefKind, req.RefID, req.Ref); err != nil {
+			return err
+		}
+		// Les FRAIS DE LIVRAISON d'un livreur : le matériel retient sa part
+		// à l'instant où le gain arrive — le solde vient d'être crédité, la
+		// retenue ne peut pas manquer. AU MIEUX : un gain crédité est un gain
+		// crédité, même si la retenue échoue (elle rattrapera au suivant).
+		if h.equipment != nil && req.Reason == "delivery_fee" {
+			if _, err := h.equipment.Collect(ctx, req.OwnerID, "food", req.Amount, req.RefKind, req.RefID); err != nil {
+				slog.WarnContext(ctx, "serviceapi: equipment collection after earnings failed", "owner_id", req.OwnerID, "error", err)
+			}
+		}
+		return nil
 	})
 }
 
@@ -430,6 +456,56 @@ func (h *Handler) notify(w http.ResponseWriter, r *http.Request) {
 	// La verticale n'a donc rien à attendre non plus.
 	h.notifier.Notify(r.Context(), req.UserID, req.Key, req.Vars, req.Data)
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// POST /internal/equipment/collect {user_id, vertical, earning_xof, ref_kind,
+// ref_id} — ce que le matériel retient sur un gain. Les livreurs sont
+// prélevés ici même (leur solde est au socle) ; pour un chauffeur VTC, la
+// réponse est ce que la verticale porte à SON grand livre (négatif = rendu).
+func (h *Handler) equipmentCollect(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID     string `json:"user_id" validate:"required,len=24,hexadecimal"`
+		Vertical   string `json:"vertical" validate:"required,oneof=food vtc"`
+		EarningXOF int    `json:"earning_xof" validate:"min=0"`
+		RefKind    string `json:"ref_kind" validate:"omitempty,max=30"`
+		RefID      string `json:"ref_id" validate:"omitempty,max=64"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if h.equipment == nil {
+		httpx.JSON(w, http.StatusOK, map[string]any{"amount_xof": 0, "lines": []any{}})
+		return
+	}
+	resp, err := h.equipment.Collect(r.Context(), req.UserID, req.Vertical, req.EarningXOF, req.RefKind, req.RefID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, resp)
+}
+
+// POST /internal/equipment/standing {user_id} — bloqué ou non, et combien
+// est dû : ce qu'une verticale demande avant une mise en ligne.
+func (h *Handler) equipmentStanding(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID string `json:"user_id" validate:"required,len=24,hexadecimal"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if h.equipment == nil {
+		httpx.JSON(w, http.StatusOK, equipment.StandingResponse{})
+		return
+	}
+	resp, err := h.equipment.Standing(r.Context(), req.UserID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, resp)
 }
 
 // POST /internal/audit — une entrée d'audit d'une verticale, rangée telle

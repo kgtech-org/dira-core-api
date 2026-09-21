@@ -266,13 +266,75 @@ func parseRef(refKind, refID string) (*primitive.ObjectID, error) {
 		return nil, apperr.Validation("a reference needs both a kind and an id")
 	}
 	switch refKind {
-	case RefOrder, RefRide, RefTip, RefRideAdjustment:
+	case RefOrder, RefRide, RefTip, RefRideAdjustment, RefEquipment:
 	default:
-		return nil, apperr.Validation("reference kind must be order, ride, tip or ride_adjustment")
+		return nil, apperr.Validation("reference kind must be order, ride, tip, ride_adjustment or equipment")
 	}
 	oid, err := primitive.ObjectIDFromHex(refID)
 	if err != nil {
 		return nil, apperr.Validation("invalid reference id").WithCause(err)
 	}
 	return &oid, nil
+}
+
+// ChargeEquipment takes money OUT of a driver's wallet for an equipment
+// contract: an instalment on its due date, a deduction from an earning that
+// was just credited, a rental period.
+//
+// `allowPartial` : prendre ce qu'il y a quand le solde ne couvre pas tout —
+// réglage du contrat, jamais un défaut. Rend ce qui a été PRIS (zéro quand
+// le solde est vide) ; la clé rend le mouvement rejouable sans double
+// débit, comme tout mouvement d'argent.
+func (s *Service) ChargeEquipment(ctx context.Context, ownerID string, amountXOF int, allowPartial bool, contractID, key string) (int, error) {
+	if amountXOF <= 0 {
+		return 0, apperr.Validation("amount must be positive")
+	}
+	wallet, err := s.findWallet(ctx, ownerID)
+	if err != nil {
+		return 0, err
+	}
+	refOID, err := parseRef(RefEquipment, contractID)
+	if err != nil {
+		return 0, err
+	}
+	taken := 0
+	err = s.repo.WithTransaction(ctx, func(txCtx context.Context) error {
+		if key != "" {
+			if err := s.repo.ClaimOperation(txCtx, key); err != nil {
+				return err
+			}
+		}
+		n, err := s.repo.TakeMoney(txCtx, wallet.ID, amountXOF, allowPartial)
+		if err != nil {
+			return err
+		}
+		taken = n
+		if n == 0 {
+			return nil
+		}
+		return s.repo.InsertTransaction(txCtx, &Transaction{
+			WalletID: wallet.ID, Kind: KindConsume, Reason: ReasonEquipment, Amount: n, Unit: UnitXOF,
+			RefID: refOID, RefKind: RefEquipment, CreatedAt: time.Now().UTC(),
+		})
+	})
+	if errors.Is(err, errOperationApplied) {
+		slog.InfoContext(ctx, "token: equipment charge replayed, not applied twice", "key", key, "owner_id", ownerID)
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if taken > 0 {
+		s.record(ctx, "token.equipment", wallet.ID.Hex(), map[string]any{"amount_xof": taken, "contract_id": contractID, "owner_id": ownerID})
+	}
+	return taken, nil
+}
+
+// RefundEquipment gives money BACK to a driver's wallet — a deposit returned,
+// an over-collection corrected.
+func (s *Service) RefundEquipment(ctx context.Context, ownerID string, amountXOF int, contractID, key string) error {
+	if amountXOF <= 0 {
+		return apperr.Validation("amount must be positive")
+	}
+	return s.moveMoney(ctx, ownerID, "balance_xof", amountXOF, KindPurchase, ReasonEquipment, RefEquipment, contractID, key, nil)
 }

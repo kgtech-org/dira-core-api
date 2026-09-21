@@ -47,8 +47,12 @@ func categoryOf(key string) string {
 	case KeyDriverCall:
 		return CategoryDriverCall
 	case KeyStaffDispatchFailed, KeyStaffDocumentSubmitted, KeyStaffDriverPending,
-		KeyStaffTicketOpened, KeyStaffLostItemAnswered:
+		KeyStaffTicketOpened, KeyStaffLostItemAnswered, KeyStaffEquipOverdue, KeyStaffEquipRequested:
 		return CategoryStaff
+	case KeyEquipmentProposed, KeyEquipmentHandedOver, KeyEquipmentDue, KeyEquipmentCharged,
+		KeyEquipmentOverdue, KeyEquipmentBlocked, KeyEquipmentReturned:
+		// Ce qu'on doit et ce qu'on a payé : pas coupable, comme le support.
+		return CategorySupport
 	case KeyLostItemReported, KeyLostItemFound, KeyLostItemNotFound, KeyTicketReply, KeyTicketResolved:
 		return CategorySupport
 	case KeyMerchantNewOrder:
