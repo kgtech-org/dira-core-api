@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.11.1** · 21 septembre 2026
+> **Version 4.12.0** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -259,6 +259,11 @@ PATCH  /agent/availability     { available }
 > parce qu'une échéance de **matériel** (gilet, sac, téléphone — §8 bis) est
 > en retard au-delà du seuil du contrat. Dites-le et ouvrez l'écran du
 > matériel, avec le bouton payer.
+>
+> **`402 debt_over_limit`** (v4.12.0, mode commission) : la **dette** du
+> livreur — des commissions sur des commandes en espèces que son solde n'a
+> pas couvertes, `GET /wallet` → `debt_xof` — dépasse le plafond du pays.
+> Elle se rembourse d'office sur son prochain gain en ligne, ou à l'agence.
 
 ---
 
@@ -616,6 +621,7 @@ POST /wallet/purchase   { tokens }
 
 - Le solde de jetons doit être visible **en permanence** dans l'en-tête : c'est la ressource qui conditionne le métier. Un livreur qui le découvre vide au moment d'accepter a déjà perdu la course.
 - Chaque acceptation produit un mouvement `order_accept`. **Le montant varie.**
+- **Le pays peut ne pas prendre de jetons (v4.12.0) — le mode COMMISSION.** Une course rend alors `token_cost: 0` et **`commission_pct`** : la plateforme retient ce pourcentage des frais de livraison — sur ce qu'elle verse (commande payée en ligne : mouvement `delivery_fee` puis `commission`), ou sur le solde du livreur pour une commande en espèces (`commission`, et **`commission_due`** pour ce que le solde n'avait pas : c'est sa **dette**, `debt_xof`, remboursée d'office sur le prochain gain — mouvement `debt_repaid`). Affichez la commission **avant** d'accepter, comme les jetons.
 - `balance_xof` reçoit les **frais de livraison** des courses **prépayées**. En espèces, rien n'y transite : le livreur a l'argent en main.
 - Un mouvement **`reason: "equipment"`** (`unit: "xof"`, `ref_kind: "equipment"`, v4.11.0) est une retenue — ou, positif, un remboursement de caution — pour le **matériel** vendu ou loué par Dira (§8 bis).
 - La recharge ne crédite qu'**après confirmation** du prestataire : suivez `GET /payments/{id}`.

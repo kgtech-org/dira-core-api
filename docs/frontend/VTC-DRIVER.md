@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.11.1** · 21 septembre 2026
+> **Version 4.12.0** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -389,6 +389,16 @@ POST https://tracking-staging.dira.llc/track/calls/{call_id}/decline  { "vehicle
 | `409 ride_taken` | un autre a été plus rapide |
 | `409 vehicle_class_mismatch` | le véhicule ne sert pas le mode de la course (v4.6.0) — n'arrive qu'en forçant `POST /rides/{id}/accept` sur une course pour laquelle vous n'avez pas été appelé ; l'écran d'appel n'en verra jamais |
 | `409 rider_cannot_pay` | le passager payait sur son solde Dira et ne peut plus (v4.4.0) : **la course a été annulée**, vous êtes libre — fermez l'écran, aucune course ne vous attend |
+| `402 insufficient_tokens` | **mode JETONS** (v4.12.0) : accepter coûte `token_cost` jetons pris sur votre portefeuille Dira (`GET /wallet` → `balance`), et il n'y en a pas assez — la course reste à prendre. Rechargez (`POST /wallet/purchase`) |
+
+> **Le pays décide de la façon dont la plateforme se paie (v4.12.0).** En
+> mode **commission** (le défaut), rien à l'acceptation et la commission au
+> relevé (§6). En mode **jetons**, la course rend **`token_cost`** : ce que
+> l'acceptation vous coûte, en jetons, et **il n'y a pas de commission** —
+> le prix vous revient en entier (`driver_xof = fare_xof`). Affichez le
+> coût sur l'appel, comme le prix. Le pays règle aussi **quand le passager
+> au portefeuille est débité** (`charge_at` sur la course) ; ce n'est jamais
+> votre affaire : la plateforme vous règle la course de la même façon.
 
 ---
 

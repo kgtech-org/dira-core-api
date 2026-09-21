@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.11.1** · 21 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.12.0** · 21 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -267,6 +267,35 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.12.0 — 21 septembre 2026
+
+**Ajout rétrocompatible** — **la FACTURATION par pays et par métier, et la
+comptabilité.** L'exploitation choisit, pour les courses et pour la
+livraison, comment la plateforme se paie sur un agent — des **jetons** à
+l'acceptation ou une **commission** en pourcentage (sur ce qu'elle verse,
+ou portée à la dette de l'agent pour l'argent en espèces) — et **à quelle
+étape le client au portefeuille est débité** (`request`, `accept`,
+`start`, `complete`). Rien ne change sans réglage : courses en commission
+débitées à l'acceptation, livraison en jetons débitée à la commande.
+
+Ce que les applications voient : une commande ou une course rend
+**`charge_at`** quand le débit est différé, et après `accept` un solde
+insuffisant ne s'annule plus — l'impayé devient une **dette** du client,
+**`debt_xof`** sur `GET /wallet`, remboursée d'office sur la prochaine
+recharge. Une course en mode jetons rend **`token_cost`** au chauffeur
+(`402 insufficient_tokens` à l'acceptation, pas de commission) ; une
+livraison en mode commission rend `token_cost: 0` et **`commission_pct`**
+(mouvements `commission`, `commission_due`, `debt_repaid` au portefeuille ;
+`402 debt_over_limit` à la prise de service au-delà du plafond).
+(`FOOD-CLIENT.md` §4, §9 ; `VTC-CLIENT.md` §4 ; `FOOD-DELIVERY.md` §2, §8 ;
+`VTC-DRIVER.md` §3.)
+
+Au socle, chaque mouvement de portefeuille écrit désormais son **écriture
+comptable en partie double** (`GET /admin/finance/journal`, aperçu
+`GET /admin/finance/overview`), et un **balayage d'intégrité** recalcule
+chaque solde depuis ses mouvements, vérifie le journal et alerte le staff
+(`staff_finance_alert`). Console seulement.
 
 ### 4.11.1 — 21 septembre 2026
 

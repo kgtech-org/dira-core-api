@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.11.1** · 21 septembre 2026
+> **Version 4.12.0** · 21 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -278,6 +278,14 @@ POST /rides
 > `cancelled_reason: "payment_failed"`, push `ride_cancelled` — et le
 > passager doit recharger avant de recommander. Affichez le solde sur
 > l'écran de recherche : c'est lui qui paiera quand un chauffeur dira oui.
+>
+> **Le pays peut débiter à une autre étape (v4.12.0).** La course rend
+> **`charge_at`** : `accept` (le défaut ci-dessus), `request` (débité à la
+> commande — remboursé si annulée), `start` (à la montée à bord) ou
+> `complete` (déposé). Affichez « débité à … ». Après `accept`, la course
+> ne s'annule plus pour un solde insuffisant : à la montée ou à l'arrivée,
+> l'impayé devient la **dette** du passager (`GET /wallet` → `debt_xof`),
+> remboursée d'office sur sa prochaine recharge.
 
 > ⚠️ **`payment_url` ne prouve RIEN.** Elle ouvre la page de l'opérateur. La
 > course reste impayée tant que le serveur n'a pas reçu la confirmation :
