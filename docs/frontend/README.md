@@ -287,9 +287,11 @@ ressemblait, dans la liste du livreur, à une course à **un seul retrait** —
 les listes ne portent pas le détail des collectes, et il ne découvrait les
 trois qu'après avoir accepté.
 
-`pickups_count` est donc servi **partout**, listes comprises, sur les courses
+`pickups_count` est donc servi dans les listes aussi, sur les courses
 (`FOOD-DELIVERY`) comme sur la commande du client
-(`order.delivery.pickups_count`, `FOOD-CLIENT`). Affichez-le **avant
+(`order.delivery.pickups_count`, `FOOD-CLIENT`). ⚠️ **Absent = « on ne sait
+pas »**, jamais « aucune » : une course a toujours au moins une collecte, et
+le champ ne manque que sur celles créées avant lui. Affichez-le **avant
 d'accepter** ; relisez `GET /deliveries/{id}` **dès l'acceptation** pour la
 tournée elle-même. Chaque collecte se confirme **séparément** — une seule
 confirmation ne clôt pas la tournée, et c'est ce qui fait repartir un livreur
