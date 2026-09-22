@@ -22,11 +22,17 @@ const (
 // Use est UN usage d'une promotion — la trace de ce qu'elle a coûté, et à
 // l'occasion de quoi.
 //
-// ⚠️ `RefID` EST UNIQUE. C'est la course ou la commande, et c'est lui qui
-// rend l'opération idempotente : un rappel de paiement rejoué, un
-// redémarrage au mauvais moment, une double confirmation ne doivent pas
-// consommer l'enveloppe deux fois. Sans cette contrainte, un budget se vide
-// de moitié sur un incident réseau.
+// ⚠️ LE COUPLE (`PromoID`, `RefID`) EST UNIQUE. C'est ce qui rend
+// l'engagement idempotent : un rappel de paiement rejoué, un redémarrage au
+// mauvais moment, une double confirmation ne doivent pas consommer
+// l'enveloppe deux fois. Sans cette contrainte, un budget se vide de moitié
+// sur un incident réseau.
+//
+// ⚠️ LE COUPLE, ET NON `RefID` SEUL. Une COMMANDE peut consommer plusieurs
+// offres à la fois — une remise sur les plats d'une enseigne et la livraison
+// offerte sont deux opérations distinctes, avec deux budgets. Une clé sur la
+// seule référence aurait obligé à n'en compter qu'une, et l'autre aurait
+// dépensé sans jamais apparaître nulle part.
 type Use struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	PromoID   string             `bson:"promo_id" json:"promo_id"`
@@ -83,7 +89,8 @@ func (l *Ledger) Reserve(ctx context.Context, u Use) error {
 	})
 }
 
-// Settle acte la dépense : ce qui était promis est sorti.
+// Settle acte la dépense : ce qui était promis est sorti. Vaut pour TOUTES
+// les offres consommées par cette référence.
 func (l *Ledger) Settle(ctx context.Context, refID string) error {
 	return l.close(ctx, refID, StateSpent, func(u Use) bson.M {
 		return bson.M{
@@ -108,27 +115,38 @@ func (l *Ledger) Release(ctx context.Context, refID string) error {
 	})
 }
 
-// close fait passer un usage RÉSERVÉ à son état final, une seule fois.
+// close fait passer à son état final CHAQUE usage réservé d'une référence,
+// une seule fois chacun.
+//
+// ⚠️ UN PAR UN, ET PAS EN MASSE. Chaque usage porte son propre montant et
+// appartient à sa propre enveloppe : une mise à jour groupée aurait su
+// changer les états, pas reporter les bons francs sur les bons compteurs.
+//
+// Le filtre exige l'état `reserved` : un second appel ne trouve rien et ne
+// touche à aucun compteur. C'est ce qui rend l'opération sûre face à un
+// rappel rejoué.
 func (l *Ledger) close(ctx context.Context, refID, state string, delta func(Use) bson.M) error {
 	if l == nil || refID == "" {
 		return nil
 	}
 	now := time.Now().UTC()
-	var u Use
-	// Le filtre exige l'état `reserved` : un second appel ne trouve rien et
-	// ne touche à aucun compteur. C'est ce qui rend l'opération sûre face à
-	// un rappel rejoué.
-	err := l.uses.FindOneAndUpdate(ctx,
-		bson.M{"ref_id": refID, "state": StateReserved},
-		bson.M{"$set": bson.M{"state": state, "settled_at": now}},
-		options.FindOneAndUpdate().SetReturnDocument(options.Before)).Decode(&u)
-	if errors.Is(err, mongo.ErrNoDocuments) {
-		return nil // déjà réglé, ou aucune promotion sur cet objet
+	for range 16 { // garde-fou : aucune commande ne consomme seize offres
+		var u Use
+		err := l.uses.FindOneAndUpdate(ctx,
+			bson.M{"ref_id": refID, "state": StateReserved},
+			bson.M{"$set": bson.M{"state": state, "settled_at": now}},
+			options.FindOneAndUpdate().SetReturnDocument(options.Before)).Decode(&u)
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil // plus rien à régler
+		}
+		if err != nil {
+			return fmt.Errorf("promo: close use: %w", err)
+		}
+		if err := l.bump(ctx, u.PromoID, delta(u)); err != nil {
+			return err
+		}
 	}
-	if err != nil {
-		return fmt.Errorf("promo: close use: %w", err)
-	}
-	return l.bump(ctx, u.PromoID, delta(u))
+	return nil
 }
 
 // bump met à jour le RÉSUMÉ porté par la promotion.
