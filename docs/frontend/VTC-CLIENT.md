@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.14.0** · 22 septembre 2026
+> **Version 4.15.1** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -259,6 +259,88 @@ ne desservons pas encore ici » dès qu'un passager pose un point, avant même
 le devis : un point est acceptable s'il est à moins de `radius_km +
 tolerance_km` du `center` d'une ville active, et les deux points doivent
 tomber dans la **même** ville.
+
+---
+
+## 3 bis. 🗣️ Commander EN PARLANT — l'assistant du passager (v4.15.0)
+
+```
+POST /ai/chat   { "message": "…", "origin": [lng, lat] }   → { reply, plan? }
+```
+
+« Je veux aller de Tokoin à l'aéroport en van » rend une **phrase** et,
+quand il y a de quoi composer, un **plan vérifié** :
+
+```jsonc
+{ "reply": "Je vous propose un van, il y en a un tout près.",
+  "plan": {
+    "stops": [ { "kind": "pickup", "label": "Tokoin, Lomé", "geo": [1.21, 6.15] },
+               { "kind": "dest",   "label": "Aéroport de Lomé", "geo": [1.2545, 6.1656] } ],
+    "quotes": [ { "id": "6aa2…", "class_key": "van", "fare_xof": 4200, "expires_at": "…" },
+                { "id": "6aa3…", "class_key": "eco", "fare_xof": 2500, "expires_at": "…" } ],
+    "unresolved": [], "when": "" } }
+```
+
+> ⚠️ **`reply` est une phrase à lire ; seuls `plan.quotes` commandent.**
+> Chaque lieu a été **géocodé et borné à la ville desservie** par le
+> serveur, chaque mode validé, et **le prix vient du devis** — jamais du
+> modèle, qui n'a pas le droit d'annoncer un montant. Pour commander, c'est
+> `POST /rides { "quote_id": … }` (§4), exactement comme un devis composé à
+> la main. **L'assistant ne commande jamais.**
+
+Ce qu'il faut envoyer et afficher :
+
+- **`origin`, la position du téléphone**, à chaque appel si vous l'avez :
+  elle sert de départ quand le passager n'en nomme pas (« je vais à
+  l'aéroport »). Sans elle et sans départ nommé, la réponse vient **sans
+  plan** — demandez la position, ne devinez pas.
+- **`plan.stops` sur la carte** avant les prix : le passager doit voir
+  *où* on l'emmène avant de voir *combien*. Un lieu mal compris se corrige
+  d'un appui, sur la carte, pas dans une conversation.
+- **`plan.quotes` en liste de modes**, dans l'ordre servi — celui que le
+  passager a nommé est déjà en tête. Les devis **expirent** (`expires_at`,
+  2 min) : passé ce délai, redemandez (§3), n'envoyez pas un `quote_id`
+  périmé.
+- **`plan.unresolved`** nomme ce que la carte ne connaît pas (« chez Tantie
+  Adjo ») : dites-le et proposez la recherche d'adresse. Un **arrêt**
+  introuvable ne fait pas échouer la course ; une **destination**
+  introuvable, si — il n'y a alors pas de plan.
+- **`plan.when`** (« dans 20 minutes ») est rendu **tel quel** :
+  l'assistant ne programme pas. Si c'est une course à l'avance, envoyez le
+  passager sur l'écran de programmation (§4 bis).
+- `plan` **absent** = ce n'était pas une demande de course (un bonjour, une
+  question de prix). Affichez la phrase, rien d'autre.
+
+`502`/`503 assistant_unavailable` : l'assistant est indisponible — dites-le
+et **laissez la composition manuelle**, qui ne dépend d'aucun modèle.
+
+### 🎙️ Le VOCAL — 60 s, transcrit, MONTRÉ, puis envoyé
+
+```
+POST /ai/voice                multipart : file=<audio>        → { "text": "…" }
+```
+
+⚠️ **La transcription n'est PAS exécutée.** Elle revient à vous ; vous
+l'**affichez dans le champ de saisie**, corrigible, et c'est le client qui
+l'envoie à `/ai/chat`. Les accents d'ici ne pardonnent pas : partir à
+« l'aéroport » quand quelqu'un a dit « la gare » est pire que pas
+d'assistant du tout.
+
+**Enregistrez en opus ou AAC, MONO, 16-24 kbit/s** — 60 s pèsent alors
+~150 Ko. Le WAV est refusé : une minute fait 5 Mo, soit **des minutes**
+d'envoi sur un réseau lent, et c'est l'envoi, pas l'IA, qui fait attendre.
+Limite **2 Mio**, ~60 s.
+
+| Étape | à montrer | 3G lent | 4G |
+|---|---|---|---|
+| envoi de l'audio | la barre d'envoi | 10-16 s | 1-2 s |
+| transcription | « transcription… » | 1-3 s | 1-3 s |
+| réponse | « l'assistant écrit… » | 2-10 s | 2-10 s |
+
+Une seule requête en vol. Pas de réessai automatique en boucle : un bouton,
+une fois. `413 audio_too_large` = l'application n'a pas compressé ;
+`503 assistant_unavailable` = la voix n'est pas servie — **gardez le clavier
+disponible**, tout marche sans elle.
 
 ---
 

@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.14.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.15.1** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,43 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.15.1 — 22 septembre 2026
+
+**Précision de spec** — `FOOD-CLIENT.md` §5 dit maintenant **comment suivre
+le livreur en direct dès qu'il accepte** : le moment exact (`accepted`, et
+les trois chemins par lesquels on l'apprend), ce que la commande porte alors
+(`delivery.id` = la mission, `delivery.courier`, la route prévue), l'ouverture
+du socket **avec le jeton** (`?token=` quand l'en-tête est impossible, et
+rouvrir à la rotation), ce qu'on dessine à chaque état, et comment tenir la
+connexion (back-off, arrière-plan, repli à 10-15 s, fermeture à la fin).
+Aucune route ne change.
+
+### 4.15.0 — 22 septembre 2026
+
+**Ajout rétrocompatible** — **parler à l'application, et lui parler pour de
+bon.**
+
+**Les courses ont un assistant** (`POST /vtc/ai/chat`, `VTC-CLIENT.md`
+§3 bis) : « je veux aller de Tokoin à l'aéroport en van » rend une phrase
+et un **plan vérifié** — les lieux géocodés et bornés à la ville
+desservie, les modes validés, et de vrais **devis**. Le passager confirme
+avec `POST /rides { quote_id }`, comme un devis composé à la main :
+**l'assistant ne commande jamais**, et le prix ne vient jamais du modèle.
+
+**Les deux applications acceptent un VOCAL** (`POST /ai/voice`, ≤ 2 Mio,
+~60 s, opus ou AAC mono ; le WAV est refusé). Il revient en **texte**, que
+l'application **affiche et laisse corriger** avant de l'envoyer : une
+transcription est une saisie, pas un ordre — partir à « l'aéroport » quand
+quelqu'un a dit « la gare » serait pire que pas d'assistant du tout.
+
+**Toute l'IA de la plateforme est dans un seul service** (`dira-analytics`),
+y compris la transcription : aucune verticale n'embarque de fournisseur, de
+clé ni de prompt. Conséquence visible : quand ce service ne répond pas,
+l'assistant **dit qu'il ne peut pas répondre** au lieu de rendre une phrase
+fabriquée localement (ce que faisait la livraison). Ce qui ne demande aucun
+modèle continue de marcher — les suggestions filtrées par le profil, et le
+**plan** d'une commande écrite.
 
 ### 4.14.0 — 22 septembre 2026
 

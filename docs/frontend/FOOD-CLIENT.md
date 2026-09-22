@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.14.0** · 22 septembre 2026
+> **Version 4.15.1** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -378,33 +378,121 @@ L'annulation est possible jusqu'à `picking_up` inclus. Au-delà → `409 cannot
 
 ---
 
-## 5. Suivi de livraison
+## 5. Suivi de livraison — LE LIVREUR EN DIRECT, dès qu'il accepte
+
+### Le moment exact : `accepted`
+
+Tant que la commande cherche un livreur (`ready` côté commande, `searching`
+côté course), **personne n'a de position à montrer** : n'ouvrez pas de
+socket, n'affichez pas de carte vide avec une moto immobile. Affichez « nous
+cherchons un livreur ».
+
+Le passage à **`accepted`** est le signal, et il vous arrive de trois
+façons — prenez la première qui vient :
+
+| Chemin | Quand |
+|---|---|
+| push `order_assigned` (`data.order_id`) | application en arrière-plan |
+| socket des commandes, trame d'état | application ouverte |
+| `GET /orders/{id}` à l'ouverture de l'écran | toujours, c'est l'état de référence |
+
+**À ce moment, relisez `GET /orders/{id}`** : la commande porte alors tout ce
+qu'il faut.
+
+```jsonc
+{ "id": "6aa…", "status": "accepted",
+  "delivery": {
+    "id": "6ab…",                       // ← la MISSION du suivi
+    "tracking_mission_id": "6ab…",      // présent quand il diffère de `id`
+    "status": "accepted",
+    "planned_route": [[1.2255, 6.1319], [1.2301, 6.1402]],
+    "planned_distance_m": 3400, "planned_duration_s": 720,
+    "courier": { "name": "Koffi M.", "phone": "+228…", "vehicle": "Haojue HJ125 · TG-3421-AB",
+                 "rating_avg": 4.8, "rating_count": 126 } } }
+```
+
+`delivery.courier` n'apparaît **qu'une fois la course attribuée** : c'est
+exactement ce qu'il faut afficher en tête de l'écran de suivi — **qui
+vient**, dans **quoi**, avec quelle note, et le bouton d'appel.
+
+### Ouvrir le socket du suivi
 
 ```
-GET /deliveries/{id}
+wss://tracking-staging.dira.llc/track/subscribe/{mission_id}?token=<access_token>
 ```
 
-Puis le **microservice de suivi**, pas l'API :
+- **`mission_id`** = `delivery.tracking_mission_id` s'il est là, **sinon**
+  `delivery.id`. C'est la clé de jointure entre l'API et le suivi.
+- ⚠️ **Le jeton est OBLIGATOIRE** et c'est **votre jeton d'accès habituel**
+  (le même que pour l'API). Deux façons de le donner : l'en-tête
+  `Authorization: Bearer …` quand votre client WebSocket le permet, **sinon
+  `?token=`** dans l'URL — c'est le cas des WebSocket de navigateur, qui
+  n'acceptent aucun en-tête. Sans jeton : `401`, et vous croirez à une panne
+  de réseau.
+- ⚠️ **La base d'URL du suivi est distincte de celle de l'API.** Deux
+  variables d'environnement, et le suivi ne passe **pas** par la passerelle.
+- Le jeton **expire** (§1 bis) : à la rotation, **rouvrez le socket** avec
+  le nouveau. Un socket ouvert ne se ré-authentifie pas tout seul.
 
-```
-wss://tracking-staging.dira.llc/track/subscribe/{delivery_id}
-
-{ "type": "hello",    "mission_id": "…" }
-{ "type": "position", "vehicle_id": "…", "vehicle_type": "moto", "plate": "…",
-  "lng": 1.2255, "lat": 6.1319, "heading": 122.5, "speed": 8.3, "ts": 1757… }
+```jsonc
+{ "type": "hello",    "mission_id": "6ab…" }
+{ "type": "position", "vehicle_id": "…", "vehicle_type": "moto", "plate": "TG-3421-AB",
+  "lng": 1.2255, "lat": 6.1319, "heading": 122.5, "heading_source": "gps",
+  "speed": 8.3, "ts": 1757… }
 { "type": "status",   "status": "in_transit", "ts": 1757… }
 ```
 
-> **`mission_id` du suivi = `delivery_id` de l'API.** C'est la clé de jointure.
+### Dessiner
 
-La trame `status` arrive à **chaque changement d'état de la course**
-(`accepted`, `picking_up`, `in_transit`, `completed`, `cancelled`) — les mots
-du vocabulaire commun. Elle ne porte que le mot : relisez `GET /orders/{id}`
-(la commande porte le même état) et redessinez.
+- **La première position peut tarder** : le téléphone du livreur émet toutes
+  les quelques secondes, et il vient peut-être de démarrer. En attendant,
+  centrez sur la **boutique** et tracez `planned_route` — le client voit le
+  chemin prévu avant de voir la moto.
+- **Interpolez** entre deux trames, sinon le marqueur saute. `heading`
+  oriente la flèche ; `heading_source` dit si le cap est mesuré (`gps`) ou
+  déduit — un cap déduit à l'arrêt tourne dans le vide, ne l'animez pas.
+- **Les marqueurs** : le livreur est `courier`, la boutique `merchant`,
+  votre adresse `client` (§ Les marqueurs de carte, ci-dessous).
+- **Un silence n'est pas une disparition.** Batterie, tunnel, application
+  fermée : gardez la **dernière position connue** avec son heure (« il y a
+  2 min ») et grisez-la au-delà d'une minute. Ne faites **jamais** revenir
+  le marqueur à la boutique parce que le flux s'est tu.
+- **Pas d'ETA inventée.** `planned_duration_s` est la durée prévue de la
+  tournée, pas un temps restant. Si vous affichez un « dans ~X min »,
+  dites-le comme une estimation, et ne le faites pas reculer à chaque trame.
 
-Attentes : reconnexion avec back-off, **interpolation** entre deux positions, et repli sur `GET /deliveries/{id}` si le socket est indisponible.
+### La trame `status`, et ce qu'elle vaut
 
-⚠️ **La base d'URL du suivi est distincte de celle de l'API.** Deux variables d'environnement.
+Elle arrive à **chaque changement d'état** (`accepted`, `picking_up`,
+`in_transit`, `completed`, `cancelled`) — les mots du vocabulaire commun
+(§ en-tête). **Elle ne porte que le mot** : changez le badge tout de suite
+si vous voulez, puis **relisez `GET /orders/{id}`** et redessinez. Une trame
+perdue ne casse alors rien.
+
+Ce que le client doit lire à chaque étape :
+
+| État | Ce qu'on montre |
+|---|---|
+| `accepted` | « Koffi vient chercher votre commande » — carte, livreur, route prévue |
+| `picking_up` | « Il est à la boutique » |
+| `in_transit` | « En route vers vous » — c'est là que la carte compte le plus |
+| `completed` | la carte se fige, on propose la note (§7) |
+| `cancelled` | on ferme le socket et on explique — `cancelled_reason` |
+
+### Tenir la connexion
+
+- **Reconnexion avec back-off** (1 s, 2 s, 4 s… plafonné à 30 s), et **pas
+  de boucle serrée** : un socket refusé en `401` ne s'arrangera pas en
+  réessayant vite — rafraîchissez le jeton d'abord.
+- **En arrière-plan, fermez le socket** ; au retour au premier plan,
+  **relisez `GET /orders/{id}` PUIS rouvrez**. Un socket maintenu en
+  arrière-plan vide la batterie pour des positions que personne ne regarde.
+- **Repli sans socket** (réseau captif, socket refusé) : sondez
+  `GET /deliveries/{id}` toutes les **10 à 15 secondes**, pas plus souvent.
+  Dites-le à l'écran (« suivi allégé ») plutôt que de laisser croire au
+  direct.
+- **À `completed` ou `cancelled` : fermez.** Un socket laissé ouvert sur une
+  mission terminée ne reçoit plus rien et empêche le téléphone de dormir.
 
 ---
 
@@ -688,6 +776,33 @@ POST /ai/chat          { message }   → { reply, plan? }
 - Un `plan` avec des lignes **et** une `reply` qui dit autre chose : le
   plan gagne — c'est lui qui a été vérifié.
 
+### 🎙️ Le VOCAL — 60 s, transcrit, MONTRÉ, puis envoyé (v4.15.0)
+
+```
+POST /ai/voice        multipart : file=<audio>        → { "text": "…" }
+```
+
+⚠️ **La transcription n'est PAS exécutée.** Elle revient à vous ; vous
+l'**affichez dans le champ de saisie**, corrigible, et c'est le client qui
+l'envoie à `/ai/chat`. Commander depuis un vocal non relu ferait livrer
+« riz gras » à qui a dit « riz sauce ».
+
+**Enregistrez en opus ou AAC, MONO, 16-24 kbit/s** — 60 s pèsent alors
+~150 Ko. Le WAV est refusé : une minute fait 5 Mo, soit **des minutes**
+d'envoi sur un réseau lent, et c'est l'envoi, pas l'IA, qui fait attendre.
+Limite **2 Mio**, ~60 s.
+
+| Étape | à montrer | 3G lent | 4G |
+|---|---|---|---|
+| envoi de l'audio | la barre d'envoi | 10-16 s | 1-2 s |
+| transcription | « transcription… » | 1-3 s | 1-3 s |
+| réponse | « l'assistant écrit… » | 2-10 s | 2-10 s |
+
+Une seule requête en vol, pas de réessai automatique en boucle.
+`413 audio_too_large` = l'application n'a pas compressé ;
+`503 assistant_unavailable` = la voix n'est pas servie — **gardez le clavier
+disponible**, tout marche sans elle.
+
 ### Les suggestions de l'accueil
 
 `POST /ai/suggestions` une fois par ouverture d'écran d'accueil (mettez en
@@ -699,7 +814,7 @@ jamais. Sans modèle, elles restent servies (règles déterministes).
 |---|---|
 | `200` avec `plan` | la carte de proposition, bouton « Ajouter au panier » |
 | `200` sans `plan` | la bulle seule — ce n'était pas une commande |
-| `200`, `reply` de repli | l'afficher, proposer la recherche, ne pas réessayer en boucle |
+| `200`, `reply` de repli | l'afficher, proposer la recherche, ne pas réessayer en boucle — **le `plan`, lui, peut être là quand même** : reconnaître des plats ne demande aucun modèle |
 | `401` | jeton expiré — rotation (§1 bis) |
 | `422` | message vide ou > 2 000 caractères |
 | réseau / `5xx` | « Réessayer », une fois |
