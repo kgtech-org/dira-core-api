@@ -80,6 +80,21 @@ const MaxNumbered = 4
 // été un réglage que personne n'aurait su à quoi rattacher.
 func Numbered(kind string) bool { return kind == KindClient || kind == KindMerchant }
 
+// Moving dit si un genre BOUGE — et a donc besoin d'une seconde image pour
+// les cartes de navigation.
+//
+// ⚠️ LA DISTINCTION N'EST PAS « véhicule / pas véhicule », c'est « couché
+// sur la route / debout sur la carte ». Un livreur est dessiné À PLAT sur la
+// chaussée : sur une carte penchée vers l'horizon, une vue de dessus paraît
+// écrasée, et il lui faut la vue 3D prise à ~45°. Un client, un marchand, une
+// étape sont des pastilles qui se DRESSENT : elles gardent la même image
+// quelle que soit l'inclinaison de la caméra, comme une épingle plantée.
+//
+// C'est pourquoi `client` et `merchant` n'en portent pas : leur donner une
+// seconde image aurait demandé à l'exploitation de dessiner deux fois la
+// même chose.
+func Moving(kind string) bool { return kind == KindCourier }
+
 // Pin est UN pin numéroté : le rang auquel on passe, et l'image qui le
 // dessine.
 type Pin struct {
@@ -92,9 +107,14 @@ type Pin struct {
 // Marker : ce qu'un genre porte. Toujours rendu, même jamais réglé — une
 // application n'a pas à deviner si un genre existe.
 type Marker struct {
-	Kind       string `bson:"_id" json:"kind"`
-	IconURL    string `bson:"icon_url,omitempty" json:"icon_url,omitempty"`
+	Kind    string `bson:"_id" json:"kind"`
+	IconURL string `bson:"icon_url,omitempty" json:"icon_url,omitempty"`
+	// MapIconURL : la carte À PLAT, vue de dessus (caméra à 90°).
 	MapIconURL string `bson:"map_icon_url,omitempty" json:"map_icon_url,omitempty"`
+	// NavIconURL : la carte de NAVIGATION, vue 3D (caméra à ~45°). Servi
+	// pour les seuls genres qui BOUGENT — voir `Moving`. À défaut,
+	// retombez sur `MapIconURL`.
+	NavIconURL string `bson:"nav_icon_url,omitempty" json:"nav_icon_url,omitempty"`
 	// Numbered : les pins numérotés, TOUJOURS servis au complet (1..4) pour
 	// les genres qui en portent, même vides.
 	//
@@ -113,6 +133,9 @@ type Marker struct {
 type UpdateRequest struct {
 	IconURL    string `json:"icon_url" validate:"omitempty,url,max=2048"`
 	MapIconURL string `json:"map_icon_url" validate:"omitempty,url,max=2048"`
+	// NavIconURL : refusé pour un genre qui ne bouge pas — une pastille
+	// dressée n'a pas de seconde vue.
+	NavIconURL string `json:"nav_icon_url" validate:"omitempty,url,max=2048"`
 	// Numbered : les rangs qu'on règle. Ceux qu'on omet sont EFFACÉS — la
 	// requête décrit l'état voulu, comme les deux images au-dessus. Un
 	// enregistrement partiel aurait laissé traîner un pin qu'on croyait
@@ -171,6 +194,9 @@ func (s *Service) List(ctx context.Context) ([]Marker, error) {
 // fill complète les pins numérotés d'un genre : toujours 1..MaxNumbered,
 // dans l'ordre, même vides.
 func fill(m Marker) Marker {
+	if !Moving(m.Kind) {
+		m.NavIconURL = ""
+	}
 	if !Numbered(m.Kind) {
 		m.Numbered = nil
 		return m
@@ -204,7 +230,13 @@ func (s *Service) Update(ctx context.Context, kind string, req UpdateRequest) (*
 		return nil, err
 	}
 	now := time.Now().UTC()
-	m := Marker{Kind: kind, IconURL: req.IconURL, MapIconURL: req.MapIconURL, Numbered: pins, UpdatedAt: &now}
+	if req.NavIconURL != "" && !Moving(kind) {
+		return nil, apperr.Validation("this marker kind does not move: it carries no navigation image")
+	}
+	m := Marker{
+		Kind: kind, IconURL: req.IconURL, MapIconURL: req.MapIconURL,
+		NavIconURL: req.NavIconURL, Numbered: pins, UpdatedAt: &now,
+	}
 	if _, err := s.col.ReplaceOne(ctx, bson.M{"_id": kind}, m, options.Replace().SetUpsert(true)); err != nil {
 		return nil, apperr.Internal(err)
 	}

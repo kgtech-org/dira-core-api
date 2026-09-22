@@ -114,3 +114,25 @@ func TestRemovingEveryPinStoresNothing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, out)
 }
+
+// ⚠️ LA DISTINCTION N'EST PAS « véhicule / pas véhicule », c'est « couché sur
+// la route / debout sur la carte ». Un livreur est dessiné à plat sur la
+// chaussée : sur une carte penchée, il lui faut une vue 3D. Un client, un
+// marchand, une étape sont des pastilles qui se DRESSENT — même image quelle
+// que soit l'inclinaison.
+func TestOnlyWhatLiesOnTheRoadNeedsANavigationImage(t *testing.T) {
+	assert.True(t, Moving(KindCourier))
+	assert.False(t, Moving(KindClient))
+	assert.False(t, Moving(KindMerchant))
+}
+
+// Un genre qui ne bouge pas ne SERT pas d'image de navigation, même si une
+// vieille donnée en portait une : l'application n'a pas à décider si elle
+// doit y croire.
+func TestAStandingMarkerNeverServesANavigationImage(t *testing.T) {
+	m := fill(Marker{Kind: KindMerchant, NavIconURL: "https://x/nav.png"})
+	assert.Empty(t, m.NavIconURL)
+
+	kept := fill(Marker{Kind: KindCourier, NavIconURL: "https://x/nav.png"})
+	assert.Equal(t, "https://x/nav.png", kept.NavIconURL)
+}

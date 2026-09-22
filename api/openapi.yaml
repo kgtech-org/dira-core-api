@@ -321,6 +321,7 @@ paths:
               properties:
                 icon_url: {type: string, format: uri}
                 map_icon_url: {type: string, format: uri}
+                nav_icon_url: {type: string, format: uri, description: "refusé pour un genre qui ne bouge pas"}
                 numbered:
                   type: array
                   maxItems: 4
@@ -1306,7 +1307,25 @@ components:
       properties:
         kind: {type: string, enum: [courier, client, merchant]}
         icon_url: {type: string, format: uri, description: "à côté d'un nom, dans une liste"}
-        map_icon_url: {type: string, format: uri, description: "le pin PRINCIPAL, dans la pastille du marqueur"}
+        map_icon_url: {type: string, format: uri, description: "le pin PRINCIPAL sur une carte À PLAT — vue de dessus, caméra à 90°"}
+        nav_icon_url:
+          type: string
+          format: uri
+          description: >-
+            Le même marqueur sur une carte de NAVIGATION, inclinée : vue 3D,
+            caméra à ~45°. Servi pour les seuls genres qui BOUGENT —
+            aujourd'hui `courier`.
+
+
+            ⚠️ La distinction n'est pas « véhicule / pas véhicule », c'est
+            « couché sur la route / debout sur la carte ». Un livreur est
+            dessiné à plat sur la chaussée, et une vue de dessus y paraît
+            écrasée dès que la caméra penche. Un client, un marchand, une
+            étape sont des pastilles qui se DRESSENT : même image quelle que
+            soit l'inclinaison.
+
+
+            Absent : retombez sur `map_icon_url`.
         numbered:
           type: array
           description: >-
