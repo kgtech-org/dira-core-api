@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.20.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.21.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,29 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.21.0 — 22 septembre 2026
+
+**Ajout rétrocompatible + correction de spec** — **le livreur aussi a sa vue
+de navigation.**
+
+La 4.20.0 donnait deux images de marqueur à « un véhicule », mais ne disait
+pas D'OÙ elles viennent — et elles ne viennent pas du même endroit : pour un
+chauffeur VTC, du **mode de véhicule** (`GET /classes`) ; pour un livreur, du
+genre **`courier`** de `GET /map-markers`, qui n'avait alors pas de
+`nav_icon_url`. Les specs de la livraison promettaient donc un champ que
+l'API ne servait pas. Corrigé des deux côtés : le champ existe, et chaque
+spec nomme sa source.
+
+`courier.nav_icon_url` : le livreur en vue 3D à ~45°. `client` et `merchant`
+n'en ont pas, et c'est voulu — ⚠️ **la distinction n'est pas « véhicule / pas
+véhicule », c'est « couché sur la route / debout sur la carte »**. Un livreur
+est dessiné à plat sur la chaussée et paraît écrasé dès que la caméra penche ;
+un client, un marchand, une étape sont des pastilles qui se **dressent** et
+gardent la même image quelle que soit l'inclinaison.
+
+Absent : retombez sur `map_icon_url`. Envoyer une image de navigation sur un
+genre qui ne bouge pas est **refusé** (422).
 
 ### 4.20.0 — 22 septembre 2026
 

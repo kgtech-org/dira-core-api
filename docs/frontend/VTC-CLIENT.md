@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.20.0** · 22 septembre 2026
+> **Version 4.21.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -195,7 +195,7 @@ reste l'identifiant technique (devis, course) — jamais un libellé.
 
 > ### 🧭 ⚠️ LES DEUX PINS D'UN VÉHICULE, ET LEUR ORIENTATION (v4.20.0)
 >
-> **Un véhicule a DEUX images de marqueur, pas une** :
+> **Un véhicule a DEUX images de marqueur, pas une.** Elles viennent de le mode du chauffeur — `GET /classes` :
 >
 > | | Quand | Comment elle est dessinée |
 > |---|---|---|
@@ -735,7 +735,8 @@ GET /api/v1/map-markers          (public, SOCLE — sans `{PREFIX}`)
 
 ```json
 { "items": [
-  { "kind": "courier", "icon_url": "…/courier.png", "map_icon_url": "…/courier-map.png" },
+  { "kind": "courier", "icon_url": "…/courier.png", "map_icon_url": "…/courier-map.png",
+    "nav_icon_url": "…/courier-nav.png" },
   { "kind": "client", "map_icon_url": "…/client-map.png", "max_numbered": 4,
     "numbered": [ { "index": 1, "map_icon_url": "…/stop-1.png" },
                   { "index": 2, "map_icon_url": "…/stop-2.png" },
@@ -766,6 +767,20 @@ ordre** on y passe — et c'est justement ce qu'on cherche sur une carte.
 complet même vides. `courier` n'en a pas — il n'y a qu'un livreur par course,
 et le champ est **absent** chez lui (absent = « sans objet » ; une liste vide
 se lirait « rien de réglé »).
+
+#### 🚗 Et `courier` porte, LUI, une image de navigation
+
+`courier.nav_icon_url` : le même livreur en **vue 3D à ~45°**, pour une carte
+de navigation inclinée. `client` et `merchant` n'en ont pas, et c'est voulu.
+
+⚠️ **La distinction n'est pas « véhicule / pas véhicule », c'est « couché sur
+la route / debout sur la carte ».** Un livreur est dessiné **à plat sur la
+chaussée** : dès que la caméra penche, une vue de dessus paraît écrasée. Un
+client, un marchand, une étape sont des pastilles qui **se dressent** — comme
+une épingle plantée, elles gardent la même image quelle que soit
+l'inclinaison.
+
+Absent : **retombez sur `map_icon_url`**.
 
 > ⚠️ **LE RANG EST CELUI DU PASSAGE**, pas un identifiant. La première
 > collecte porte le pin **1**, la deuxième le **2**. Numérotez dans l'ordre où
