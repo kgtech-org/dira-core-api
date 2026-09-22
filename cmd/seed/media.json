@@ -1,0 +1,17 @@
+{
+  "_note": "Médias du jeu de démonstration de STAGING, relevés en base le 22 septembre 2026 : le seed les reprend tels quels quand l'objet existe dans le stockage configuré (même bucket), sinon il génère ses images de repli. Clés : pays|nom ; plats : pays|enseigne|plat ; véhicules : plaque ; avatars : téléphone.",
+  "map_markers": {
+    "courier": {
+      "icon_url": "https://files.dira.llc/dira-media-staging/marker/be40ffa7-70a7-450e-8278-df802c2cdbca.png",
+      "map_icon_url": "https://files.dira.llc/dira-media-staging/marker/b7633ea4-6386-44b1-90af-24b92ec773e4.png"
+    },
+    "client": {
+      "icon_url": "https://files.dira.llc/dira-media-staging/marker/56870e37-e74a-40c6-a317-5532c585ee29.png",
+      "map_icon_url": "https://files.dira.llc/dira-media-staging/marker/c370d75a-8745-4e66-a21a-702c467f5c66.png"
+    },
+    "merchant": {
+      "icon_url": "https://files.dira.llc/dira-media-staging/marker/798af192-85f1-4291-9a84-22560d54d9c8.png",
+      "map_icon_url": "https://files.dira.llc/dira-media-staging/marker/ed5b5ec5-49fb-477f-859f-ced0875896c8.png"
+    }
+  }
+}

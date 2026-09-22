@@ -735,7 +735,11 @@ func (s *Service) UserNames(ctx context.Context, ids []string) (map[string]strin
 // différence d'`EnsureMerchantAccount`, qui refuse un compte non marchand.
 // C'est voulu : le provisionnement rejoue le même jeu de données, et échouer
 // parce qu'un compte existe déjà en ferait un outil à usage unique.
-func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, email, password string) (string, error) {
+//
+// `avatarURL` est facultatif et COMBLÉ, jamais remplacé — comme l'e-mail :
+// un jeu de démonstration rejoué reprend les portraits qu'il avait, sans
+// écraser celui qu'une personne aurait choisi depuis.
+func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, email, password, avatarURL string) (string, error) {
 	phone, err := canonPhone(phone)
 	if err != nil {
 		return "", err
@@ -760,14 +764,22 @@ func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, email, p
 		// seed incapable de réparer ce qu'il a créé est un seed qu'on ne peut
 		// pas relancer. Écraser une adresse existante, en revanche, couperait
 		// l'accès de quelqu'un qui s'en sert.
+		changed := false
 		if email != "" && existing.Email == "" {
 			existing.Email = strings.ToLower(email)
+			changed = true
+			slog.InfoContext(ctx, "user: email backfilled on an existing account",
+				"user_id", existing.ID.Hex(), "email", existing.Email)
+		}
+		if avatarURL != "" && existing.AvatarURL == "" {
+			existing.AvatarURL = avatarURL
+			changed = true
+		}
+		if changed {
 			existing.UpdatedAt = time.Now().UTC()
 			if err := s.repo.UpdateUser(ctx, existing); err != nil {
 				return "", apperr.Internal(err)
 			}
-			slog.InfoContext(ctx, "user: email backfilled on an existing account",
-				"user_id", existing.ID.Hex(), "email", existing.Email)
 		}
 		return existing.ID.Hex(), nil
 	}
@@ -782,6 +794,16 @@ func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, email, p
 	}, role)
 	if err != nil {
 		return "", err
+	}
+	if avatarURL != "" {
+		oid, _ := primitive.ObjectIDFromHex(resp.User.ID)
+		if u, err := s.repo.FindByID(ctx, oid); err == nil && u != nil {
+			u.AvatarURL = avatarURL
+			u.UpdatedAt = time.Now().UTC()
+			if err := s.repo.UpdateUser(ctx, u); err != nil {
+				return "", apperr.Internal(err)
+			}
+		}
 	}
 	return resp.User.ID, nil
 }

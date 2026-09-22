@@ -172,6 +172,20 @@ func (s *Store) Key(publicURL string) (string, bool) {
 	return key, true
 }
 
+// Exists dit si l'URL désigne un objet DE CE BUCKET qui existe encore. Un
+// provisionnement s'en sert pour reprendre les médias d'un jeu de données
+// existant — une photo de plat, un avatar — sans jamais promettre une image
+// qui ne serait pas là : une URL d'un autre environnement, ou d'un objet
+// effacé, vaut « non ».
+func (s *Store) Exists(ctx context.Context, publicURL string) bool {
+	key, ok := s.Key(publicURL)
+	if !ok {
+		return false
+	}
+	_, err := s.client.StatObject(ctx, s.bucket, key, minio.StatObjectOptions{})
+	return err == nil
+}
+
 // Get opens an object previously stored by Put, addressed by its public URL.
 func (s *Store) Get(ctx context.Context, publicURL string) (io.ReadCloser, error) {
 	key, ok := s.Key(publicURL)
