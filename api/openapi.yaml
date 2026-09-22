@@ -256,19 +256,36 @@ paths:
   /map-markers:
     get:
       tags: [map-markers]
-      summary: The platform's map markers — courier, client, merchant, stop — with their images
-      description: >-
+      summary: The platform's map markers — courier, client, merchant — with their images
+      description: |
         PUBLIC, sans jeton : une application dessine des cartes avant même la
-        connexion. Toujours les QUATRE genres, dans cet ordre — `courier` (le
+        connexion. Toujours les TROIS genres, dans cet ordre — `courier` (le
         livreur ; le chauffeur VTC est dessiné par son mode de véhicule),
-        `client`, `merchant` (le point de vente, la collecte), `stop` (le
-        départ ou une étape d'une course, quand ce n'est ni le client ni un
-        marchand). Chacun porte deux images FACULTATIVES, comme un mode de
-        véhicule : `icon_url` (à côté d'un nom, dans une liste) et
-        `map_icon_url` (dans la pastille du marqueur). Absentes, gardez votre
-        pictogramme — le réglage ajoute, il ne retire rien. Mettez les images
-        en cache par URL : elles changent d'URL quand elles changent. Pour
-        toute la plateforme, pas par pays.
+        `client`, `merchant` (le point de vente, la collecte).
+
+        Chacun porte deux images FACULTATIVES, comme un mode de véhicule :
+        `icon_url` (à côté d'un nom, dans une liste) et `map_icon_url` (dans
+        la pastille du marqueur). Absentes, gardez votre pictogramme — le
+        réglage ajoute, il ne retire rien.
+
+        ⚠️ **LES PINS NUMÉROTÉS (v4.18.0).** `client` et `merchant` portent en
+        plus jusqu'à **quatre** pins numérotés (`numbered`, rangs 1 à 4,
+        toujours servis au complet même vides). Une carte porte souvent
+        plusieurs points du même genre — une commande collectée chez trois
+        marchands, une course qui s'arrête deux fois — et un seul pictogramme
+        pour tous ces points ne dit pas dans quel ORDRE on y passe, qui est
+        justement ce qu'on cherche.
+
+        Le rang est celui du PASSAGE : la 1re collecte porte le pin 1.
+        Au-delà de `max_numbered`, ou quand le rang n'est pas réglé,
+        **retombez sur le pin principal** — c'est prévu, pas une panne.
+
+        ⚠️ **`stop` A FUSIONNÉ DANS `client`.** Un arrêt de course et l'adresse
+        d'un client sont le même objet vu à deux moments. Les étapes d'une
+        course se dessinent avec les pins numérotés du client.
+
+        Mettez les images en cache par URL : elles changent d'URL quand elles
+        changent. Pour toute la plateforme, pas par pays.
       responses:
         "200":
           description: Markers
@@ -284,11 +301,17 @@ paths:
     put:
       tags: [admin, map-markers]
       summary: Set (or clear) the images of a map marker
-      description: >-
-        Exploitation du socle. Les deux champs sont envoyés ensemble ; vide
-        = retirer l'image. Les images s'envoient par `POST /uploads?kind=marker`.
+      description: |
+        Exploitation du socle. La requête décrit l'ÉTAT VOULU : les champs
+        omis sont effacés, y compris les pins numérotés — un enregistrement
+        partiel aurait laissé traîner un pin qu'on croyait retiré. Les images
+        s'envoient par `POST /uploads?kind=marker`.
+
+        Un rang hors bornes ou en double est REFUSÉ (422), jamais ignoré : un
+        pin silencieusement écarté se remarque des semaines plus tard. Un pin
+        sans image est en revanche écarté — c'est ainsi qu'on en retire un.
       parameters:
-        - {name: kind, in: path, required: true, schema: {type: string, enum: [courier, client, merchant, stop]}}
+        - {name: kind, in: path, required: true, schema: {type: string, enum: [courier, client, merchant]}}
       requestBody:
         required: true
         content:
@@ -298,9 +321,19 @@ paths:
               properties:
                 icon_url: {type: string, format: uri}
                 map_icon_url: {type: string, format: uri}
+                numbered:
+                  type: array
+                  maxItems: 4
+                  description: "refusé pour `courier` : il n'y a qu'un livreur par course"
+                  items:
+                    type: object
+                    properties:
+                      index: {type: integer, minimum: 1, maximum: 4}
+                      map_icon_url: {type: string, format: uri}
       responses:
         "200": {description: Marker, content: {application/json: {schema: {$ref: "#/components/schemas/MapMarker"}}}}
         "404": {description: marker_not_found — unknown kind}
+        "422": {description: rang de pin hors bornes, en double, ou genre qui n'en porte pas}
   /me/preferences:
     patch:
       tags: [users]
@@ -1269,11 +1302,30 @@ components:
   schemas:
     MapMarker:
       type: object
-      description: Un marqueur de carte hors véhicule et ses deux images facultatives.
+      description: Un marqueur de carte hors véhicule, ses images et ses pins numérotés.
       properties:
-        kind: {type: string, enum: [courier, client, merchant, stop]}
+        kind: {type: string, enum: [courier, client, merchant]}
         icon_url: {type: string, format: uri, description: "à côté d'un nom, dans une liste"}
-        map_icon_url: {type: string, format: uri, description: "dans la pastille du marqueur"}
+        map_icon_url: {type: string, format: uri, description: "le pin PRINCIPAL, dans la pastille du marqueur"}
+        numbered:
+          type: array
+          description: >-
+            Les pins NUMÉROTÉS, rangs 1 à 4, toujours servis au complet même
+            vides — une liste trouée obligerait à deviner si un rang manque
+            parce qu'il n'est pas réglé ou parce qu'il n'existe pas. ABSENT
+            pour `courier`, qui n'en porte pas : un champ absent se lit
+            « sans objet », une liste vide se lirait « rien de réglé ».
+
+
+            Le numéro est une affaire de CARTE : dans une liste, le nom
+            distingue déjà les points. C'est pourquoi un pin numéroté ne porte
+            que `map_icon_url`.
+          items:
+            type: object
+            properties:
+              index: {type: integer, minimum: 1, maximum: 4, description: "le rang du PASSAGE — la 1re collecte porte le pin 1"}
+              map_icon_url: {type: string, format: uri}
+        max_numbered: {type: integer, description: "combien de rangs existent, pour ne pas coder le nombre en dur"}
         updated_at: {type: string, format: date-time}
     EquipmentPlan:
       type: object

@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.17.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.18.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -277,6 +277,32 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 
 ## Journal
 
+### 4.18.0 — 22 septembre 2026
+
+**⚠️ Changement de contrat** — **les pins de carte se numérotent, et `stop`
+disparaît.**
+
+`GET /map-markers` rend désormais **trois** genres et non quatre. `client` et
+`merchant` portent en plus jusqu'à **quatre pins numérotés** (`numbered`,
+rangs 1 à 4, toujours servis au complet même vides, avec `max_numbered`).
+Une carte porte souvent plusieurs points du même genre — une commande
+collectée chez trois marchands, une course qui s'arrête deux fois — et un
+seul pictogramme ne dit pas dans quel ORDRE on y passe.
+
+**Le rang est celui du PASSAGE** : la 1re collecte porte le pin 1. Au-delà
+de `max_numbered`, ou sur un rang non réglé, **retombez sur le pin
+principal** — c'est prévu, pas une panne.
+
+⚠️ **`stop` A FUSIONNÉ DANS `client`.** Un arrêt de course et l'adresse d'un
+client sont le même objet vu à deux moments ; les régler séparément obligeait
+l'exploitation à envoyer deux fois la même image pour que la carte reste
+cohérente. Les étapes d'une course se dessinent avec les pins numérotés du
+client. **Une application qui lit `kind: "stop"` ne le trouvera plus** : elle
+retombe alors sur son pictogramme, ce qui est le comportement prévu pour un
+genre absent — mais la corriger vaut mieux.
+
+Chaque spec dit lequel de ses points prend quel pin.
+
 ### 4.17.0 — 22 septembre 2026
 
 **Précision de spec** — **une promotion a une enveloppe, et elle peut
@@ -409,7 +435,8 @@ règlent depuis la console** : `GET /map-markers` (public, socle) rend
 toujours quatre genres — `courier`, `client`, `merchant`, `stop` — avec
 deux images facultatives chacun, `icon_url` et `map_icon_url`, comme un
 mode de véhicule. Absentes, l'application garde son pictogramme. Chaque
-spec dit quel genre dessine quoi sur ses cartes.
+spec dit quel genre dessine quoi sur ses cartes. *(`stop` a fusionné dans
+`client` en 4.18.0.)*
 
 ### 4.12.1 — 21 septembre 2026
 
