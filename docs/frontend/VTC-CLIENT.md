@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.15.2** · 22 septembre 2026
+> **Version 4.16.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -220,6 +220,7 @@ Réponse : **une entrée par classe**, toutes tarifées sur le même trajet.
   "stops": [...], "distance_m": 6141, "duration_s": 467,
   "surge_name": "Aéroport", "surge_multiplier": 1300,
   "fare_xof": 2250,
+  "promo_title": "Offre de lancement", "promo_discount_xof": 250,
   "expires_at": "2026-09-10T12:43:20Z"
 } ] }
 ```
@@ -236,6 +237,49 @@ Réponse : **une entrée par classe**, toutes tarifées sur le même trajet.
 **`409 route_unavailable`** : le réseau routier est injoignable. Aucun prix
 n'est deviné — une distance à vol d'oiseau ferait payer un trajet qui n'existe
 pas. C'est un refus temporaire, pas une erreur de saisie.
+
+---
+
+### 🎁 Les PROMOTIONS (v4.16.0)
+
+> ⚠️ **`fare_xof` EST DÉJÀ REMISÉ.** C'est ce que le passager paie, un point
+> c'est tout. Ne soustrayez **rien** : `promo_discount_xof` est là pour
+> **afficher** la remise, pas pour la calculer. Servir un prix plein à
+> soustraire ensuite aurait obligé chaque écran à refaire l'opération, et l'un
+> d'eux l'aurait oublié — sur le total, ou sur le reçu.
+
+`promo_title` et `promo_discount_xof` ne sont **servis que si une promotion
+s'applique**, exactement comme la majoration. Affichez alors le prix barré et
+le titre de l'offre :
+
+```
+  2 500 F  2 250 F   ·  Offre de lancement
+  ───────
+```
+
+Le prix plein se reconstitue par `fare_xof + promo_discount_xof` — si vous
+tenez à le barrer. Ne l'affichez **pas** quand `promo_discount_xof` est
+absent : un « −0 F » se lit comme une remise nulle, pas comme une absence de
+remise.
+
+**La promotion est FIGÉE avec le devis.** Une offre retirée entre le devis et
+la confirmation ne change pas le prix promis, et `promo_title` reste sur la
+course. C'est la même règle que pour la majoration : ce qui a été affiché est
+ce qui est payé.
+
+**Les offres en cours**, pour une bannière ou un écran « promotions » :
+
+```
+GET /promotions
+→ { "items": [ { "id": "6ab…", "scope": "class", "class_keys": ["eco"],
+                 "title": "−20 % sur Éco", "description": "…",
+                 "kind": "percent", "value": 20,
+                 "starts_at": "…", "ends_at": "…", "live": true } ] }
+```
+
+Une seule promotion s'applique à une course — **la plus avantageuse**. Il n'y
+a pas de cumul : deux offres lancées par deux personnes différentes
+offriraient la course sans que ni l'une ni l'autre ne l'ait voulu.
 
 ---
 
