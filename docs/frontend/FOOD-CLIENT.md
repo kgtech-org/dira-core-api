@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.14.0** · 22 septembre 2026
+> **Version 4.15.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -688,6 +688,33 @@ POST /ai/chat          { message }   → { reply, plan? }
 - Un `plan` avec des lignes **et** une `reply` qui dit autre chose : le
   plan gagne — c'est lui qui a été vérifié.
 
+### 🎙️ Le VOCAL — 60 s, transcrit, MONTRÉ, puis envoyé (v4.15.0)
+
+```
+POST /ai/voice        multipart : file=<audio>        → { "text": "…" }
+```
+
+⚠️ **La transcription n'est PAS exécutée.** Elle revient à vous ; vous
+l'**affichez dans le champ de saisie**, corrigible, et c'est le client qui
+l'envoie à `/ai/chat`. Commander depuis un vocal non relu ferait livrer
+« riz gras » à qui a dit « riz sauce ».
+
+**Enregistrez en opus ou AAC, MONO, 16-24 kbit/s** — 60 s pèsent alors
+~150 Ko. Le WAV est refusé : une minute fait 5 Mo, soit **des minutes**
+d'envoi sur un réseau lent, et c'est l'envoi, pas l'IA, qui fait attendre.
+Limite **2 Mio**, ~60 s.
+
+| Étape | à montrer | 3G lent | 4G |
+|---|---|---|---|
+| envoi de l'audio | la barre d'envoi | 10-16 s | 1-2 s |
+| transcription | « transcription… » | 1-3 s | 1-3 s |
+| réponse | « l'assistant écrit… » | 2-10 s | 2-10 s |
+
+Une seule requête en vol, pas de réessai automatique en boucle.
+`413 audio_too_large` = l'application n'a pas compressé ;
+`503 assistant_unavailable` = la voix n'est pas servie — **gardez le clavier
+disponible**, tout marche sans elle.
+
 ### Les suggestions de l'accueil
 
 `POST /ai/suggestions` une fois par ouverture d'écran d'accueil (mettez en
@@ -699,7 +726,7 @@ jamais. Sans modèle, elles restent servies (règles déterministes).
 |---|---|
 | `200` avec `plan` | la carte de proposition, bouton « Ajouter au panier » |
 | `200` sans `plan` | la bulle seule — ce n'était pas une commande |
-| `200`, `reply` de repli | l'afficher, proposer la recherche, ne pas réessayer en boucle |
+| `200`, `reply` de repli | l'afficher, proposer la recherche, ne pas réessayer en boucle — **le `plan`, lui, peut être là quand même** : reconnaître des plats ne demande aucun modèle |
 | `401` | jeton expiré — rotation (§1 bis) |
 | `422` | message vide ou > 2 000 caractères |
 | réseau / `5xx` | « Réessayer », une fois |
