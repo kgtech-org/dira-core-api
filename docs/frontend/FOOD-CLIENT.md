@@ -609,11 +609,11 @@ DELETE /nutrition/plan/{date}/{slot}
 
 ---
 
-## 11. Assistant
+## 11. Assistant — la chatbox IA du client (v4.14.0 : règles d'implémentation)
 
 ```
-POST /ai/suggestions            → combos, respectant le profil nutrition
-POST /ai/chat      { message }  → { reply, plan? }
+POST /ai/suggestions   { limit? }    → { suggestions }   combos, respectant le profil nutrition
+POST /ai/chat          { message }   → { reply, plan? }
 ```
 
 ```jsonc
@@ -626,6 +626,83 @@ POST /ai/chat      { message }  → { reply, plan? }
 > ⚠️ **`reply` est une phrase à lire ; seul `plan` alimente le panier.** Chaque ligne du plan a été retrouvée dans le catalogue par le serveur. Une application qui commanderait depuis `reply` contournerait cette garantie.
 
 `plan` est absent quand le message n'était pas une commande. `unresolved` nomme ce que le catalogue ignore — proposez une recherche.
+
+### Ce que l'assistant EST — et n'est pas
+
+- Un **modèle de langage** derrière le service d'analytique, qui **ne
+  connaît que le contexte que le serveur lui donne** : il n'invente ni
+  plat, ni prix, ni délai, et **n'agit jamais** — il ne commande pas, ne
+  paie pas, n'annule pas. Tout passe par les routes normales (`POST
+  /orders`, §4) après un geste du client.
+- **Mono-tour** : le serveur ne garde **aucun historique**. Chaque
+  `message` est lu seul. Le fil de conversation est **à vous** (mémoire de
+  l'écran, perdue à la fermeture — c'est voulu, rien n'est stocké côté
+  serveur).
+- **Deux sorties indépendantes** : `reply` (le texte du modèle) et `plan`
+  (les plats que le serveur a **reconnus** dans le message, contre le
+  catalogue du pays). Le plan ne dépend pas du texte : un modèle
+  indisponible rend quand même un plan si le message nommait des plats.
+
+### Écrire la requête
+
+1. **Un message, une requête**, `Authorization` + `X-Dira-Country` comme
+   partout ; `message` ≤ 2 000 caractères (`422` au-delà ou vide).
+2. **`Accept-Language`** décide de la langue de la réponse (`fr` par
+   défaut, `en`). Envoyez la langue de l'interface, pas celle du texte.
+3. **Une seule requête en vol** : désactivez l'envoi tant que la réponse
+   n'est pas là. Il n'y a pas d'idempotence — un double envoi coûte deux
+   appels au modèle et rend deux réponses.
+4. Pour une **commande**, le serveur reconnaît « *quantité + nom* »,
+   séparés par des virgules : « 2 riz gras, 1 bissap ». Si le client
+   écrit « et un bissap » après coup, **recomposez un message complet**
+   (« 2 riz gras, 1 bissap ») avant d'envoyer — le serveur n'a pas la
+   phrase d'avant.
+5. Ne mettez **ni numéro de téléphone, ni adresse, ni code** dans le
+   message : l'assistant n'en a pas besoin, et le texte part chez un
+   fournisseur de modèle.
+
+### Attendre la réponse
+
+- Comptez **2 à 10 s** (modèle), jusqu'à **45 s** au pire (délai serveur,
+  après quoi la livraison répond avec son texte de repli). Montrez
+  « l'assistant écrit… » dès l'envoi ; **pas de sablier bloquant** — le
+  client peut continuer à naviguer, la réponse arrive dans le fil.
+- **Ne réessayez pas automatiquement** en boucle : une erreur réseau ou un
+  `5xx` → un bouton « Réessayer », une fois.
+
+### Lire la réponse
+
+- `reply` : affichée telle quelle, dans une bulle. Elle peut dire « Je
+  n'ai pas pu répondre pour le moment. Réessayez dans un instant. » — c'est
+  le **repli** quand le modèle est indisponible (la route rend quand même
+  `200`) : affichez-la, proposez la recherche du catalogue, n'insistez pas.
+- `plan.items[]` : une **carte de proposition** sous la bulle, avec les
+  plats, quantités, prix et calories **tels que servis** (ils viennent du
+  catalogue, pas du modèle), et **un bouton « Ajouter au panier »** —
+  jamais d'ajout automatique, jamais de commande depuis l'assistant. Une
+  ligne dont `store_id` est vide n'est disponible dans aucun point de
+  vente ouvert : montrez-la grisée.
+- `plan.unresolved[]` : « Je ne trouve pas *caviar béluga* » avec un lien
+  vers la recherche (§3). Ce sont aussi les mots que l'exploitation lit
+  pour compléter son catalogue.
+- Un `plan` avec des lignes **et** une `reply` qui dit autre chose : le
+  plan gagne — c'est lui qui a été vérifié.
+
+### Les suggestions de l'accueil
+
+`POST /ai/suggestions` une fois par ouverture d'écran d'accueil (mettez en
+cache 10 min) ; `limit` 1-20, 5 par défaut. Elles respectent le profil
+nutrition du client (§9) — une suggestion refusée pour allergie ne sort
+jamais. Sans modèle, elles restent servies (règles déterministes).
+
+| Réponse | Conduite |
+|---|---|
+| `200` avec `plan` | la carte de proposition, bouton « Ajouter au panier » |
+| `200` sans `plan` | la bulle seule — ce n'était pas une commande |
+| `200`, `reply` de repli | l'afficher, proposer la recherche, ne pas réessayer en boucle |
+| `401` | jeton expiré — rotation (§1 bis) |
+| `422` | message vide ou > 2 000 caractères |
+| réseau / `5xx` | « Réessayer », une fois |
 
 ---
 

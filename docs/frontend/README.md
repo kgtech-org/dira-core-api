@@ -293,6 +293,17 @@ si le solde ne suit pas, réglés au chauffeur en espèces. Le passage
 pour une application qui ne signale pas l'arrivée, sinon qu'elle ne
 facture pas l'attente.
 
+**Et le TEMPS RÉEL**, par mode (`bill_actual_time`, `time_tolerance_min`,
+`per_min_xof` — `GET /classes`, figés sur la course) : les minutes roulées
+au-delà de la durée prévue du devis, tolérance déduite, s'ajoutent au prix
+à l'arrivée (`actual_duration_s`, `extra_minutes`, `time_fee_xof`,
+ajustement `reason: duration`). Cinq kilomètres en une heure ne coûtent
+plus cinq kilomètres en dix minutes.
+
+**L'assistant du client de la livraison** (`FOOD-CLIENT.md` §11) : la
+section dit maintenant comment l'appeler — mono-tour, langue de la
+requête, plan vérifié seul admis au panier, latence et repli.
+
 ### 4.13.0 — 21 septembre 2026
 
 **Ajout rétrocompatible** — **les marqueurs de carte hors véhicules se

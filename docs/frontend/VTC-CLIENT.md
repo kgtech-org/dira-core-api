@@ -166,8 +166,20 @@ GET /classes
 { "items": [ { "key": "eco", "name": "Éco", "note": "Citadine · 1-4 passagers", "seats": 4,
               "icon_url": "https://files.dira.llc/class/…/eco.png",
               "map_icon_url": "https://files.dira.llc/class/…/eco-map.png",
-              "map_icon": "voiture" } ] }
+              "map_icon": "voiture",
+              "waiting_free_min": 5, "waiting_per_min_xof": 100,
+              "bill_actual_time": true, "time_tolerance_min": 10, "per_min_xof": 50 } ] }
 ```
+
+**Ce qui peut s'ajouter au prix en route (v4.14.0)** — quatre nombres et un
+drapeau, par mode, à montrer **avant** que le passager ne choisisse :
+`waiting_free_min` minutes d'attente offertes au départ puis
+`waiting_per_min_xof` la minute ; et, si `bill_actual_time` est vrai, les
+minutes roulées au-delà de la durée prévue du devis, tolérance
+`time_tolerance_min` déduite, à `per_min_xof` chacune. Une ligne suffit :
+« 5 min d'attente offertes puis 100 F/min · au-delà de 10 min de retard sur
+la durée prévue, 50 F/min ». Ces termes sont **recopiés sur la course au
+devis** : ce que le passager a lu en commandant est ce qui s'applique.
 
 **Les modes se règlent depuis la console (v4.5.0)** : leur nom et leurs
 icônes — des **images envoyées par l'exploitation** — peuvent changer, et
@@ -428,6 +440,25 @@ attente facturée = aucun de ces champs.
 
 Une course `arrived` s'annule encore (`POST /rides/{id}/cancel`) ; le
 chauffeur est là, dites-le avant de confirmer.
+
+### ⚠️ Le temps réel — 5 km en une heure ne coûtent pas 5 km en dix minutes (v4.14.0)
+
+Le devis tarife la **durée prévue** (`duration_s`, celle du réseau routier).
+Quand le mode le règle (`bill_actual_time` sur la course), la durée
+**réellement roulée** — de la montée à bord (`in_transit_at`) à l'arrivée —
+compte aussi : chaque minute **entamée** au-delà de la durée prévue plus
+`time_tolerance_min` coûte `per_min_xof`. À `completed`, la course porte
+`actual_duration_s`, `extra_minutes` et `time_fee_xof`, **déjà compris dans
+`fare_xof`**, avec une ligne `fare_adjustments` (`reason: "duration"`) et le
+même push `ride_fare_adjusted` (`event: duration`) ; les mouvements
+d'argent sont ceux de l'attente (`charged` · `owed` · `cash` · `deferred`).
+
+**Pendant la course, affichez la durée prévue et le temps écoulé** depuis
+`in_transit_at`, et dès que la tolérance est dépassée, le supplément qui
+monte — le passager ne doit pas découvrir le prix à l'arrivée. Sur le reçu,
+une ligne « Temps supplémentaire : 12 min · 600 F » sous le prix du devis.
+`bill_actual_time` faux = rien de tout cela, la course coûte son devis
+(plus l'attente au départ, s'il y en a eu).
 
 ### Quand personne ne répond — `dispatch_state` et la relance (v4.1.0)
 

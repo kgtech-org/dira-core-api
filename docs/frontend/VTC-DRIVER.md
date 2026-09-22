@@ -472,6 +472,23 @@ facturée** : la plateforme ne devine pas quand vous êtes arrivé. Une course
 `arrived` peut encore être annulée, par vous (`POST /rides/{id}/decline`)
 ou par le passager.
 
+### Le temps réel — les minutes roulées au-delà du prévu (v4.14.0)
+
+Quand le mode le règle (`bill_actual_time` sur la course), la durée
+réellement roulée — de `in_transit` à `completed`, la plateforme la mesure —
+compte : chaque minute entamée au-delà de la durée prévue du devis
+(`duration_s`) plus `time_tolerance_min` coûte `per_min_xof`. À l'arrivée,
+la course porte `actual_duration_s`, `extra_minutes`, `time_fee_xof`,
+déjà compris dans `fare_xof` et `driver_xof` (commission habituelle), et
+une ligne `fare_adjustments` (`reason: "duration"`). **Affichez le temps
+écoulé et, passé la tolérance, le supplément qui monte** : le passager
+voit la même chose. En espèces, c'est ce nouveau prix que vous encaissez.
+
+Les termes (`waiting_free_min`, `waiting_per_min_xof`, `bill_actual_time`,
+`time_tolerance_min`, `per_min_xof`) sont sur la course dès l'acceptation,
+figés au devis du passager — ni la grille du jour ni un autre mode ne
+s'appliquent en route.
+
 > **v4.0.0 — le vocabulaire commun.** `approach` est devenu **`picking_up`**
 > (« je roule vers le passager »), `onboard` est devenu **`in_transit`**
 > (« il est à bord ») : ce sont les mots d'une course de livraison aussi, et
