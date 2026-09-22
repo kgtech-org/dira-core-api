@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.19.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.20.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,30 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.20.0 — 22 septembre 2026
+
+**Ajout rétrocompatible** — **un véhicule a DEUX images de marqueur, pas
+une.**
+
+| | Quand | Comment elle est dessinée |
+|---|---|---|
+| `map_icon_url` | la carte à plat | **vue de dessus**, caméra à la verticale (**90°**) |
+| `nav_icon_url` | la carte de **navigation**, inclinée | **vue 3D**, caméra penchée à **~45°** |
+
+⚠️ **Une seule image pour les deux se voit.** Une carte à plat regarde le sol
+à la verticale ; une carte de navigation penche la caméra vers l'horizon, et
+un dessin vu de dessus y paraît **écrasé, couché sur la chaussée**.
+
+⚠️ **Dans les deux, le nez pointe vers le haut de l'image.** 90° et 45°
+décrivent la **caméra**, jamais l'orientation du véhicule dans l'image :
+celle-ci ne change pas d'une vue à l'autre, et c'est ce qui permet
+d'appliquer `heading` **tel quel** sans savoir laquelle on tourne.
+
+`nav_icon_url` absent : **retombez sur `map_icon_url`** — une vue de dessus
+sur une carte penchée reste lisible, l'absence de tout marqueur non.
+
+Côté console, `PUT /admin/classes/{key}` accepte `nav_icon_url`.
 
 ### 4.19.0 — 22 septembre 2026
 

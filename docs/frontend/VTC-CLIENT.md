@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.19.0** · 22 septembre 2026
+> **Version 4.20.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -185,19 +185,41 @@ devis** : ce que le passager a lu en commandant est ce qui s'applique.
 icônes — des **images envoyées par l'exploitation** — peuvent changer, et
 un mode peut s'ajouter. **N'écrivez ni le nom ni l'icône en dur** :
 affichez `icon_url` devant `name`, tels que servis. `map_icon_url` est
-l'image du marqueur pour une application qui dessine des cartes ; à
+l'image du marqueur sur une carte à plat et `nav_icon_url` la même sur une
+carte de navigation (voir ci-dessous) ; à
 défaut (`null`), `map_icon` nomme une silhouette de repli (`voiture` ·
 `berline` · `suv` · `van` · `moto` · `tricycle` · `velo` · `pieton`) —
 sans image ni silhouette connue, dessinez `voiture`. Mettez les images en
 cache par URL : elles changent d'URL quand elles changent. La `key`
 reste l'identifiant technique (devis, course) — jamais un libellé.
 
-> ### 🧭 ⚠️ L'ORIENTATION D'UN PIN DE VÉHICULE (v4.19.0)
+> ### 🧭 ⚠️ LES DEUX PINS D'UN VÉHICULE, ET LEUR ORIENTATION (v4.20.0)
 >
-> **Un pin de véhicule est dessiné NEZ VERS LE HAUT, soit 90°** — le capot
-> (ou la roue avant) pointe vers le bord supérieur de l'image, quel que soit
-> le véhicule. C'est la convention des images envoyées depuis la console, et
-> c'est sur elle que reposent les rotations.
+> **Un véhicule a DEUX images de marqueur, pas une** :
+>
+> | | Quand | Comment elle est dessinée |
+> |---|---|---|
+> | `map_icon_url` | la carte à plat — suivi, liste, vue d'ensemble | **vue de dessus**, caméra à la verticale (**90°**) |
+> | `nav_icon_url` | la carte de **navigation**, inclinée vers l'horizon | **vue 3D**, caméra penchée à **~45°** |
+>
+> ⚠️ **UNE SEULE IMAGE POUR LES DEUX SE VOIT.** Une carte à plat regarde le
+> sol à la verticale ; une carte de navigation penche la caméra. Un dessin vu
+> de dessus y paraît **écrasé, couché sur la chaussée** — et une vue 3D sur
+> une carte à plat paraît, elle, tombée sur le côté.
+>
+> **`nav_icon_url` absent : retombez sur `map_icon_url`.** Une vue de dessus
+> sur une carte penchée reste lisible ; l'absence de tout marqueur, non.
+>
+> ⚠️ **DANS LES DEUX, LE NEZ POINTE VERS LE HAUT DE L'IMAGE** — le capot (ou
+> la roue avant) vers le bord supérieur, quel que soit le véhicule et quelle
+> que soit la vue. C'est la convention des images envoyées depuis la console,
+> et c'est sur elle que reposent les rotations.
+>
+> Ne confondez pas les deux angles : **90° et 45° décrivent la CAMÉRA**
+> (à la verticale, ou penchée), jamais l'orientation du véhicule dans
+> l'image. Celle-ci ne change pas d'une vue à l'autre — c'est précisément ce
+> qui permet à votre code de tourner l'une ou l'autre sans rien savoir de
+> laquelle il s'agit.
 >
 > **Appliquez donc `heading` TEL QUEL** comme rotation du marqueur : un cap
 > de 0° (plein nord) laisse l'image droite, 90° la tourne d'un quart de tour
