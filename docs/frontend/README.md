@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.16.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.17.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,28 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.17.0 — 22 septembre 2026
+
+**Précision de spec** — **une promotion a une enveloppe, et elle peut
+s'arrêter.** Chaque opération porte désormais un budget, un nombre total
+d'utilisations et un nombre d'utilisations **par personne** ; ce qu'elle
+coûte est mesuré au fil de l'eau, des deux côtés.
+
+`VTC-CLIENT.md` §3 : **`GET /promotions` annonce, le devis décide.** Une
+offre listée peut ne pas s'appliquer à VOTRE course — enveloppe consommée,
+droit déjà utilisé, ou remise qui ne tient plus dans ce qui reste. N'affichez
+jamais un prix calculé depuis cette liste : le seul prix vrai est `fare_xof`
+du devis.
+
+`FOOD-CLIENT.md` §3 : le menu et la commande appliquent **les mêmes** règles,
+donc le menu ne promet jamais une remise que la commande refuserait. Rien à
+calculer côté application — mais **un prix mis en cache vieillit** : relisez
+le menu à l'ouverture de l'écran de commande.
+
+Aucune route ne change pour les applications. Côté console, les promotions
+gagnent `budget_xof`, `max_uses`, `max_uses_per_user`, leurs compteurs de
+consommation et `GET /admin/promotions/{id}/uses`.
 
 ### 4.16.0 — 22 septembre 2026
 
