@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.18.0** · 22 septembre 2026
+> **Version 4.19.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -385,8 +385,9 @@ cours et passées — triées par date de création, la dernière en tête ;
 plus ancienne. `?status=` prend plusieurs statuts séparés par des virgules
 (`accepted,picking_up,in_transit` = l'onglet « en cours »,
 `completed,cancelled` = l'historique) ; un statut inconnu est **refusé**.
-Chaque ligne a la forme de `/deliveries/available` (sans les collectes ni le
-client) : ouvrez `GET /deliveries/{id}` pour la course active. C'est aussi
+Chaque ligne a la forme de `/deliveries/available` (sans le détail des
+collectes ni le client, mais **avec `pickups_count`**) : ouvrez
+`GET /deliveries/{id}` pour la course active. C'est aussi
 par là qu'une application **retrouve sa course en cours** après un
 redémarrage — plus besoin d'en garder l'identifiant en local.
 
@@ -402,6 +403,54 @@ redémarrage — plus besoin d'en garder l'identifiant en local.
 > **`402` est un `402`, pas un `409`.** Une application qui filtre sur le mauvais statut proposera une recharge au mauvais moment.
 
 > **`delivery_not_available` arrive après le débit — et le jeton revient**, par un mouvement `order_accept_refund` visible dans `GET /wallet/transactions`. Rafraîchissez le solde : il a bougé deux fois. Si le remboursement échoue, seul le grand livre le montre — renvoyez vers l'historique plutôt que d'affirmer « aucun jeton débité ».
+
+### ⚠️ UNE COURSE, PLUSIEURS COLLECTES — la tournée (v4.19.0)
+
+Une commande peut être passée chez **plusieurs enseignes**. La course porte
+alors **autant de points de collecte que de boutiques**, à parcourir **dans
+l'ordre**, avant le dépôt unique chez le client.
+
+> ⚠️ **CONSTATÉ EN RECETTE, ET C'EST LE PIÈGE.** Dans la **liste** des
+> courses, `pickups` **n'est pas servi** — vingt courses feraient vingt
+> lectures. Une commande à trois enseignes y ressemblait donc à une course à
+> **un seul retrait**, et le livreur ne découvrait les trois qu'après avoir
+> accepté.
+>
+> **`pickups_count` est servi PARTOUT**, listes comprises. Affichez-le
+> **avant d'accepter** : « 3 collectes » est ce qui distingue une tournée
+> d'une course ordinaire, et c'est sur quoi on décide.
+>
+> Puis, **dès l'acceptation, relisez `GET /deliveries/{id}`** : c'est là, et
+> seulement là, que se trouve la tournée.
+
+```jsonc
+// GET /deliveries  (liste)        → pas de `pickups`, mais :
+{ "id": "…", "status": "searching", "pickups_count": 3, "cash_required_xof": 7500, … }
+
+// GET /deliveries/{id}  (détail)  → la tournée
+{ "pickups_count": 3,
+  "pickups": [ { "sequence": 1, "store_name": "Tantie Caro", "done": true,  … },
+               { "sequence": 2, "store_name": "Chez Awa",    "done": false, … },
+               { "sequence": 3, "store_name": "Mama Africa", "done": false, … } ] }
+```
+
+**`sequence` est l'ORDRE DE PASSAGE**, calculé par le serveur sur le réseau
+routier — pas l'ordre dans lequel le client a composé son panier. Suivez-le.
+
+> ⚠️ **CHAQUE COLLECTE SE CONFIRME SÉPARÉMENT.**
+> `POST /deliveries/{id}/pickups/{pickup_id}/done`, une fois par boutique.
+> Une seule confirmation ne clôt **pas** la tournée : tant qu'il reste un
+> `done: false`, la course n'est pas prête à partir.
+>
+> N'enchaînez pas sur « Terminer » avant que **toutes** les collectes soient
+> faites — c'est exactement l'erreur qui fait repartir un livreur avec deux
+> paquets sur trois.
+
+**Sur la carte**, chaque collecte prend le **pin numéroté du marchand** à son
+rang — la collecte `sequence: 1` porte le pin 1 — et le dépôt le pin
+principal du **client**. Ces images viennent des réglages
+(`GET /map-markers`, § Les marqueurs de carte) : ne dessinez pas trois
+pastilles identiques, c'est précisément ce qui empêche de lire une tournée.
 
 ### Ce qu'il y a à retirer
 
@@ -500,6 +549,28 @@ sources, et `heading_source` dit laquelle :
 Sans capteur exploitable (téléphone sans magnétomètre, calibration
 impossible), omettez les deux champs : le serveur garde le dernier cap
 connu. N'envoyez jamais `0` pour « inconnu » — c'est le nord.
+
+> ### 🧭 ⚠️ L'ORIENTATION D'UN PIN DE VÉHICULE (v4.19.0)
+>
+> Ce cap sert à **tourner votre marqueur** sur toutes les cartes de la
+> plateforme, et sur les vôtres.
+>
+> **Un pin de véhicule est dessiné NEZ VERS LE HAUT, soit 90°** — le capot
+> (ou la roue avant) pointe vers le bord supérieur de l'image, quel que soit
+> le véhicule. C'est la convention des images envoyées depuis la console.
+>
+> **Appliquez donc `heading` TEL QUEL** comme rotation du marqueur : 0°
+> (plein nord) laisse l'image droite, 90° la tourne d'un quart de tour vers
+> la droite. Pas de correction, pas d'offset de −90° — si vous avez besoin
+> d'en ajouter un, c'est l'image qui est mal orientée, pas le code :
+> signalez-le à l'exploitation plutôt que de le compenser chez vous. Une
+> correction faite dans UNE application et pas dans les autres fait rouler
+> les véhicules de côté sur un seul écran, et personne ne sait lequel a
+> raison.
+>
+> ⚠️ **La règle vaut pour les VÉHICULES, pas pour les marqueurs de lieu.** Un
+> pin de client, de marchand ou de collecte ne tourne jamais : il désigne un
+> endroit, pas une direction.
 
 - **`mission_id` présent** = la position est enregistrée dans le parcours ; **absent** = simple présence (en ligne, hors course).
 - Cadence conseillée : 1 position / 1–3 s en course. Le serveur limite à 1 / 200 ms.

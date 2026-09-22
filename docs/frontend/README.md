@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.18.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.19.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,37 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.19.0 — 22 septembre 2026
+
+**Ajout rétrocompatible + précision de spec** — **une tournée se lit avant
+de l'accepter**, et **un pin de véhicule pointe vers le haut**.
+
+⚠️ **Constaté en recette** : une commande passée chez TROIS enseignes
+ressemblait, dans la liste du livreur, à une course à **un seul retrait** —
+les listes ne portent pas le détail des collectes, et il ne découvrait les
+trois qu'après avoir accepté.
+
+`pickups_count` est donc servi **partout**, listes comprises, sur les courses
+(`FOOD-DELIVERY`) comme sur la commande du client
+(`order.delivery.pickups_count`, `FOOD-CLIENT`). Affichez-le **avant
+d'accepter** ; relisez `GET /deliveries/{id}` **dès l'acceptation** pour la
+tournée elle-même. Chaque collecte se confirme **séparément** — une seule
+confirmation ne clôt pas la tournée, et c'est ce qui fait repartir un livreur
+avec deux paquets sur trois. Côté client, `picking_up` peut **durer** : dites
+« il récupère votre commande chez 3 enseignes » plutôt que de laisser une
+barre qui n'avance pas.
+
+Chaque collecte se dessine avec le **pin numéroté du marchand** à son rang
+(v4.18.0) : trois pastilles identiques ne se lisent pas.
+
+🧭 **L'orientation d'un pin de véhicule.** Les images envoyées depuis la
+console sont dessinées **nez vers le haut, soit 90°**. Appliquez `heading`
+**tel quel** comme rotation : pas d'offset de −90°. Si vous en avez besoin,
+c'est l'image qui est mal orientée, pas le code — une correction faite dans
+une application et pas dans les autres fait rouler les véhicules de côté sur
+un seul écran. La règle vaut pour les **véhicules** seulement : un pin de
+lieu ne tourne jamais.
 
 ### 4.18.0 — 22 septembre 2026
 
