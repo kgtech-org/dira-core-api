@@ -136,3 +136,35 @@ func TestAStandingMarkerNeverServesANavigationImage(t *testing.T) {
 	kept := fill(Marker{Kind: KindCourier, NavIconURL: "https://x/nav.png"})
 	assert.Equal(t, "https://x/nav.png", kept.NavIconURL)
 }
+
+// ⚠️ LE CLIENT ET SA DESTINATION NE SONT PAS LE MÊME POINT. Le pin principal
+// marque QUELQU'UN — le passager qui attend, la personne à qui on remet une
+// commande. Le pin de destination marque un LIEU où personne n'attend encore.
+func TestOnlyTheClientHasADestination(t *testing.T) {
+	assert.True(t, HasDestination(KindClient))
+	assert.False(t, HasDestination(KindMerchant), "une boutique est une étape, la destination de personne")
+	assert.False(t, HasDestination(KindCourier))
+}
+
+// Un genre qui n'est la destination de personne n'en SERT pas l'image, même
+// si une vieille donnée en portait une.
+func TestADestinationImageIsOnlyServedWhereItMeansSomething(t *testing.T) {
+	assert.Empty(t, fill(Marker{Kind: KindMerchant, DestIconURL: "https://x/d.png"}).DestIconURL)
+	assert.Equal(t, "https://x/d.png", fill(Marker{Kind: KindClient, DestIconURL: "https://x/d.png"}).DestIconURL)
+}
+
+// Le client porte donc TROIS images de carte et quatre pins numérotés : lui,
+// ses étapes, son arrivée. C'est la contrepartie d'avoir fusionné `stop`
+// dedans — un seul élément, tous les points du trajet d'un passager.
+func TestTheClientCarriesTheWholeJourney(t *testing.T) {
+	m := fill(Marker{
+		Kind:        KindClient,
+		MapIconURL:  "https://x/client.png",
+		DestIconURL: "https://x/dest.png",
+		Numbered:    []Pin{{Index: 1, MapIconURL: "https://x/1.png"}},
+	})
+	assert.Equal(t, "https://x/client.png", m.MapIconURL, "là où il est")
+	assert.Equal(t, "https://x/dest.png", m.DestIconURL, "là où il va")
+	assert.Len(t, m.Numbered, 4, "ce qu'il y a entre les deux")
+	assert.Empty(t, m.NavIconURL, "il ne bouge pas : pas de vue de navigation")
+}

@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.21.0** · 22 septembre 2026
+> **Version 4.22.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -324,6 +324,26 @@ complet même vides. `courier` n'en a pas — il n'y a qu'un livreur par course,
 et le champ est **absent** chez lui (absent = « sans objet » ; une liste vide
 se lirait « rien de réglé »).
 
+#### 🏁 Et `client` porte, LUI, un pin de DESTINATION
+
+`client.dest_icon_url` : le point d'**arrivée** — la fin d'une course.
+
+⚠️ **Le client et sa destination ne sont pas le même point.** Le pin
+**principal** marque **quelqu'un** : le passager qui attend au départ, la
+personne à qui on remet une commande. Le pin de **destination** marque un
+**lieu** où personne n'attend encore. Les dessiner pareil oblige à lire les
+libellés pour savoir lequel est lequel — sur une carte, c'est exactement ce
+qu'on n'a pas le temps de faire.
+
+Le marchand n'en a pas : une boutique est une **étape**, la destination de
+personne.
+
+Absent : **retombez sur `map_icon_url`**.
+
+Le client porte donc, à lui seul, **tous les points du trajet d'un
+passager** : lui (principal), ses étapes (numérotés 1 à 4), son arrivée
+(destination). C'est la contrepartie d'y avoir fusionné `stop`.
+
 #### 🚗 Et `courier` porte, LUI, une image de navigation
 
 `courier.nav_icon_url` : le même livreur en **vue 3D à ~45°**, pour une carte
@@ -357,10 +377,19 @@ tient, que le chiffre sert.
 > étapes d'une course se dessinent désormais avec les **pins numérotés du
 > client**, et son arrivée avec le pin principal.
 
-**Sur VOS cartes.** La destination se dessine avec le pin principal du
-**client**. Les **étapes** d'une course à plusieurs arrêts prennent ses pins
-numérotés, dans l'ordre de `stops[]` — c'est ce qui vous dit où aller
-d'abord sans lire les adresses.
+**Sur VOS cartes**, les trois points d'une course viennent tous du genre
+`client` :
+
+| Le point | Le pin |
+|---|---|
+| le **départ** (`kind: "pickup"`) — le passager, qui attend | `map_icon_url`, le pin **principal** |
+| les **étapes** (`kind: "stop"`) | `numbered`, dans l'ordre de `stops[]` — c'est ce qui vous dit où aller d'abord sans lire les adresses |
+| l'**arrivée** (`kind: "dest"`) | `dest_icon_url`, le pin de **destination** |
+
+⚠️ **Ne confondez pas le passager et l'arrivée.** Le pin principal marque
+**quelqu'un** à qui vous allez parler ; celui de destination marque un
+**lieu** où personne ne vous attend. Les dessiner pareil vous ferait chercher
+un client là où il n'y a qu'une adresse.
 
 ---
 

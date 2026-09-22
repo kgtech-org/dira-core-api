@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.21.0** · 22 septembre 2026
+> **Version 4.22.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -1020,6 +1020,26 @@ complet même vides. `courier` n'en a pas — il n'y a qu'un livreur par course,
 et le champ est **absent** chez lui (absent = « sans objet » ; une liste vide
 se lirait « rien de réglé »).
 
+#### 🏁 Et `client` porte, LUI, un pin de DESTINATION
+
+`client.dest_icon_url` : le point d'**arrivée** — la fin d'une course.
+
+⚠️ **Le client et sa destination ne sont pas le même point.** Le pin
+**principal** marque **quelqu'un** : le passager qui attend au départ, la
+personne à qui on remet une commande. Le pin de **destination** marque un
+**lieu** où personne n'attend encore. Les dessiner pareil oblige à lire les
+libellés pour savoir lequel est lequel — sur une carte, c'est exactement ce
+qu'on n'a pas le temps de faire.
+
+Le marchand n'en a pas : une boutique est une **étape**, la destination de
+personne.
+
+Absent : **retombez sur `map_icon_url`**.
+
+Le client porte donc, à lui seul, **tous les points du trajet d'un
+passager** : lui (principal), ses étapes (numérotés 1 à 4), son arrivée
+(destination). C'est la contrepartie d'y avoir fusionné `stop`.
+
 #### 🚗 Et `courier` porte, LUI, une image de navigation
 
 `courier.nav_icon_url` : le même livreur en **vue 3D à ~45°**, pour une carte
@@ -1055,7 +1075,9 @@ tient, que le chiffre sert.
 
 **Sur VOS cartes.** Les collectes se dessinent avec les pins numérotés du
 **marchand**, dans l'ordre `sequence` : la collecte `sequence: 1` porte le pin
-1. Le dépôt se dessine avec le pin principal du **client**. Au-delà de quatre
+1. Le dépôt se dessine avec le pin **principal** du `client` — et non celui
+de destination : quelqu'un vous y attend. Le pin de destination sert aux
+courses, où l'arrivée est un lieu et personne ne s'y trouve encore. Au-delà de quatre
 collectes, les suivantes prennent le pin principal du marchand.
 
 ---

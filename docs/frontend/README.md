@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.21.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.22.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,30 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.22.0 — 22 septembre 2026
+
+**Ajout rétrocompatible** — **le client porte enfin son pin de DESTINATION.**
+
+`client.dest_icon_url` : le point d'**arrivée** d'une course.
+
+⚠️ **Le client et sa destination ne sont pas le même point.** Le pin
+principal marque **quelqu'un** — le passager qui attend au départ, la
+personne à qui on remet une commande ; celui de destination marque un **lieu**
+où personne n'attend encore. Les dessiner pareil oblige à lire les libellés
+pour savoir lequel est lequel — sur une carte, c'est exactement ce qu'on n'a
+pas le temps de faire.
+
+Le `client` porte donc, à lui seul, **tous les points du trajet d'un
+passager** : lui (principal), ses étapes (numérotés 1 à 4), son arrivée
+(destination). C'est la contrepartie d'y avoir fusionné `stop` en 4.18.0.
+
+Le marchand n'en a pas : une boutique est une **étape**, la destination de
+personne. Le poser ailleurs que sur `client` est **refusé** (422) ; absent,
+retombez sur `map_icon_url`.
+
+⚠️ **Côté livraison, le dépôt garde le pin PRINCIPAL** — quelqu'un y attend.
+Le pin de destination est pour les courses, où l'arrivée est un lieu.
 
 ### 4.21.0 — 22 septembre 2026
 

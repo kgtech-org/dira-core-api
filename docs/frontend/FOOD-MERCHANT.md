@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 4.21.0** · 22 septembre 2026
+> **Version 4.22.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -699,6 +699,26 @@ ordre** on y passe — et c'est justement ce qu'on cherche sur une carte.
 complet même vides. `courier` n'en a pas — il n'y a qu'un livreur par course,
 et le champ est **absent** chez lui (absent = « sans objet » ; une liste vide
 se lirait « rien de réglé »).
+
+#### 🏁 Et `client` porte, LUI, un pin de DESTINATION
+
+`client.dest_icon_url` : le point d'**arrivée** — la fin d'une course.
+
+⚠️ **Le client et sa destination ne sont pas le même point.** Le pin
+**principal** marque **quelqu'un** : le passager qui attend au départ, la
+personne à qui on remet une commande. Le pin de **destination** marque un
+**lieu** où personne n'attend encore. Les dessiner pareil oblige à lire les
+libellés pour savoir lequel est lequel — sur une carte, c'est exactement ce
+qu'on n'a pas le temps de faire.
+
+Le marchand n'en a pas : une boutique est une **étape**, la destination de
+personne.
+
+Absent : **retombez sur `map_icon_url`**.
+
+Le client porte donc, à lui seul, **tous les points du trajet d'un
+passager** : lui (principal), ses étapes (numérotés 1 à 4), son arrivée
+(destination). C'est la contrepartie d'y avoir fusionné `stop`.
 
 #### 🚗 Et `courier` porte, LUI, une image de navigation
 

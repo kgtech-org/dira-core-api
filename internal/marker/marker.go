@@ -95,6 +95,19 @@ func Numbered(kind string) bool { return kind == KindClient || kind == KindMerch
 // même chose.
 func Moving(kind string) bool { return kind == KindCourier }
 
+// HasDestination dit si un genre porte un pin d'ARRIVÉE.
+//
+// ⚠️ LE CLIENT ET SA DESTINATION NE SONT PAS LE MÊME POINT. Le pin principal
+// marque QUELQU'UN — le passager qui attend au départ, la personne à qui on
+// remet une commande. Le pin de destination marque un LIEU où personne
+// n'attend encore : la fin d'une course.
+//
+// Les dessiner pareil obligeait à lire les libellés pour savoir lequel était
+// lequel — sur une carte, c'est exactement ce qu'on n'a pas le temps de
+// faire. Le marchand n'en a pas : une boutique n'est la destination de
+// personne, c'est une étape.
+func HasDestination(kind string) bool { return kind == KindClient }
+
 // Pin est UN pin numéroté : le rang auquel on passe, et l'image qui le
 // dessine.
 type Pin struct {
@@ -115,6 +128,10 @@ type Marker struct {
 	// pour les seuls genres qui BOUGENT — voir `Moving`. À défaut,
 	// retombez sur `MapIconURL`.
 	NavIconURL string `bson:"nav_icon_url,omitempty" json:"nav_icon_url,omitempty"`
+	// DestIconURL : le point d'ARRIVÉE — la fin d'une course. Servi pour
+	// les seuls genres qui en ont un — voir `HasDestination`. À défaut,
+	// retombez sur `MapIconURL`.
+	DestIconURL string `bson:"dest_icon_url,omitempty" json:"dest_icon_url,omitempty"`
 	// Numbered : les pins numérotés, TOUJOURS servis au complet (1..4) pour
 	// les genres qui en portent, même vides.
 	//
@@ -136,6 +153,9 @@ type UpdateRequest struct {
 	// NavIconURL : refusé pour un genre qui ne bouge pas — une pastille
 	// dressée n'a pas de seconde vue.
 	NavIconURL string `json:"nav_icon_url" validate:"omitempty,url,max=2048"`
+	// DestIconURL : refusé pour un genre qui n'est la destination de
+	// personne.
+	DestIconURL string `json:"dest_icon_url" validate:"omitempty,url,max=2048"`
 	// Numbered : les rangs qu'on règle. Ceux qu'on omet sont EFFACÉS — la
 	// requête décrit l'état voulu, comme les deux images au-dessus. Un
 	// enregistrement partiel aurait laissé traîner un pin qu'on croyait
@@ -197,6 +217,9 @@ func fill(m Marker) Marker {
 	if !Moving(m.Kind) {
 		m.NavIconURL = ""
 	}
+	if !HasDestination(m.Kind) {
+		m.DestIconURL = ""
+	}
 	if !Numbered(m.Kind) {
 		m.Numbered = nil
 		return m
@@ -233,9 +256,13 @@ func (s *Service) Update(ctx context.Context, kind string, req UpdateRequest) (*
 	if req.NavIconURL != "" && !Moving(kind) {
 		return nil, apperr.Validation("this marker kind does not move: it carries no navigation image")
 	}
+	if req.DestIconURL != "" && !HasDestination(kind) {
+		return nil, apperr.Validation("this marker kind is nobody's destination")
+	}
 	m := Marker{
 		Kind: kind, IconURL: req.IconURL, MapIconURL: req.MapIconURL,
-		NavIconURL: req.NavIconURL, Numbered: pins, UpdatedAt: &now,
+		NavIconURL: req.NavIconURL, DestIconURL: req.DestIconURL,
+		Numbered: pins, UpdatedAt: &now,
 	}
 	if _, err := s.col.ReplaceOne(ctx, bson.M{"_id": kind}, m, options.Replace().SetUpsert(true)); err != nil {
 		return nil, apperr.Internal(err)
