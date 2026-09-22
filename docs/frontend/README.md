@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.15.2** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.16.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,27 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.16.0 — 22 septembre 2026
+
+**Ajout rétrocompatible** — **les PROMOTIONS arrivent sur les courses.** Elles
+n'existaient que pour la livraison.
+
+`VTC-CLIENT.md` §3 : le devis porte `promo_title` et `promo_discount_xof`
+quand une offre s'applique, et **`fare_xof` est DÉJÀ remisé** — ne soustrayez
+rien. Nouvelle route `GET /promotions` : les offres en cours, pour une
+bannière. Une seule s'applique par course, la plus avantageuse ; il n'y a pas
+de cumul.
+
+`VTC-DRIVER.md` : une course en promotion porte les mêmes champs. **Par
+défaut, la remise ne coûte rien au chauffeur** — elle sort de la commission de
+la plateforme, et `driver_xof` reste ce que la course vaut. Quand une
+opération fait participer les chauffeurs, c'est `driver_xof` qui le dit.
+`fare_xof = commission_xof + driver_xof` reste vrai dans tous les cas.
+
+Côté console : `GET|POST /admin/promotions`, `PATCH|DELETE
+/admin/promotions/{id}` (portées `global`, `class`, `city` ; plafond de remise
+et prix plancher).
 
 ### 4.15.2 — 22 septembre 2026
 

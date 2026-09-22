@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.15.2** · 22 septembre 2026
+> **Version 4.16.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -519,6 +519,25 @@ d'une livraison.
 
 **Ce que vous voyez et que le passager ne voit pas** : `commission_xof` et
 `driver_xof`. C'est votre part, et elle n'est servie qu'à vous.
+
+### 🎁 Une course en PROMOTION (v4.16.0)
+
+Le passager a parfois payé moins que le prix normal. La course porte alors
+`promo_title` et `promo_discount_xof`, et **`fare_xof` est déjà le prix
+remisé** — c'est ce montant que vous encaissez en espèces, pas le prix plein.
+
+> ⚠️ **Par défaut, la remise ne vous coûte RIEN.** Elle sort de la commission
+> de la plateforme : `driver_xof` reste ce que la course vaut. Une promotion
+> est une dépense de croissance de la plateforme, pas une baisse de votre
+> revenu décidée sans vous.
+>
+> Il existe des opérations où les chauffeurs sont partie prenante, et où les
+> deux parts baissent ensemble. Dans ce cas c'est **`driver_xof` qui le dit** —
+> il est plus bas. Affichez toujours `driver_xof` tel qu'il est servi : c'est
+> la seule ligne qui compte pour vous, promotion ou non.
+
+`fare_xof = commission_xof + driver_xof` reste vrai dans tous les cas. Si la
+somme ne retombe pas chez vous, c'est un bogue — signalez-le.
 
 ### La course peut changer SOUS vous (v4.0.0)
 
