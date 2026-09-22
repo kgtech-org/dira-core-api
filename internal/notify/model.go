@@ -414,11 +414,11 @@ var defaults = map[string]Template{
 	},
 	KeyRideFareAdjusted: {
 		Key:         KeyRideFareAdjusted,
-		Description: "Le prix d'une course en cours a été recalculé après un changement de trajet — message au PASSAGER, avec ce qui a été débité ou rendu.",
+		Description: "Le prix d'une course en cours a changé — trajet modifié, attente au départ, temps réel — message au PASSAGER : le nouveau prix, le motif et ce qui a été débité, rendu ou porté à la dette.",
 		Enabled:     true,
 		Locales: map[string]Text{
-			LocaleFR: {Title: "Prix de la course ajusté", Body: "Votre trajet a changé : le prix passe à [fare]. [adjustment]"},
-			LocaleEN: {Title: "Ride fare adjusted", Body: "Your route has changed: the fare is now [fare]. [adjustment]"},
+			LocaleFR: {Title: "Prix de la course mis à jour", Body: "Le prix de votre course passe à [fare]. [adjustment]"},
+			LocaleEN: {Title: "Ride fare updated", Body: "Your ride fare is now [fare]. [adjustment]"},
 		},
 	},
 	KeyLostItemReported: {
