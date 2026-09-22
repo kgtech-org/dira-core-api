@@ -416,9 +416,14 @@ l'ordre**, avant le dépôt unique chez le client.
 > **un seul retrait**, et le livreur ne découvrait les trois qu'après avoir
 > accepté.
 >
-> **`pickups_count` est servi PARTOUT**, listes comprises. Affichez-le
-> **avant d'accepter** : « 3 collectes » est ce qui distingue une tournée
-> d'une course ordinaire, et c'est sur quoi on décide.
+> **`pickups_count` est servi dans les listes aussi.** Affichez-le **avant
+> d'accepter** : « 3 collectes » est ce qui distingue une tournée d'une
+> course ordinaire, et c'est sur quoi on décide.
+>
+> ⚠️ **ABSENT veut dire « on ne sait pas », pas « aucune ».** Une course a
+> toujours au moins une collecte : le champ ne manque que sur les courses
+> créées avant qu'il n'existe. N'affichez alors **rien** — « — » plutôt
+> qu'un « 0 collecte » qui serait faux. Le **détail** le comble toujours.
 >
 > Puis, **dès l'acceptation, relisez `GET /deliveries/{id}`** : c'est là, et
 > seulement là, que se trouve la tournée.

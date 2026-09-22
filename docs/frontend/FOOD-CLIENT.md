@@ -400,6 +400,9 @@ L'annulation est possible jusqu'à `picking_up` inclus. Au-delà → `409 cannot
 > course demande ; tant qu'elles ne sont pas toutes faites, la commande
 > reste `picking_up`.
 >
+> ⚠️ **Absent = on ne sait pas** (commande d'avant ce compteur), jamais
+> « aucune » : n'écrivez alors rien plutôt que « chez 0 enseigne ».
+>
 > Écrivez-le : « il récupère votre commande chez 3 enseignes » vaut mieux
 > qu'une barre qui n'avance pas. Et dessinez **chaque** point de collecte
 > avec le pin numéroté du **marchand** à son rang (§ Les marqueurs de carte)
