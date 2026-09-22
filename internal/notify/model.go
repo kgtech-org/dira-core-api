@@ -129,7 +129,12 @@ const (
 	// pour que l'application relise la course par HTTP.
 	KeyRideAccepted       = "ride_accepted"
 	KeyRideDriverOnTheWay = "ride_driver_on_the_way"
-	KeyRideCancelled      = "ride_cancelled"
+	// KeyRideDriverArrived va au PASSAGER : le chauffeur est au point de
+	// départ et l'attend — et c'est de là que compte l'attente offerte, puis
+	// facturée à la minute. Un passager qui ne l'apprend pas paie une
+	// attente qu'il n'a pas vue commencer.
+	KeyRideDriverArrived = "ride_driver_arrived"
+	KeyRideCancelled     = "ride_cancelled"
 	// KeyRideCancelledByRider va au CHAUFFEUR : il roulait peut-être déjà
 	// vers le point de départ.
 	KeyRideCancelledByRider = "ride_cancelled_by_rider"
@@ -360,6 +365,15 @@ var defaults = map[string]Template{
 		Locales: map[string]Text{
 			LocaleFR: {Title: "Votre chauffeur arrive", Body: "[driver] est en route vers vous."},
 			LocaleEN: {Title: "Your driver is coming", Body: "[driver] is on the way to you."},
+		},
+	},
+	KeyRideDriverArrived: {
+		Key:         KeyRideDriverArrived,
+		Description: "Le chauffeur est arrivé au point de départ et attend — message au PASSAGER, avec l'attente offerte et le tarif ensuite.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Votre chauffeur est là", Body: "[driver] vous attend · [vehicle]. [free] min d'attente offertes, puis [rate]/min."},
+			LocaleEN: {Title: "Your driver is here", Body: "[driver] is waiting for you · [vehicle]. [free] min of free waiting, then [rate]/min."},
 		},
 	},
 	KeyRideCancelled: {
@@ -622,6 +636,7 @@ var provided = map[string][]string{
 	KeyStaffDriverPending:     {"kind", "who"},
 	KeyRideAccepted:           {"driver", "vehicle"},
 	KeyRideDriverOnTheWay:     {"driver"},
+	KeyRideDriverArrived:      {"driver", "vehicle", "free", "rate"},
 	KeyRideCancelled:          {"reason"},
 	KeyRideCancelledByRider:   {"reason"},
 	KeyDeliveryCancelled:      {"order_ref"},

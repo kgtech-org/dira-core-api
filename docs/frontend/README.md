@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.13.0** · 21 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.14.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -65,8 +65,8 @@ livraison, une course VTC) vit dans **un seul cycle**, servi à l'identique
 par les deux verticales, par le socket du suivi et par les notifications :
 
 ```
-searching → accepted → picking_up → in_transit → completed
-                                            ↘ cancelled   (tout état avant completed)
+searching → accepted → picking_up → [arrived] → in_transit → completed
+                                                       ↘ cancelled   (tout état avant completed)
 ```
 
 | Statut | Ce que ça veut dire | Livraison (`Delivery`) | Course VTC (`Ride`) |
@@ -74,9 +74,18 @@ searching → accepted → picking_up → in_transit → completed
 | `searching` | on cherche quelqu'un | la course attend un livreur — proposée dès que le repas est **prêt** | on appelle des chauffeurs |
 | `accepted` | quelqu'un a pris l'opération | un livreur l'a acceptée, il part vers le restaurant | un chauffeur l'a prise |
 | `picking_up` | il est au point de départ | la **première collecte** est faite, il en reste | il **roule vers le passager** |
+| `arrived` | il est arrivé et attend (v4.14.0) | — (une course de livraison passe directement à `in_transit`) | il est **au point de départ**, le passager n'est pas encore monté ; l'attente offerte court, puis se facture à la minute |
 | `in_transit` | le colis / le passager est à bord | toutes les collectes faites, en route vers le client | le passager est monté |
 | `completed` | livré / déposé | remise au client | passager déposé |
 | `cancelled` | fini sans être fait | commande annulée (client, marchand, exploitation) | par le passager, le chauffeur ou la plateforme |
+
+**`arrived` (v4.14.0) n'existe que pour la course VTC**, entre `picking_up`
+et `in_transit`, et il est FACULTATIF : un chauffeur qui passe directement
+à `in_transit` reste accepté. Quand il signale son arrivée, le passager est
+alerté (`ride_driver_arrived`) et l'attente compte : `waiting_free_min`
+minutes offertes (5 par défaut), puis `waiting_per_min_xof` par minute
+entamée, ajoutés au prix à la montée à bord (`waiting_fee_xof`,
+ajustement `reason: waiting`). Voir `VTC-CLIENT.md` §5 et `VTC-DRIVER.md` §4.
 
 **La commande de repas** (`Order`) garde ce qui n'existe que pour un repas —
 `pending_payment → paid → preparing → ready` — puis **reprend mot pour mot**
@@ -267,6 +276,22 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.14.0 — 22 septembre 2026
+
+**Ajout rétrocompatible** — **le statut `arrived` de la course VTC, et
+l'attente facturée.** Arrivé au point de départ, le chauffeur le signale
+(`PATCH /rides/{id}/status {status: "arrived"}`) ; le passager est
+**alerté aussitôt** (`ride_driver_arrived`, socket `status: arrived`) ;
+`waiting_free_min` minutes sont offertes (5 par défaut), puis chaque minute
+entamée coûte `waiting_per_min_xof`, réglés par mode dans la console et
+**figés sur la course au devis**. À la montée à bord, `waiting_minutes` et
+`waiting_fee_xof` s'ajoutent au prix (ajustement `reason: waiting`,
+`ride_fare_adjusted` au passager) — débités du solde Dira, portés à la dette
+si le solde ne suit pas, réglés au chauffeur en espèces. Le passage
+`picking_up → in_transit` sans `arrived` reste accepté : rien à changer
+pour une application qui ne signale pas l'arrivée, sinon qu'elle ne
+facture pas l'attente.
 
 ### 4.13.0 — 21 septembre 2026
 
