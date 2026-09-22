@@ -676,7 +676,7 @@ func TestEnsureAccountCanProvisionAnAdmin(t *testing.T) {
 	svc, _, _ := newUserTestService()
 
 	id, err := svc.EnsureAccount(context.Background(), auth.RoleAdmin,
-		"+22890009999", "Ops", "", "s3cret-password")
+		"+22890009999", "Ops", "", "s3cret-password", "")
 	require.NoError(t, err)
 	require.NotEmpty(t, id)
 
@@ -703,12 +703,18 @@ func TestEnsureAccountIsIdempotent(t *testing.T) {
 	svc, _, _ := newUserTestService()
 
 	first, err := svc.EnsureAccount(context.Background(), auth.RoleAdmin,
-		"+22890009998", "Ops", "", "s3cret-password")
+		"+22890009998", "Ops", "", "s3cret-password", "https://files.example/avatar/a.jpg")
 	require.NoError(t, err)
 	second, err := svc.EnsureAccount(context.Background(), auth.RoleAdmin,
-		"+22890009998", "Ops", "", "s3cret-password")
+		"+22890009998", "Ops", "", "s3cret-password", "https://files.example/avatar/b.jpg")
 	require.NoError(t, err)
 	assert.Equal(t, first, second)
+	// Le portrait est posé à l'ouverture, puis COMBLÉ seulement : le second
+	// appel ne remplace pas le premier.
+	oid, _ := primitive.ObjectIDFromHex(first)
+	u, err := svc.repo.FindByID(context.Background(), oid)
+	require.NoError(t, err)
+	assert.Equal(t, "https://files.example/avatar/a.jpg", u.AvatarURL)
 }
 
 // ⚠️ Ce test existe parce que l'administrateur provisionné n'avait PAS
@@ -719,7 +725,7 @@ func TestEnsureAccountCarriesTheEmail(t *testing.T) {
 	svc, _, _ := newUserTestService()
 
 	id, err := svc.EnsureAccount(context.Background(), auth.RoleAdmin,
-		"+22890000100", "Dira Ops", "ops@dira.llc", "s3cret-password")
+		"+22890000100", "Dira Ops", "ops@dira.llc", "s3cret-password", "")
 	require.NoError(t, err)
 
 	row, err := svc.AccountByID(context.Background(), id)
@@ -741,10 +747,10 @@ func TestEnsureAccountBackfillsAMissingEmail(t *testing.T) {
 	svc, _, _ := newUserTestService()
 	ctx := context.Background()
 
-	id, err := svc.EnsureAccount(ctx, auth.RoleAdmin, "+22890000100", "Dira Ops", "", "s3cret-password")
+	id, err := svc.EnsureAccount(ctx, auth.RoleAdmin, "+22890000100", "Dira Ops", "", "s3cret-password", "")
 	require.NoError(t, err)
 
-	again, err := svc.EnsureAccount(ctx, auth.RoleAdmin, "+22890000100", "Dira Ops", "ops@dira.llc", "s3cret-password")
+	again, err := svc.EnsureAccount(ctx, auth.RoleAdmin, "+22890000100", "Dira Ops", "ops@dira.llc", "s3cret-password", "")
 	require.NoError(t, err)
 	assert.Equal(t, id, again, "le même compte, pas un second")
 
@@ -760,10 +766,10 @@ func TestEnsureAccountNeverOverwritesAnExistingEmail(t *testing.T) {
 	svc, _, _ := newUserTestService()
 	ctx := context.Background()
 
-	id, err := svc.EnsureAccount(ctx, auth.RoleAdmin, "+22890000100", "Dira Ops", "first@dira.llc", "s3cret-password")
+	id, err := svc.EnsureAccount(ctx, auth.RoleAdmin, "+22890000100", "Dira Ops", "first@dira.llc", "s3cret-password", "")
 	require.NoError(t, err)
 
-	_, err = svc.EnsureAccount(ctx, auth.RoleAdmin, "+22890000100", "Dira Ops", "second@dira.llc", "s3cret-password")
+	_, err = svc.EnsureAccount(ctx, auth.RoleAdmin, "+22890000100", "Dira Ops", "second@dira.llc", "s3cret-password", "")
 	require.NoError(t, err)
 
 	row, err := svc.AccountByID(ctx, id)

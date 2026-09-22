@@ -28,11 +28,14 @@ import (
 	"time"
 
 	"github.com/kgtech-org/dira-core-api/internal/config"
+	"github.com/kgtech-org/dira-core-api/internal/equipment"
 	"github.com/kgtech-org/dira-core-api/internal/indexes"
+	"github.com/kgtech-org/dira-core-api/internal/marker"
 	"github.com/kgtech-org/dira-core-api/internal/staff"
 	"github.com/kgtech-org/dira-core-api/internal/user"
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
 	"github.com/kgtech-org/dira-core-api/pkg/db"
+	"github.com/kgtech-org/dira-core-api/pkg/storage"
 )
 
 func main() {
@@ -111,7 +114,7 @@ func run(logger *slog.Logger) error {
 	// l'utilisait.
 	// L'E-MAIL est passé : la console se connecte par e-mail, et un
 	// administrateur sans adresse ne peut pas l'ouvrir.
-	id, err := svc.EnsureAccount(ctx, auth.RoleAdmin, adminPhone, "Dira Ops", adminEmail, adminPassword)
+	id, err := svc.EnsureAccount(ctx, auth.RoleAdmin, adminPhone, "Dira Ops", adminEmail, adminPassword, "")
 	if err != nil {
 		return fmt.Errorf("seed: ensure admin: %w", err)
 	}
@@ -147,7 +150,7 @@ func run(logger *slog.Logger) error {
 	// Mot de passe de démonstration, comme les autres acteurs des verticales.
 	demoPassword := envOr("SEED_DEMO_PASSWORD", "dira12345")
 	for _, ops := range countryOps {
-		uid, err := svc.EnsureAccount(ctx, auth.RoleAdmin, ops.phone, ops.name, ops.email, demoPassword)
+		uid, err := svc.EnsureAccount(ctx, auth.RoleAdmin, ops.phone, ops.name, ops.email, demoPassword, "")
 		if err != nil {
 			return fmt.Errorf("seed: ensure ops %s: %w", ops.country, err)
 		}
@@ -156,6 +159,27 @@ func run(logger *slog.Logger) error {
 		}
 		logger.Info("seed: country ops ready", "country", ops.country, "email", ops.email, "phone", ops.phone)
 	}
+
+	// --- LE CATALOGUE DU MATÉRIEL, par pays ---
+	equipmentSvc := equipment.NewService(equipment.NewRepository(mongo), nil, nil)
+	if err := seedEquipment(ctx, logger, equipmentSvc); err != nil {
+		return err
+	}
+
+	// --- LES MARQUEURS DE CARTE du relevé de staging (media.json) ---
+	var media *storage.Store
+	if m, err := storage.New(ctx, storage.Config{
+		Endpoint: cfg.MinioEndpoint, AccessKey: cfg.MinioAccessKey, SecretKey: cfg.MinioSecretKey,
+		UseSSL: cfg.MinioUseSSL, Bucket: cfg.MinioBucket, PublicBaseURL: cfg.MinioPublicURL,
+	}); err != nil {
+		logger.Warn("seed: object storage unavailable — map markers not restored", "error", err)
+	} else {
+		media = m
+	}
+	if err := seedMarkers(ctx, logger, marker.NewService(mongo, nil), media); err != nil {
+		return fmt.Errorf("seed: map markers: %w", err)
+	}
+
 	logger.Info("seed: done — les verticales sèment leur propre jeu de démonstration")
 	return nil
 }
