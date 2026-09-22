@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.18.0** · 22 septembre 2026
+> **Version 4.19.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -394,6 +394,17 @@ pending_payment → paid → preparing → ready → accepted → picking_up →
 
 L'annulation est possible jusqu'à `picking_up` inclus. Au-delà → `409 cannot_cancel`.
 
+> ⚠️ **`picking_up` PEUT DURER, et c'est normal (v4.19.0).** Quand votre
+> commande vient de **plusieurs enseignes**, le livreur passe chez chacune
+> avant de partir. `delivery.pickups_count` dit **combien** de collectes la
+> course demande ; tant qu'elles ne sont pas toutes faites, la commande
+> reste `picking_up`.
+>
+> Écrivez-le : « il récupère votre commande chez 3 enseignes » vaut mieux
+> qu'une barre qui n'avance pas. Et dessinez **chaque** point de collecte
+> avec le pin numéroté du **marchand** à son rang (§ Les marqueurs de carte)
+> — trois pastilles identiques sur la carte ne se lisent pas.
+
 ---
 
 ## 5. Suivi de livraison — LE LIVREUR EN DIRECT, dès qu'il accepte
@@ -469,6 +480,31 @@ wss://tracking-staging.dira.llc/track/subscribe/{mission_id}?token=<access_token
 - **Interpolez** entre deux trames, sinon le marqueur saute. `heading`
   oriente la flèche ; `heading_source` dit si le cap est mesuré (`gps`) ou
   déduit — un cap déduit à l'arrêt tourne dans le vide, ne l'animez pas.
+
+> ### 🧭 ⚠️ L'ORIENTATION D'UN PIN DE VÉHICULE (v4.19.0)
+>
+> **Un pin de véhicule est dessiné NEZ VERS LE HAUT, soit 90°** — le capot
+> (ou la roue avant) pointe vers le bord supérieur de l'image, quel que soit
+> le véhicule. C'est la convention des images envoyées depuis la console, et
+> c'est sur elle que reposent les rotations.
+>
+> **Appliquez donc `heading` TEL QUEL** comme rotation du marqueur : un cap
+> de 0° (plein nord) laisse l'image droite, 90° la tourne d'un quart de tour
+> vers la droite. Pas de correction, pas d'offset de −90° — si vous avez
+> besoin d'en ajouter un, c'est l'image qui est mal orientée, pas le code :
+> signalez-le à l'exploitation plutôt que de le compenser chez vous.
+>
+> Pourquoi cette règle est écrite : une correction appliquée dans UNE
+> application et pas dans les autres fait rouler les véhicules de côté sur
+> un seul écran, et personne ne sait lequel a raison.
+>
+> ⚠️ **Le cap ne tourne pas à l'arrêt.** Un `heading` déduit (`heading_source`
+> ≠ `gps`) sur un véhicule immobile pivote dans le vide : gardez la dernière
+> orientation plutôt que de l'animer.
+>
+> ⚠️ **La règle vaut pour les VÉHICULES, pas pour les marqueurs de lieu.** Un
+> pin de client, de marchand ou d'étape ne tourne jamais : il désigne un
+> endroit, pas une direction.
 - **Les marqueurs** : le livreur est `courier`, la boutique `merchant`,
   votre adresse `client` (§ Les marqueurs de carte, ci-dessous).
 - **Un silence n'est pas une disparition.** Batterie, tunnel, application

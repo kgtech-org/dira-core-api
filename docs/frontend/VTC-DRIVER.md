@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.18.0** · 22 septembre 2026
+> **Version 4.19.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -233,6 +233,31 @@ Les classes proposées à la déclaration viennent de `GET /classes` (public) :
 `icon_url` + `name` tels que servis** — les modes se règlent depuis la
 console, et un mode peut s'ajouter (v4.5.0). Le `class` d'un appel (§3)
 est la `key`.
+
+> ### 🧭 ⚠️ L'ORIENTATION D'UN PIN DE VÉHICULE (v4.19.0)
+>
+> **Un pin de véhicule est dessiné NEZ VERS LE HAUT, soit 90°** — le capot
+> (ou la roue avant) pointe vers le bord supérieur de l'image, quel que soit
+> le véhicule. C'est la convention des images envoyées depuis la console, et
+> c'est sur elle que reposent les rotations.
+>
+> **Appliquez donc `heading` TEL QUEL** comme rotation du marqueur : un cap
+> de 0° (plein nord) laisse l'image droite, 90° la tourne d'un quart de tour
+> vers la droite. Pas de correction, pas d'offset de −90° — si vous avez
+> besoin d'en ajouter un, c'est l'image qui est mal orientée, pas le code :
+> signalez-le à l'exploitation plutôt que de le compenser chez vous.
+>
+> Pourquoi cette règle est écrite : une correction appliquée dans UNE
+> application et pas dans les autres fait rouler les véhicules de côté sur
+> un seul écran, et personne ne sait lequel a raison.
+>
+> ⚠️ **Le cap ne tourne pas à l'arrêt.** Un `heading` déduit (`heading_source`
+> ≠ `gps`) sur un véhicule immobile pivote dans le vide : gardez la dernière
+> orientation plutôt que de l'animer.
+>
+> ⚠️ **La règle vaut pour les VÉHICULES, pas pour les marqueurs de lieu.** Un
+> pin de client, de marchand ou d'étape ne tourne jamais : il désigne un
+> endroit, pas une direction.
 
 Sur la carte d'une course : le départ et chaque étape sont `stop`, l'arrivée `client`.
 
