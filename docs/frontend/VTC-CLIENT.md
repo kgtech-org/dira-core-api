@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.13.0** · 21 septembre 2026
+> **Version 4.14.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -166,8 +166,20 @@ GET /classes
 { "items": [ { "key": "eco", "name": "Éco", "note": "Citadine · 1-4 passagers", "seats": 4,
               "icon_url": "https://files.dira.llc/class/…/eco.png",
               "map_icon_url": "https://files.dira.llc/class/…/eco-map.png",
-              "map_icon": "voiture" } ] }
+              "map_icon": "voiture",
+              "waiting_free_min": 5, "waiting_per_min_xof": 100,
+              "bill_actual_time": true, "time_tolerance_min": 10, "per_min_xof": 50 } ] }
 ```
+
+**Ce qui peut s'ajouter au prix en route (v4.14.0)** — quatre nombres et un
+drapeau, par mode, à montrer **avant** que le passager ne choisisse :
+`waiting_free_min` minutes d'attente offertes au départ puis
+`waiting_per_min_xof` la minute ; et, si `bill_actual_time` est vrai, les
+minutes roulées au-delà de la durée prévue du devis, tolérance
+`time_tolerance_min` déduite, à `per_min_xof` chacune. Une ligne suffit :
+« 5 min d'attente offertes puis 100 F/min · au-delà de 10 min de retard sur
+la durée prévue, 50 F/min ». Ces termes sont **recopiés sur la course au
+devis** : ce que le passager a lu en commandant est ce qui s'applique.
 
 **Les modes se règlent depuis la console (v4.5.0)** : leur nom et leurs
 icônes — des **images envoyées par l'exploitation** — peuvent changer, et
@@ -357,8 +369,8 @@ searching → accepted → picking_up → in_transit → completed
 > qui suit les deux n'a qu'un seul écran d'état à écrire.
 
 ```
-searching → accepted → picking_up → in_transit → completed
-                                            ↘ cancelled   (tout état avant completed)
+searching → accepted → picking_up → [arrived] → in_transit → completed
+                                                       ↘ cancelled   (tout état avant completed)
 ```
 
 | Statut | Ce que ça veut dire | Course de livraison | Course VTC |
@@ -366,6 +378,7 @@ searching → accepted → picking_up → in_transit → completed
 | `searching` | on cherche quelqu'un | la course attend un livreur — proposée dès que le repas est **prêt** | on appelle des chauffeurs |
 | `accepted` | quelqu'un a pris l'opération | un livreur l'a acceptée, il part vers le restaurant | un chauffeur l'a prise |
 | `picking_up` | il est au point de départ | la **première collecte** est faite, il en reste | il **roule vers le passager** |
+| `arrived` | il est arrivé et attend (v4.14.0) | — (une course de livraison passe directement à `in_transit`) | il est **au point de départ**, le passager n'est pas encore monté ; l'attente offerte court, puis se facture à la minute |
 | `in_transit` | le colis / le passager est à bord | toutes les collectes faites, en route vers le client | le passager est monté |
 | `completed` | livré / déposé | remise au client | passager déposé |
 | `cancelled` | fini sans être fait | commande annulée (client, marchand, exploitation) | par le passager, le chauffeur ou la plateforme |
@@ -392,7 +405,8 @@ aucune réponse, et sont refusés en entrée) :
 | `searching` | « nous cherchons un chauffeur » — `driver_id` est vide ; `dispatch_state` dit si l'on appelle encore (v4.1.0, ci-dessous) |
 | `accepted` | un chauffeur a pris la course — `driver` dit qui (v3.8.0) |
 | `picking_up` | il roule vers le point de départ |
-| `in_transit` | le passager est à bord |
+| `arrived` | il est là et attend (v4.14.0) — `arrived_at`, et le compteur d'attente : `waiting_free_min` minutes offertes, puis `waiting_per_min_xof` la minute |
+| `in_transit` | le passager est à bord — `waiting_minutes` / `waiting_fee_xof` disent ce que l'attente a coûté, déjà compris dans `fare_xof` |
 | `completed` | terminée |
 | `cancelled` | `cancelled_by` dit qui, `cancelled_reason` pourquoi |
 
@@ -402,6 +416,49 @@ GET /rides?cursor=…     # l'historique de VOS courses, page par page
 ```
 
 L'historique rend **les plus récentes d'abord** — par date de création, puis identifiant (v4.12.1) ; `?cursor=` est l'identifiant de la dernière course reçue et rend la page suivante, plus ancienne.
+
+### ⚠️ Le chauffeur est là — `arrived` et l'attente facturée (v4.14.0)
+
+Quand le chauffeur signale son arrivée au point de départ, la course passe
+à **`arrived`** : vous recevez le push **`ride_driver_arrived`** (« [driver]
+vous attend · [vehicle]. [free] min d'attente offertes, puis [rate]/min ») et
+la trame `status: arrived` sur le socket. **Affichez-le fort, avec un
+compteur** depuis `arrived_at` : les minutes offertes (`waiting_free_min`,
+5 par défaut) en vert, puis le montant qui monte — `waiting_per_min_xof`
+par minute **entamée**. Les deux nombres sont sur la course dès le devis,
+figés : ce que le passager a vu en commandant est ce qu'il paie.
+
+À la montée à bord (`in_transit`), la course porte `waiting_minutes` et
+`waiting_fee_xof`, **déjà ajoutés à `fare_xof`**, et une ligne
+`fare_adjustments` (`reason: "waiting"`, `delta_xof`, `movement`). Le
+push `ride_fare_adjusted` dit ce qui a bougé : débité du solde Dira
+(`charged`), porté à la dette si le solde ne suivait pas (`owed` —
+`debt_xof` sur `GET /wallet`, remboursée d'office à la prochaine recharge),
+à régler au chauffeur en espèces (`cash`), ou compris dans le débit à
+venir quand le pays débite à la montée ou à l'arrivée (`deferred`). Aucune
+attente facturée = aucun de ces champs.
+
+Une course `arrived` s'annule encore (`POST /rides/{id}/cancel`) ; le
+chauffeur est là, dites-le avant de confirmer.
+
+### ⚠️ Le temps réel — 5 km en une heure ne coûtent pas 5 km en dix minutes (v4.14.0)
+
+Le devis tarife la **durée prévue** (`duration_s`, celle du réseau routier).
+Quand le mode le règle (`bill_actual_time` sur la course), la durée
+**réellement roulée** — de la montée à bord (`in_transit_at`) à l'arrivée —
+compte aussi : chaque minute **entamée** au-delà de la durée prévue plus
+`time_tolerance_min` coûte `per_min_xof`. À `completed`, la course porte
+`actual_duration_s`, `extra_minutes` et `time_fee_xof`, **déjà compris dans
+`fare_xof`**, avec une ligne `fare_adjustments` (`reason: "duration"`) et le
+même push `ride_fare_adjusted` (`event: duration`) ; les mouvements
+d'argent sont ceux de l'attente (`charged` · `owed` · `cash` · `deferred`).
+
+**Pendant la course, affichez la durée prévue et le temps écoulé** depuis
+`in_transit_at`, et dès que la tolérance est dépassée, le supplément qui
+monte — le passager ne doit pas découvrir le prix à l'arrivée. Sur le reçu,
+une ligne « Temps supplémentaire : 12 min · 600 F » sous le prix du devis.
+`bill_actual_time` faux = rien de tout cela, la course coûte son devis
+(plus l'attente au départ, s'il y en a eu).
 
 ### Quand personne ne répond — `dispatch_state` et la relance (v4.1.0)
 
@@ -507,7 +564,7 @@ pas par pays.
 
 Le passager peut ajouter un arrêt, en retirer un, ou changer la
 destination **pendant qu'un chauffeur est assigné** (`accepted`,
-`picking_up`, `in_transit`). Il envoie le **nouveau trajet en entier** :
+`picking_up`, `arrived`, `in_transit`). Il envoie le **nouveau trajet en entier** :
 
 ```
 PATCH /api/v1/vtc/rides/{id}/stops
@@ -598,7 +655,7 @@ d'environnement.
 
 **Le socket du suivi porte aussi les changements d'état de la course** :
 une trame `{ "type": "status", "status": "…" }` à chaque passage —
-`accepted`, `picking_up`, `in_transit`, `completed`, `cancelled`. Elle ne
+`accepted`, `picking_up`, `arrived`, `in_transit`, `completed`, `cancelled`. Elle ne
 porte que le mot : à réception, **relisez `GET /rides/{id}`** et redessinez
 (qui vient, où en est-il, le prix, le parcours). Vous pouvez changer le badge
 avant la réponse.
@@ -611,6 +668,7 @@ avant la réponse.
 |---|---|---|
 | `ride_accepted` | un chauffeur a pris la course — nom et voiture dans le texte | `status: accepted` |
 | `ride_driver_on_the_way` | il roule vers vous | `status: picking_up` |
+| `ride_driver_arrived` | il est là et attend — les minutes offertes et le tarif ensuite dans le texte (v4.14.0) | `status: arrived`, `arrived_at`, `waiting_free_min`, `waiting_per_min_xof` |
 | `ride_cancelled` | annulée par le chauffeur ou la plateforme (`reason`) | `status: cancelled` |
 | `ride_search_exhausted` | personne n'a pris la course — relancer ou annuler (§5, v4.1.0) | `status: searching`, `dispatch_state: exhausted` |
 | `ride_fare_adjusted` | le trajet a changé en route, le prix aussi — ce qui a été débité ou rendu (§5, v4.4.0) | `event: stops_changed`, `fare_xof`, `delta_xof` |

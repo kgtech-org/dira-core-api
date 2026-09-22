@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.13.0** · 21 septembre 2026
+> **Version 4.14.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -435,7 +435,7 @@ POST https://tracking-staging.dira.llc/track/calls/{call_id}/decline  { "vehicle
 ## 4. Conduire
 
 ```
-PATCH /rides/{id}/status                   { "status": "picking_up" | "in_transit" | "completed" }
+PATCH /rides/{id}/status                   { "status": "picking_up" | "arrived" | "in_transit" | "completed" }
 POST  /rides/{id}/stops/{index}/reached
 POST  /rides/{id}/decline                  { "reason": "…" }
 GET   /rides/{id}
@@ -443,9 +443,51 @@ GET   /rides?cursor=…                      # l'historique de VOS courses
 ```
 
 ```
-accepted → picking_up → in_transit → completed
+accepted → picking_up → arrived → in_transit → completed
         ↘ cancelled
 ```
+
+### ⚠️ Signaler l'arrivée — `arrived`, et l'attente facturée (v4.14.0)
+
+Arrivé au point de départ, **envoyez `{ "status": "arrived" }` avant de
+laisser monter** : c'est ce qui alerte le passager (« votre chauffeur est
+là ») et ce qui fait courir l'attente. La course rend alors `arrived_at`,
+`waiting_free_min` (les minutes offertes — 5 par défaut, réglées par mode
+dans la console et **figées sur la course au devis**) et
+`waiting_per_min_xof` (le prix de chaque minute entamée au-delà).
+
+**Affichez un compteur** depuis `arrived_at` : vert pendant les minutes
+offertes, puis le montant qui monte — le passager voit le même. Au passage
+à `in_transit`, la course porte `waiting_minutes` (les minutes facturées,
+entamées) et `waiting_fee_xof`, ajoutés à `fare_xof` et à votre part
+(`driver_xof`) selon la commission habituelle ; l'historique
+`fare_adjustments` en garde la ligne (`reason: "waiting"`). Pour une
+course en espèces, **c'est vous qui encaissez** le nouveau prix ; pour le
+solde Dira, la plateforme débite — et porte à la dette du passager ce que
+son solde ne couvre pas, sans bloquer la montée à bord.
+
+Passer de `picking_up` à `in_transit` sans `arrived` reste accepté (une
+application antérieure ne casse pas) — mais alors **aucune attente n'est
+facturée** : la plateforme ne devine pas quand vous êtes arrivé. Une course
+`arrived` peut encore être annulée, par vous (`POST /rides/{id}/decline`)
+ou par le passager.
+
+### Le temps réel — les minutes roulées au-delà du prévu (v4.14.0)
+
+Quand le mode le règle (`bill_actual_time` sur la course), la durée
+réellement roulée — de `in_transit` à `completed`, la plateforme la mesure —
+compte : chaque minute entamée au-delà de la durée prévue du devis
+(`duration_s`) plus `time_tolerance_min` coûte `per_min_xof`. À l'arrivée,
+la course porte `actual_duration_s`, `extra_minutes`, `time_fee_xof`,
+déjà compris dans `fare_xof` et `driver_xof` (commission habituelle), et
+une ligne `fare_adjustments` (`reason: "duration"`). **Affichez le temps
+écoulé et, passé la tolérance, le supplément qui monte** : le passager
+voit la même chose. En espèces, c'est ce nouveau prix que vous encaissez.
+
+Les termes (`waiting_free_min`, `waiting_per_min_xof`, `bill_actual_time`,
+`time_tolerance_min`, `per_min_xof`) sont sur la course dès l'acceptation,
+figés au devis du passager — ni la grille du jour ni un autre mode ne
+s'appliquent en route.
 
 > **v4.0.0 — le vocabulaire commun.** `approach` est devenu **`picking_up`**
 > (« je roule vers le passager »), `onboard` est devenu **`in_transit`**
@@ -453,8 +495,8 @@ accepted → picking_up → in_transit → completed
 > le `PATCH` ne prend plus les anciens (`422`).
 
 ```
-searching → accepted → picking_up → in_transit → completed
-                                            ↘ cancelled   (tout état avant completed)
+searching → accepted → picking_up → [arrived] → in_transit → completed
+                                                       ↘ cancelled   (tout état avant completed)
 ```
 
 | Statut | Ce que ça veut dire | Course de livraison | Course VTC |
@@ -462,6 +504,7 @@ searching → accepted → picking_up → in_transit → completed
 | `searching` | on cherche quelqu'un | la course attend un livreur — proposée dès que le repas est **prêt** | on appelle des chauffeurs |
 | `accepted` | quelqu'un a pris l'opération | un livreur l'a acceptée, il part vers le restaurant | un chauffeur l'a prise |
 | `picking_up` | il est au point de départ | la **première collecte** est faite, il en reste | il **roule vers le passager** |
+| `arrived` | il est arrivé et attend (v4.14.0) | — (une course de livraison passe directement à `in_transit`) | il est **au point de départ**, le passager n'est pas encore monté ; l'attente offerte court, puis se facture à la minute |
 | `in_transit` | le colis / le passager est à bord | toutes les collectes faites, en route vers le client | le passager est monté |
 | `completed` | livré / déposé | remise au client | passager déposé |
 | `cancelled` | fini sans être fait | commande annulée (client, marchand, exploitation) | par le passager, le chauffeur ou la plateforme |
@@ -520,7 +563,7 @@ bougé (`charged` / `refunded`) : rien à demander.
    `cancelled`, en comparant `updated_at` ; passez à 30 s au bout de cinq
    minutes sans changement. Ne sondez **jamais** une opération terminée.
 6. **Retour au premier plan** : `GET /rides?limit=5` et repérer une course
-   `accepted`, `picking_up` ou `in_transit` qui est la vôtre — c'est ce qui
+   `accepted`, `picking_up`, `arrived` ou `in_transit` qui est la vôtre — c'est ce qui
    remet l'écran de course en place après un redémarrage de l'application.
 
 **Ce qu'aucun canal ne garantit** : l'ordre, l'unicité, la livraison. Deux
