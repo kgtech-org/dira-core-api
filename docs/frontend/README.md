@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.15.1** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.15.2** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,24 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.15.2 — 22 septembre 2026
+
+**Correction** — `GET /orders/{id}` sert enfin **la course** dans
+`delivery` : `id` (la mission du suivi), `tracking_mission_id`, `status`,
+`courier`, `planned_route`, `planned_distance_m`, `planned_duration_s`.
+
+⚠️ La 4.15.1 les décrivait déjà ; **l'API ne les servait pas.** `delivery`
+ne portait que `{address, geo, fee}`, et aucune route cliente ne remontait de
+la commande vers sa course — l'écran de suivi n'avait donc aucun `mission_id`
+à qui s'abonner. La jointure existait dans l'autre sens seulement (une course
+porte son `order_id`). Rien à changer côté application : ce que §5 décrit est
+maintenant vrai.
+
+Servis sur **`GET /orders/{id}` uniquement**, jamais dans les listes — une
+liste en ferait une lecture par ligne, et personne ne suit dix livreurs à la
+fois. Absents tant qu'aucune course n'existe : c'est l'état « nous cherchons
+un livreur », pas une panne.
 
 ### 4.15.1 — 22 septembre 2026
 
