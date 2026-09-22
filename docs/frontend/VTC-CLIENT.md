@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.16.0** · 22 septembre 2026
+> **Version 4.17.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -280,6 +280,23 @@ GET /promotions
 Une seule promotion s'applique à une course — **la plus avantageuse**. Il n'y
 a pas de cumul : deux offres lancées par deux personnes différentes
 offriraient la course sans que ni l'une ni l'autre ne l'ait voulu.
+
+> ⚠️ **`GET /promotions` ANNONCE, LE DEVIS DÉCIDE (v4.17.0).** Une offre
+> listée là peut très bien ne pas s'appliquer à **votre** course, et ce n'est
+> pas un bogue :
+>
+> - chaque opération a une **enveloppe**, et quand elle est consommée l'offre
+>   s'arrête — parfois dans la journée ;
+> - une offre peut être limitée à **N fois par personne**, et vous l'avez
+>   peut-être déjà utilisée ;
+> - une remise qui ne tient plus dans ce qui reste du budget est **refusée**,
+>   jamais rabotée — les petites courses en profitent donc encore quand les
+>   longues n'y ont plus droit.
+>
+> **N'affichez donc jamais un prix calculé à partir de `GET /promotions`.**
+> Le seul prix vrai est `fare_xof` du devis. Servez-vous de cette liste pour
+> une bannière — « des offres en ce moment » — et laissez le devis dire
+> combien.
 
 ---
 

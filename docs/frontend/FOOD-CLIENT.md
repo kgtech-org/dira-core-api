@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.16.0** · 22 septembre 2026
+> **Version 4.17.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -203,6 +203,24 @@ GET /banners
 - **`lat` + `lng` vont ensemble.** Sans position **ni** `q`, la requête est refusée : rendre la plateforme entière n'aiderait personne.
 - Avec position, chaque boutique porte `distance_m` et la liste est triée du plus proche. Sans position, tri par nom et **pas de `distance_m`** — c'est le cas d'un utilisateur qui a refusé la localisation.
 - `tags=italien,libanais` **élargit** (l'un OU l'autre) : personne ne cherche un restaurant qui serait les deux.
+
+> ⚠️ **UNE PROMOTION PEUT S'ARRÊTER EN COURS DE JOURNÉE (v4.17.0).** Chaque
+> opération a une **enveloppe** — ce que la plateforme s'engage à dépenser —
+> et un nombre d'utilisations, parfois **par personne**. Quand c'est
+> consommé, l'offre s'arrête.
+>
+> **Vous n'avez rien à calculer.** Le prix remisé et `original_price` du menu
+> tiennent déjà compte de tout cela : ce sont les **mêmes** règles qui
+> tarifent le menu et la commande, donc le menu ne promet jamais une remise
+> que la commande refuserait. Un client qui a épuisé son droit voit
+> simplement le prix plein, sans explication — et c'est voulu : « vous avez
+> déjà utilisé cette offre » sur une carte de restaurant ne rend service à
+> personne.
+>
+> Conséquence à prévoir dans l'interface : **un prix mis en cache vieillit**.
+> Relisez le menu à l'ouverture de l'écran de commande plutôt que de
+> réafficher celui d'il y a une heure, et fiez-vous au **récapitulatif de
+> commande** pour le total.
 
 ### La carte d'une ENSEIGNE — v1.4.0
 
