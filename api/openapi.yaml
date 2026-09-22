@@ -322,6 +322,7 @@ paths:
                 icon_url: {type: string, format: uri}
                 map_icon_url: {type: string, format: uri}
                 nav_icon_url: {type: string, format: uri, description: "refusé pour un genre qui ne bouge pas"}
+                dest_icon_url: {type: string, format: uri, description: "refusé pour un genre qui n'est la destination de personne"}
                 numbered:
                   type: array
                   maxItems: 4
@@ -1323,6 +1324,27 @@ components:
             écrasée dès que la caméra penche. Un client, un marchand, une
             étape sont des pastilles qui se DRESSENT : même image quelle que
             soit l'inclinaison.
+
+
+            Absent : retombez sur `map_icon_url`.
+        dest_icon_url:
+          type: string
+          format: uri
+          description: >-
+            Le point d'ARRIVÉE — la fin d'une course. Servi pour les seuls
+            genres qui en ont un : aujourd'hui `client`.
+
+
+            ⚠️ Le client et sa destination ne sont pas le même point. Le pin
+            PRINCIPAL marque QUELQU'UN — le passager qui attend au départ, la
+            personne à qui on remet une commande ; celui-ci marque un LIEU où
+            personne n'attend encore. Les dessiner pareil oblige à lire les
+            libellés pour savoir lequel est lequel, ce qu'on n'a pas le temps
+            de faire sur une carte.
+
+
+            Un marchand n'en a pas : une boutique est une ÉTAPE, la
+            destination de personne.
 
 
             Absent : retombez sur `map_icon_url`.
