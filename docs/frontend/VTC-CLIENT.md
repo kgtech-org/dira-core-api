@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.17.0** · 22 septembre 2026
+> **Version 4.18.0** · 22 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -688,20 +688,61 @@ GET /api/v1/map-markers          (public, SOCLE — sans `{PREFIX}`)
 
 ```json
 { "items": [
-  { "kind": "courier",  "icon_url": "https://files.dira.llc/marker/…/courier.png", "map_icon_url": "https://files.dira.llc/marker/…/courier-map.png" },
-  { "kind": "client" }, { "kind": "merchant" }, { "kind": "stop" } ] }
+  { "kind": "courier", "icon_url": "…/courier.png", "map_icon_url": "…/courier-map.png" },
+  { "kind": "client", "map_icon_url": "…/client-map.png", "max_numbered": 4,
+    "numbered": [ { "index": 1, "map_icon_url": "…/stop-1.png" },
+                  { "index": 2, "map_icon_url": "…/stop-2.png" },
+                  { "index": 3 }, { "index": 4 } ] },
+  { "kind": "merchant", "map_icon_url": "…/store-map.png", "max_numbered": 4,
+    "numbered": [ { "index": 1, "map_icon_url": "…/store-1.png" }, { "index": 2 }, { "index": 3 }, { "index": 4 } ] } ] }
 ```
 
-Toujours les **quatre genres**, dans cet ordre : `courier` (le livreur — le
+Toujours les **trois genres**, dans cet ordre : `courier` (le livreur — le
 chauffeur VTC est dessiné par son mode de véhicule, `GET /classes`),
-`client`, `merchant` (le point de vente, la collecte), `stop` (le départ ou
-une étape d'une course, quand ce n'est ni le client ni un marchand). Chacun
-porte deux images **facultatives**, réglées depuis la console : `icon_url`
-(à côté d'un nom, dans une liste) et `map_icon_url` (dans la pastille du
-marqueur). **Absentes, gardez votre pictogramme** — le réglage ajoute, il ne
-retire rien. Lisez la liste à l'ouverture, mettez les images en cache par
-URL (elles changent d'URL quand elles changent). Pour toute la plateforme,
-pas par pays.
+`client`, `merchant` (le point de vente, la collecte). Chacun porte deux
+images **facultatives**, réglées depuis la console : `icon_url` (à côté d'un
+nom, dans une liste) et `map_icon_url` (le pin **principal**, dans la
+pastille du marqueur). **Absentes, gardez votre pictogramme** — le réglage
+ajoute, il ne retire rien. Lisez la liste à l'ouverture, mettez les images en
+cache par URL (elles changent d'URL quand elles changent). Pour toute la
+plateforme, pas par pays.
+
+#### 🔢 Les pins NUMÉROTÉS (v4.18.0)
+
+Une carte porte souvent **plusieurs points du même genre** : une commande
+collectée chez trois marchands, une course qui s'arrête deux fois avant
+d'arriver. Un seul pictogramme pour tous ces points ne dit pas **dans quel
+ordre** on y passe — et c'est justement ce qu'on cherche sur une carte.
+
+`client` et `merchant` portent donc, en plus de leur pin principal, jusqu'à
+**quatre pins numérotés** : `numbered`, rangs **1 à 4**, toujours servis au
+complet même vides. `courier` n'en a pas — il n'y a qu'un livreur par course,
+et le champ est **absent** chez lui (absent = « sans objet » ; une liste vide
+se lirait « rien de réglé »).
+
+> ⚠️ **LE RANG EST CELUI DU PASSAGE**, pas un identifiant. La première
+> collecte porte le pin **1**, la deuxième le **2**. Numérotez dans l'ordre où
+> l'on s'y rend — celui que le serveur vous donne —, jamais dans l'ordre
+> d'affichage de votre liste.
+
+> ⚠️ **AU-DELÀ DE `max_numbered`, RETOMBEZ SUR LE PIN PRINCIPAL.** Cinq
+> collectes, ou un rang qu'on n'a pas réglé : ce n'est pas une panne, c'est
+> prévu. Un chiffre dans une pastille de vingt-quatre pixels ne se lit plus
+> très loin, et un pin manquant vaut mieux qu'un pin vide.
+
+Un pin numéroté ne porte **que** `map_icon_url` : dans une liste, le nom de la
+boutique distingue déjà les points ; c'est sur la carte, où aucun nom ne
+tient, que le chiffre sert.
+
+> ⚠️ **`stop` A DISPARU (v4.18.0).** Il a fusionné dans `client` : un arrêt de
+> course et l'adresse d'un client sont le même objet vu à deux moments. Les
+> étapes d'une course se dessinent désormais avec les **pins numérotés du
+> client**, et son arrivée avec le pin principal.
+
+**Sur VOS cartes.** L'arrivée se dessine avec le pin principal du **client**.
+Les **étapes intermédiaires** d'une course à plusieurs arrêts prennent les
+pins numérotés du client, dans l'ordre de `stops[]` : le premier arrêt après
+le départ porte le pin 1. Le départ, lui, garde votre pictogramme habituel.
 
 ### Changer le trajet EN COURS DE ROUTE — un arrêt de plus, un de moins (v4.4.0)
 
