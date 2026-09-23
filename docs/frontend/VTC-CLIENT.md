@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.24.0** · 23 septembre 2026
+> **Version 4.25.0** · 23 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -898,6 +898,28 @@ POST /rides/{id}/cancel        → remboursé sur le solde si la course était p
 > attend peut-être encore devant sa porte ; l'exploitation peut aussi lui
 > attribuer un chauffeur à la main. Laissez-lui les deux gestes.
 
+#### ⏳ Au bout d'un moment, la plateforme abandonne (v4.25.0)
+
+Quand le pays l'a réglé (`search_expiry_min`, 0 = jamais), une recherche
+épuisée depuis trop longtemps est **abandonnée par la plateforme** :
+
+```
+status: cancelled · cancelled_by: "system" · cancelled_reason: "search_expired"
+```
+
+Le passager est **remboursé** (si la course était payée) et reçoit
+`ride_cancelled`. Côté application, c'est une annulation comme une autre —
+rien de spécial à coder ; affichez simplement le motif, et proposez de
+commander à nouveau.
+
+⚠️ **Le délai se compte depuis l'ÉPUISEMENT, pas depuis la commande.** Chaque
+**Relancer** remet le compteur à zéro : une recherche relancée n'est jamais
+coupée au milieu de la tentative suivante.
+
+⚠️ **Ce n'est pas la fin de la recherche, c'est la fin de l'attente.** Tant
+que le délai n'est pas écoulé, les deux gestes restent — et sur un pays où
+le délai vaut 0, la course attend indéfiniment, comme avant.
+
 **Le parcours d'une course terminée (v3.2.0).** À `completed`, la course
 porte **`traveled_polyline`** (polyline Google, le chemin réellement roulé,
 recalé sur la route), **`actual_distance_m`** et **`distance_source`** :
@@ -1161,6 +1183,7 @@ avant la réponse.
 | `ride_driver_honked` | **il klaxonne** : sur place, il ne vous voit pas (v4.24.0) — ⚠️ son et vibration d'urgence, ce n'est pas l'arrivée redite | `status: arrived`, `event: honk`, `honk_count` |
 | `ride_cancelled` | annulée par le chauffeur ou la plateforme (`reason`) | `status: cancelled` |
 | `ride_search_exhausted` | personne n'a pris la course — relancer ou annuler (§5, v4.1.0) | `status: searching`, `dispatch_state: exhausted` |
+| `ride_cancelled` (`search_expired`) | la plateforme a **abandonné** une recherche épuisée depuis trop longtemps, et **remboursé** (§5, v4.25.0) | `status: cancelled`, `cancelled_by: system` |
 | `ride_fare_adjusted` | le trajet a changé en route, le prix aussi — ce qui a été débité ou rendu (§5, v4.4.0) | `event: stops_changed`, `fare_xof`, `delta_xof` |
 | `ride_rate_prompt` | terminée — noter, remercier (§7 bis) | `type: ride_rate_prompt` |
 | `ride_scheduled_soon` · `_started` · `_failed` | course programmée (§4 bis) | |

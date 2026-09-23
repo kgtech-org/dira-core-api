@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.24.0** · 23 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.25.0** · 23 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,29 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.25.0 — 23 septembre 2026
+
+**Ajout rétrocompatible** — **une recherche épuisée finit par être
+abandonnée** (`VTC-CLIENT.md` §5).
+
+Quand le pays l'a réglé (`search_expiry_min`, **0 = jamais**, le défaut),
+une recherche épuisée depuis trop longtemps est annulée par la plateforme —
+`cancelled_by: "system"`, `cancelled_reason: "search_expired"` — le passager
+**remboursé** et prévenu par `ride_cancelled`.
+
+⚠️ **Ce n'est pas la fin de la recherche, c'est la fin de l'attente.** La
+recherche s'arrête déjà d'elle-même et la course reste ouverte pour que le
+passager relance : c'est une bonne règle, il a payé. Mais quelqu'un qui a
+fermé l'application ne relancera jamais — sa course reste sur le tableau de
+bord de l'exploitation, indistinguable d'une attente réelle, et son argent
+reste débité.
+
+⚠️ **Le délai se compte depuis l'ÉPUISEMENT, pas depuis la commande** :
+chaque `POST /rides/{id}/relaunch` remet le compteur à zéro.
+
+Côté application, rien de spécial à coder : c'est une annulation comme une
+autre. Affichez le motif, proposez de commander à nouveau.
 
 ### 4.24.0 — 23 septembre 2026
 
