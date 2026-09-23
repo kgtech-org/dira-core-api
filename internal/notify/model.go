@@ -100,6 +100,17 @@ const (
 	KeyRideScheduledSoon    = "ride_scheduled_soon"
 	KeyRideScheduledStarted = "ride_scheduled_started"
 	KeyRideScheduledFailed  = "ride_scheduled_failed"
+	// L'ABONNEMENT de courses (dira-vtc-api) : il devient actif quand le
+	// paiement est acquis, et il se termine à la fin de la période.
+	//
+	// ⚠️ « ACTIF » EST LE SEUL ACCUSÉ DE RÉCEPTION D'UN PAIEMENT D'AVANCE.
+	// Entre le règlement et le premier départ, il peut se passer une nuit :
+	// sans ce message, le passager s'endort sans savoir si son mois est
+	// engagé, et rappelle le support pour le demander.
+	KeyRideSubscriptionActive = "ride_subscription_active"
+	// ⚠️ Un abonnement NE SE RENOUVELLE PAS tout seul. Sans ce message, le
+	// passager l'apprend le lendemain matin, en n'ayant pas de voiture.
+	KeyRideSubscriptionEnded = "ride_subscription_ended"
 	// KeyDeliveryExpired : aucun livreur en N minutes — la course est retirée
 	// du pot commun, et c'est au MARCHAND de relancer la recherche. Sans ce
 	// message, il attendrait devant un repas froid sans savoir que plus
@@ -293,6 +304,24 @@ var defaults = map[string]Template{
 		Locales: map[string]Text{
 			LocaleFR: {Title: "Nous cherchons votre chauffeur", Body: "Votre course de [time] depuis [pickup] est lancée : un chauffeur arrive bientôt."},
 			LocaleEN: {Title: "Finding your driver", Body: "Your [time] ride from [pickup] has started: a driver will be on the way shortly."},
+		},
+	},
+	KeyRideSubscriptionActive: {
+		Key:         KeyRideSubscriptionActive,
+		Description: "Abonnement de courses : le paiement est acquis, l'abonnement est actif — message au PASSAGER.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Votre abonnement est actif", Body: "[rides] courses vous attendent, jusqu'au [ends]. Nous vous préviendrons avant chaque départ."},
+			LocaleEN: {Title: "Your subscription is active", Body: "[rides] rides are yours until [ends]. We will remind you before each pickup."},
+		},
+	},
+	KeyRideSubscriptionEnded: {
+		Key:         KeyRideSubscriptionEnded,
+		Description: "Abonnement de courses : la période est terminée — message au PASSAGER. Un abonnement ne se renouvelle pas tout seul.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Votre abonnement est terminé", Body: "Vos [rides] courses ont couru jusqu'au [ends]. Reprenez le même en deux gestes."},
+			LocaleEN: {Title: "Your subscription has ended", Body: "Your [rides] rides ran until [ends]. Start the same one again in two taps."},
 		},
 	},
 	KeyRideScheduledFailed: {
@@ -625,9 +654,15 @@ var provided = map[string][]string{
 	KeyDispatchFailed: {"order_ref"},
 	// Les courses programmées : le lieu de départ, l'heure locale, les
 	// minutes avant l'appel, et la raison d'un échec.
-	KeyRideScheduledSoon:      {"pickup", "time", "minutes"},
-	KeyRideScheduledStarted:   {"pickup", "time"},
-	KeyRideScheduledFailed:    {"pickup", "time", "reason"},
+	KeyRideScheduledSoon:    {"pickup", "time", "minutes"},
+	KeyRideScheduledStarted: {"pickup", "time"},
+	KeyRideScheduledFailed:  {"pickup", "time", "reason"},
+	// L'abonnement : le nombre de courses de la période, et sa fin. ⚠️ PAS
+	// la période elle-même — « weekly » écrit dans une phrase française est
+	// ce que la plateforme dirait si on la laissait interpoler un mot du
+	// code, et chaque langue le dit autrement.
+	KeyRideSubscriptionActive: {"rides", "ends"},
+	KeyRideSubscriptionEnded:  {"rides", "ends"},
 	KeyDeliveryExpired:        {"order_ref", "minutes"},
 	KeyRideTipReceived:        {"rider", "amount"},
 	KeyRideRatePrompt:         {"driver"},
