@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.23.0** · 23 septembre 2026
+> **Version 4.24.0** · 23 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -603,6 +603,74 @@ application antérieure ne casse pas) — mais alors **aucune attente n'est
 facturée** : la plateforme ne devine pas quand vous êtes arrivé. Une course
 `arrived` peut encore être annulée, par vous (`POST /rides/{id}/decline`)
 ou par le passager.
+
+#### 📍 Votre APPROCHE est enregistrée toute seule (v4.24.0)
+
+**Vous n'avez rien à faire.** Au moment où vous envoyez `arrived`, la
+plateforme fige ce que vous avez roulé **pour venir** et l'écrit sur la
+course :
+
+```
+approach_duration_s   le temps que vous avez mis, depuis l'ACCEPTATION
+approach_distance_m   les kilomètres de l'approche
+approach_polyline     votre parcours réel (polyline Google [lat, lng])
+approach_source       "tracked" (le suivi avait vos positions) · "planned" (il n'avait rien)
+```
+
+⚠️ **C'est la moitié de la course que personne ne mesurait**, et c'est la
+vôtre : vous la roulez sans être payé pour. Enregistrée, elle vous défend —
+« il a mis vingt minutes » se vérifie, et un embouteillage se voit sur le
+tracé.
+
+⚠️ **La durée court depuis l'ACCEPTATION**, pas depuis `picking_up` : c'est à
+l'acceptation que le passager a commencé à attendre, et c'est cette
+attente-là qu'une réclamation met en cause.
+
+⚠️ **Émettez vos positions pendant l'approche**, sous `mission_id` — voir
+« Émettre sa position ». Sans elles, `approach_source` vaut `planned` : la
+durée reste juste (deux horodatages suffisent), mais **le tracé qui vous
+défendrait n'existe pas**.
+
+⚠️ **Conséquence à connaître :** `actual_distance_m`, la distance de la
+course, **ne compte plus vos kilomètres d'approche** — elle commence là où
+le passager monte. Une course de 8 km après 6 km d'approche affichait 14 km
+avant la v4.24.0.
+
+### 🔔 KLAXONNER — « je suis là » (v4.24.0)
+
+Vous êtes sur place, vous ne voyez personne.
+
+```
+POST /rides/{id}/honk
+→ 200 { …la course…, "honked_at", "honk_count" }
+→ 409 not_arrived     — vous n'avez pas encore envoyé `arrived`
+→ 409 honk_too_soon   — trop tôt (meta.cooldown_s)
+```
+
+Le passager reçoit une notification courte et sonore qui dit **qui** l'attend
+et **dans quoi** — c'est ce qu'il cherche des yeux en sortant. La course ne
+change pas d'état : elle reste `arrived`, et vous pouvez klaxonner plusieurs
+fois.
+
+> ⚠️ **GRISEZ LE BOUTON PENDANT 60 SECONDES APRÈS CHAQUE COUP**, avec un
+> compte à rebours visible.
+>
+> Un bouton qui sonne fort et qu'on peut presser dix fois devient du
+> harcèlement en dix secondes — et c'est le passager, celui qui descend les
+> escaliers avec ses sacs, qui le prend. Le service refuse de toute façon un
+> second klaxon trop rapproché (`409 honk_too_soon`), mais **ne comptez pas
+> là-dessus pour l'affichage** : un bouton qui répond « non » est un bouton
+> cassé aux yeux de celui qui appuie.
+>
+> Le décompte repart de `honked_at`, pas d'un minuteur local : l'application
+> redémarrée ne doit pas offrir un klaxon de plus.
+
+⚠️ **Klaxonner n'est pas « dépêchez-vous ».** C'est pour cela que la route
+refuse avant `arrived` : personne ne descend attendre sous le soleil une
+voiture qui est encore à dix minutes.
+
+`honk_count` est visible de l'exploitation : un passager qui se plaint
+d'avoir été harcelé doit pouvoir être cru — ou non.
 
 ### Le temps réel — les minutes roulées au-delà du prévu (v4.14.0)
 

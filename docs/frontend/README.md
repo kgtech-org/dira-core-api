@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.23.0** · 23 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.24.0** · 23 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,43 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.24.0 — 23 septembre 2026
+
+**Ajout rétrocompatible** — **l'APPROCHE enregistrée toute seule**, et **le
+KLAXON** (`VTC-DRIVER.md` § 4, `VTC-CLIENT.md` § 5).
+
+**1. L'approche.** Au moment où le chauffeur envoie `arrived`, la plateforme
+fige ce qu'il a roulé **pour venir** : `approach_duration_s` (depuis
+l'**acceptation**), `approach_distance_m`, `approach_polyline`,
+`approach_source`. Rien à faire côté application.
+
+⚠️ **C'est la moitié de la course que personne ne mesurait.** Le passager la
+vit entièrement — c'est son attente —, le chauffeur la roule sans être payé
+pour, et aucune des deux ne pouvait la raconter. « Il a dit cinq minutes et
+il en a mis vingt » ne se tranchait sur rien.
+
+⚠️ **Conséquence à connaître :** `actual_distance_m` **ne compte plus les
+kilomètres de l'approche**. La distance de la course commence là où le
+passager monte. Une course de 8 km après 6 km d'approche affichait 14 km
+avant cette version — un chiffre qui ne voulait rien dire, ni pour le
+passager qui le lisait, ni pour les moyennes.
+
+**2. Le klaxon.** `POST /rides/{id}/honk` (chauffeur, **seulement une fois
+`arrived`**) → le passager reçoit `ride_driver_honked` : « [driver] est
+devant, dans [vehicle]. Il vous cherche. »
+
+⚠️ **Ce n'est pas l'arrivée redite.** L'arrivée est une *information* ; le
+klaxon est un *appel* — il arrive plus tard, il veut dire « maintenant ».
+Côté passager : **son et vibration d'urgence**. Côté chauffeur : **grisez le
+bouton 60 s**, compte à rebours visible, décompte calé sur `honked_at` et
+non sur un minuteur local. Le service refuse de toute façon un second klaxon
+trop rapproché (`409 honk_too_soon`) — mais un bouton qui répond « non » est
+un bouton cassé aux yeux de celui qui appuie.
+
+Un bouton qui sonne fort et qu'on peut presser dix fois devient du
+harcèlement en dix secondes, et c'est le passager — celui qui descend les
+escaliers avec ses sacs — qui le prend.
 
 ### 4.23.0 — 23 septembre 2026
 
