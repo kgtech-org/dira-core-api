@@ -219,6 +219,10 @@ func run(logger *slog.Logger) error {
 	verticals := callback.NewRegistry(map[string]*callback.Client{
 		payment.PurposeOrder: callback.New(cfg.FoodBaseURL, cfg.FoodCallbackToken),
 		payment.PurposeRide:  callback.New(cfg.VTCBaseURL, cfg.VTCCallbackToken),
+		// L'abonnement de courses va chez les COURSES, comme une course —
+		// mais sous son propre nom, parce que son `ref_id` n'est pas une
+		// course.
+		payment.PurposeRideSubscription: callback.New(cfg.VTCBaseURL, cfg.VTCCallbackToken),
 	})
 	if len(verticals.Purposes()) == 0 {
 		logger.Error("no vertical configured: no mobile-money payment can ever be confirmed",

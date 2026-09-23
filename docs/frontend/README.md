@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.22.0** · 22 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.23.0** · 23 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,42 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.23.0 — 23 septembre 2026
+
+**Ajout rétrocompatible** — **l'ABONNEMENT aux courses** (`VTC-CLIENT.md`,
+section 4 ter), et **une occurrence qui se saute ou se reporte**
+(`VTC-CLIENT.md`, section 4 bis).
+
+Le trajet de tous les jours — bureau, école, retour — se décrit **une fois**,
+se paie **d'avance**, et coûte **moins cher**. `POST /subscriptions/estimate`
+rend ce que la semaine ET le mois coûtent, côte à côte ; `POST
+/subscriptions` engage ; `/pay` active. À l'activation, chaque trajet devient
+une **programmation récurrente** : les abonnements ne sont pas un second
+ordonnanceur, ils se posent sur celui qui existe.
+
+⚠️ **Trois choses à ne pas rater côté application :**
+
+1. **Les deux périodes s'affichent ENSEMBLE**, avec `saving_xof` en évidence.
+   Le passager choisit en comparant ; servir une période à la fois l'oblige à
+   comparer de mémoire.
+2. **Le mois compte les jours RÉELS** — 23 jours ouvrés du 5 octobre au 5
+   novembre, pas « quatre semaines ». C'est le nombre que quelqu'un vérifie
+   avant de s'engager.
+3. **Deux rappels avant chaque départ** (`alert_leads_min: [30, 1]`) : 30 min
+   pour se préparer, 1 min pour renoncer. ⚠️ **Chaque rappel porte ses
+   boutons** — `POST /scheduled-rides/{id}/skip-next` (« pas aujourd'hui ») et
+   `/postpone` (« dans 30 min »). Un rappel sans bouton pour dire non est une
+   alarme, pas un service.
+
+`payment_method: "subscription"` se **lit** sur une course née d'un
+abonnement : elle est **déjà payée**, pas d'écran de paiement à la fin. Il ne
+se commande pas sur `POST /rides`.
+
+Les conditions sont un réglage **du pays** (`GET /settings/subscription`) :
+remises, plancher de courses, moments des rappels, délai avant qu'un
+abonnement impayé expire. Un tarif d'abonnement se règle **pour la suite** —
+les abonnements déjà vendus ne changent pas de prix.
 
 ### 4.22.0 — 22 septembre 2026
 
