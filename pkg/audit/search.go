@@ -8,6 +8,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 )
 
 // Filter narrows a search of the journal.
@@ -24,6 +26,7 @@ type Filter struct {
 type Row struct {
 	ID           string    `json:"id"`
 	Service      string    `json:"service,omitempty"`
+	Country      string    `json:"country,omitempty"`
 	ActorID      string    `json:"actor_id"`
 	ActorRole    string    `json:"actor_role"`
 	Action       string    `json:"action"`
@@ -41,7 +44,9 @@ func (r *Recorder) Search(ctx context.Context, f Filter, limit int, cursor strin
 	if r.col == nil {
 		return nil, "", fmt.Errorf("audit: search on a remote recorder")
 	}
-	filter := bson.M{}
+	// ⚠️ BORNÉ PAR LE PAYS de la requête : le journal est unique pour toute
+	// la plateforme, mais on ne le lit jamais qu'au travers d'un pays.
+	filter := country.Restrict(ctx, bson.M{})
 	if f.Service != "" {
 		filter["service"] = f.Service
 	}
@@ -92,7 +97,7 @@ func (r *Recorder) Search(ctx context.Context, f Filter, limit int, cursor strin
 
 func toRow(e *Entry) Row {
 	return Row{
-		ID: e.ID.Hex(), Service: e.Service, ActorID: e.ActorID, ActorRole: e.ActorRole, Action: e.Action,
+		ID: e.ID.Hex(), Service: e.Service, Country: e.Country, ActorID: e.ActorID, ActorRole: e.ActorRole, Action: e.Action,
 		ResourceType: e.Resource.Type, ResourceID: e.Resource.ID,
 		Before: plainJSON(e.Before), After: plainJSON(e.After), IP: e.IP, CreatedAt: e.CreatedAt,
 	}

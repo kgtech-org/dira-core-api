@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 	"github.com/kgtech-org/dira-core-api/pkg/db"
 )
 
@@ -108,10 +109,17 @@ type EntryFilter struct {
 	To      time.Time
 }
 
-func (f EntryFilter) query() bson.M {
-	q := bson.M{}
+// query rend le filtre du journal, BORNÉ PAR LE PAYS de la requête.
+//
+// ⚠️ La borne est posée ici, par `country.Restrict`, et pas en recopiant
+// `country.FromContext` dans le filtre : c'est le même geste que partout
+// ailleurs sur la plateforme, et c'est celui que l'analyseur de frontière
+// (`pkg/country/guard`) sait reconnaître. Un pays explicite — un rapport
+// programmé qui compose le Sénégal depuis une tâche de fond — l'emporte.
+func (f EntryFilter) query(ctx context.Context) bson.M {
+	q := country.Restrict(ctx, bson.M{})
 	if f.Country != "" {
-		q["country"] = f.Country
+		q[country.Field] = f.Country
 	}
 	if f.Account != "" {
 		q["lines.account"] = f.Account
@@ -148,7 +156,7 @@ func (f EntryFilter) query() bson.M {
 }
 
 func (r *Repository) ListEntries(ctx context.Context, f EntryFilter, limit int, cursor string) ([]Entry, string, error) {
-	q := f.query()
+	q := f.query(ctx)
 	if cursor != "" {
 		if cid, err := primitive.ObjectIDFromHex(cursor); err == nil {
 			q["_id"] = bson.M{"$lt": cid}
@@ -184,7 +192,7 @@ type AccountTotal struct {
 // Totals : la balance des comptes sur une période, par unité.
 func (r *Repository) Totals(ctx context.Context, f EntryFilter) ([]AccountTotal, error) {
 	cur, err := r.entries.Aggregate(ctx, mongo.Pipeline{
-		{{Key: "$match", Value: f.query()}},
+		{{Key: "$match", Value: f.query(ctx)}},
 		{{Key: "$unwind", Value: "$lines"}},
 		{{Key: "$group", Value: bson.M{
 			"_id":     "$lines.account",
@@ -213,7 +221,7 @@ type ReasonTotal struct {
 
 func (r *Repository) ByReason(ctx context.Context, f EntryFilter) ([]ReasonTotal, error) {
 	cur, err := r.entries.Aggregate(ctx, mongo.Pipeline{
-		{{Key: "$match", Value: f.query()}},
+		{{Key: "$match", Value: f.query(ctx)}},
 		{{Key: "$group", Value: bson.M{"_id": "$reason", "amount": bson.M{"$sum": "$amount"}, "entries": bson.M{"$sum": 1}}}},
 		{{Key: "$sort", Value: bson.D{{Key: "amount", Value: -1}}}},
 	})
@@ -239,7 +247,7 @@ func (r *Repository) ByDay(ctx context.Context, f EntryFilter) ([]DayTotal, erro
 	revenue := bson.A{AccRevenueCommission, AccRevenueTokens, AccRevenueEquipment, AccRevenueFees}
 	expense := bson.A{AccExpensePromo, AccExpenseCredits, AccExpenseWriteoff}
 	cur, err := r.entries.Aggregate(ctx, mongo.Pipeline{
-		{{Key: "$match", Value: f.query()}},
+		{{Key: "$match", Value: f.query(ctx)}},
 		{{Key: "$unwind", Value: "$lines"}},
 		{{Key: "$group", Value: bson.M{
 			"_id": bson.M{"$dateToString": bson.M{"format": "%Y-%m-%d", "date": "$at"}},

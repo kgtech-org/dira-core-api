@@ -27,6 +27,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 )
 
 // Stream est le nom du flux. Un seul pour toute la plateforme : la verticale
@@ -71,6 +73,14 @@ type Fact struct {
 	Kind     string    `json:"kind"`
 	Vertical string    `json:"vertical"`
 	At       time.Time `json:"at"`
+	// Country est le pays où le fait a eu lieu, posé à l'émission depuis la
+	// requête — voir `Redis.Emit`.
+	//
+	// ⚠️ SANS LUI, L'ANALYSE EST MONDIALE. Les zones rouges, les classements
+	// d'activité et les signaux sont calculés sur ces faits : mêler deux pays
+	// ne se voit pas sur une carte centrée sur une ville, mais la console de
+	// Dakar y lisait les chiffres de Lomé.
+	Country string `json:"country,omitempty"`
 	// Geo est le lieu du fait, [lng, lat]. Pour une demande, c'est là où le
 	// client attend — le point de départ d'une course, la collecte d'une
 	// livraison. Zéro = fait sans lieu (conservé, jamais regroupé).
@@ -117,6 +127,13 @@ func NewRedis(rdb *redis.Client, maxLen int64) *Redis {
 func (e *Redis) Emit(ctx context.Context, f Fact) {
 	if f.At.IsZero() {
 		f.At = time.Now().UTC()
+	}
+	// Le pays est posé ICI, à l'émission, plutôt que par chaque appelant :
+	// il y a une trentaine de points d'émission dans les deux verticales, et
+	// celui qu'on aurait oublié aurait produit un fait apatride — invisible
+	// dans toutes les consoles.
+	if f.Country == "" {
+		f.Country = country.FromContext(ctx)
 	}
 	values, err := Encode(f)
 	if err != nil {

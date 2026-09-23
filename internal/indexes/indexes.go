@@ -127,10 +127,15 @@ var applicationIndexes = []db.Index{
 	// Lu du plus récent au plus ancien, filtré par service, par acteur, par
 	// action ou par objet. Les verticales y écrivent par la surface de
 	// service ; personne d'autre ne le lit que la console.
-	{Collection: "audit_logs", Keys: db.K("service", 1, "_id", -1)},
-	{Collection: "audit_logs", Keys: db.K("actor_id", 1, "_id", -1)},
-	{Collection: "audit_logs", Keys: db.K("action", 1, "_id", -1)},
-	{Collection: "audit_logs", Keys: db.K("resource.id", 1, "_id", -1)},
+	//
+	// ⚠️ LE PAYS EST EN TÊTE de chacun : toute lecture du journal est bornée
+	// par le pays de la requête (`pkg/audit.Search`), donc aucune n'attaque
+	// ces index sans lui.
+	{Collection: "audit_logs", Keys: db.K("country", 1, "_id", -1)},
+	{Collection: "audit_logs", Keys: db.K("country", 1, "service", 1, "_id", -1)},
+	{Collection: "audit_logs", Keys: db.K("country", 1, "actor_id", 1, "_id", -1)},
+	{Collection: "audit_logs", Keys: db.K("country", 1, "action", 1, "_id", -1)},
+	{Collection: "audit_logs", Keys: db.K("country", 1, "resource.id", 1, "_id", -1)},
 	{Collection: "audit_logs", Keys: db.K("created_at", -1)},
 
 	// --- le matériel (internal/equipment) ---
