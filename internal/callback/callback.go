@@ -104,9 +104,17 @@ var ErrNotConfigured = errors.New("callback: vertical not configured")
 // servir `/api/v1/...` chez lui. Un appel de service va DIRECTEMENT au
 // service — passer par la passerelle publique ajouterait un saut et ferait
 // dépendre un rappel interne de la santé de l'étage public.
-func (c *Client) RefPaid(ctx context.Context, refID, paymentID string) error {
+// ⚠️ LE `purpose` PART AVEC. Une verticale peut se faire confirmer PLUSIEURS
+// sortes d'objets — une course et un abonnement de courses arrivent par la
+// même porte —, et `ref_id` seul ne dit pas lequel. Sans ce mot, il faudrait
+// chercher l'identifiant dans chaque collection jusqu'à en trouver une qui
+// réponde : un abonnement payé finirait rejeté parce qu'aucune course ne
+// porte son identifiant.
+//
+// Le champ est ADDITIF : une verticale qui l'ignore se comporte comme avant.
+func (c *Client) RefPaid(ctx context.Context, purpose, refID, paymentID string) error {
 	return c.post(ctx, "/api/v1/internal/payments/ref-paid", map[string]string{
-		"ref_id": refID, "payment_id": paymentID,
+		"purpose": purpose, "ref_id": refID, "payment_id": paymentID,
 	})
 }
 

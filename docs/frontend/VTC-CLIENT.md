@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.22.0** · 22 septembre 2026
+> **Version 4.23.0** · 23 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -467,6 +467,10 @@ POST /rides
 | `wallet` | le solde est **vérifié** (`402` s'il ne couvre pas) — il n'est **débité qu'à l'acceptation** d'un chauffeur (v4.4.0) | **remboursé** sur le portefeuille si un chauffeur avait accepté ; rien à rendre avant |
 | `online` | `payment_url` est rendue — **rien n'est encaissé** | remboursé **si** le paiement a été confirmé |
 
+> `payment_method: "subscription"` (v4.23.0) se **lit** sur une course née
+> d'un abonnement — il ne se **commande** pas ici. Cette course est déjà
+> payée : pas d'écran de paiement à la fin — section **4 ter**.
+
 > ⚠️ **`402 insufficient_funds`** sur `wallet` : le solde ne couvre pas la
 > course. Ce n'est pas une panne — routez vers la recharge du portefeuille
 > (`POST /wallet/purchase`, **au socle**), pas vers un message d'erreur.
@@ -544,6 +548,179 @@ POST /scheduled-rides/{id}/pause · /resume · /cancel
   `cancel` met fin ; les courses déjà lancées continuent.
 - Statuts : `active` · `paused` · `done` (ponctuelle lancée, ou récurrence
   arrivée à `until`) · `cancelled`.
+
+### ⚠️ « Pas demain » et « plutôt à 8 h » — UNE occurrence (v4.23.0)
+
+```
+POST /scheduled-rides/{id}/skip-next          → la prochaine, et seulement elle, est sautée
+POST /scheduled-rides/{id}/postpone { "minutes": 45 }
+```
+
+Mettre en pause arrête la série ; annuler y met fin. **Ni l'un ni l'autre ne
+répond à « pas demain matin »** — un rendez-vous, un jour férié, un enfant
+malade —, et c'est le geste que fait le plus souvent quelqu'un qui roule tous
+les jours. Ces deux routes sont **le bouton du rappel** : quand la
+notification `ride_scheduled_soon` arrive, le passager doit pouvoir sauter ou
+reporter d'un geste, sans ouvrir la liste des programmations.
+
+- `skip-next` : la série continue. Une programmation **ponctuelle** n'a rien
+  à sauter — c'est une annulation, et la réponse le dit (`409 not_recurring`).
+- `postpone` : 1 à 720 minutes (12 h). ⚠️ **Seulement la prochaine** : le
+  motif ne bouge pas. « Aujourd'hui à 8 h au lieu de 7 h » ne veut pas dire
+  « désormais à 8 h ». Les rappels repartent à zéro — le passager sera
+  prévenu à la **nouvelle** heure. Un report qui rattraperait l'occurrence
+  suivante est refusé (`409 postpone_overlaps`) : deux départs le même matin,
+  c'est deux chauffeurs.
+- Les deux rendent la programmation à jour : relisez `at` et `alert_at`.
+
+---
+
+## 4 ter. 🎟️ L'ABONNEMENT — le trajet de tous les jours (v4.23.0)
+
+Un abonnement, c'est **les mêmes trajets, tous les jours, payés d'avance et
+moins cher**. Aller au bureau le matin, rentrer le soir, déposer les enfants
+à l'école en chemin. Le passager décrit son rythme une fois ; la plateforme
+appelle le chauffeur toute seule, chaque jour, aux heures dites.
+
+Trois moments, et l'application les suit dans cet ordre : **estimer**,
+**payer**, **être prévenu**.
+
+### 1. Estimer — ce que ça coûte, avant de s'engager
+
+```
+POST /subscriptions/estimate
+{ "tz": "Africa/Dakar",  "starts_on": "2026-10-05T00:00:00Z",   # demain par défaut
+  "legs": [
+    { "label": "Aller bureau",
+      "stops": [ { "kind": "pickup", "label": "Maison",  "geo": [lng, lat] },
+                 { "kind": "stop",   "label": "École",   "geo": [lng, lat] },
+                 { "kind": "dest",   "label": "Bureau",  "geo": [lng, lat] } ],
+      "class_key": "eco", "days": [1,2,3,4,5], "time": "07:00" },
+    { "label": "Retour",
+      "stops": [ … ], "class_key": "eco", "days": [1,2,3,4,5], "time": "18:00" } ] }
+
+→ 200 { "legs": [ { "label": "Aller bureau", "distance_m", "duration_s",
+                    "unit_xof": 2500, "surge_name", "surge_multiplier",
+                    "occurrences": 5, "normal_xof": 12500 }, … ],
+        "weekly":  { "period": "weekly",  "from", "to", "occurrences": 10,
+                     "normal_xof": 25000, "discount_pct": 10,
+                     "price_xof": 22500, "saving_xof": 2500 },
+        "monthly": { "period": "monthly", "occurrences": 46, "normal_xof": 115000,
+                     "discount_pct": 20, "price_xof": 92000, "saving_xof": 23000 } }
+```
+
+- Un **trajet** (`leg`) est un aller OU un retour, avec ses propres jours et
+  son heure. Un `leg` peut avoir **jusqu'à 5 arrêts** : l'école puis le
+  bureau, c'est **un seul trajet et une seule course**. Six trajets au plus.
+- `days` : jours ISO, 1 = lundi … 7 = dimanche. `time` : `"HH:MM"`, l'heure
+  de **récupération**, **locale au fuseau du passager** — « 7 h » veut dire
+  7 h chez lui.
+- ⚠️ **Les deux périodes arrivent ENSEMBLE.** Ne demandez pas « la semaine »
+  puis « le mois » : le passager choisit en **comparant**, et il faut les
+  montrer côte à côte, avec `saving_xof` en évidence. C'est l'économie qui
+  décide, pas le prix.
+- ⚠️ **Le mois n'est pas « quatre semaines ».** `occurrences` compte les
+  jours **réels** entre deux dates : du 5 octobre au 5 novembre, il y a 23
+  jours ouvrés — pas 20, pas 21,67. Affichez ce nombre : c'est ce que
+  quelqu'un qui travaille cinq jours par semaine vérifie avant de s'engager.
+- ⚠️ **La majoration est dans le prix.** `surge_name` / `surge_multiplier`
+  (en millièmes, 1400 = ×1,4) sont rendus par trajet, **présents seulement si
+  une majoration s'applique**. Un abonnement au départ de l'aéroport coûte ce
+  que coûtent des courses depuis l'aéroport — dites-le, sinon le passager
+  croira à une erreur.
+- `422` : un motif qui ne produit **aucune** course dans la période, ou
+  **trop peu** (« *at least 4 rides over the period* ») — en dessous du
+  plancher du pays, l'abonnement n'a pas de sens : deux courses par mois se
+  commandent à la course.
+
+Les **conditions du pays** — pour annoncer « jusqu'à −20 % le mois » avant
+même l'estimation :
+
+```
+GET /settings/subscription
+→ { "weekly_discount_pct": 10, "monthly_discount_pct": 20,
+    "min_occurrences": 4, "alert_leads_min": [30, 1], "pending_hours": 24 }
+```
+
+### 2. Souscrire et payer — l'abonnement est payé d'AVANCE
+
+```
+POST /subscriptions
+{ …le même corps que l'estimation…, "period": "monthly",
+  "payment_method": "wallet",     # ou "online" — PAS d'espèces
+  "note": "…" }
+→ 201 { "id", "status": "pending_payment", "period", "price_xof", "normal_xof",
+        "saving_xof", "occurrences", "starts_on", "ends_on",
+        "alert_leads_min": [30, 1], "legs": [ … ] }
+
+POST /subscriptions/{id}/pay
+→ 200 { "status": "active", "paid_at" }                       # portefeuille
+→ 200 { "status": "pending_payment", "payment_url": "https://…" }   # en ligne
+```
+
+- ⚠️ **Le prix est RECALCULÉ à la souscription**, il n'est pas repris de
+  l'estimation. Une estimation vieille d'une heure n'engage pas la
+  plateforme. Montrez le prix rendu par le `201`, pas celui que vous aviez.
+  S'il a changé, dites-le.
+- ⚠️ **`pending_payment` n'est PAS un abonnement.** Aucune course ne part
+  tant que le paiement n'est pas acquis. Passé `pending_hours` (24 h par
+  défaut), il **expire tout seul**.
+- `payment_url` **n'est pas un encaissement** : ouvrez-la, puis attendez. Le
+  statut passe à `active` quand l'opérateur rappelle le socle — relisez
+  `GET /subscriptions/{id}`, ou attendez la notification
+  `ride_subscription_active`.
+- `402 insufficient_funds` : solde insuffisant. Proposez de recharger, puis
+  de rappeler `/pay` — l'abonnement est toujours là.
+- À l'activation, **chaque trajet devient une programmation récurrente** :
+  `legs[].schedule_id` apparaît. C'est elle qui préviendra et appellera.
+- Les courses lancées par un abonnement portent
+  `payment_method: "subscription"` : ⚠️ **elles ne sont pas re-facturées**.
+  N'affichez ni prix à payer ni écran de paiement à la fin — c'est déjà payé.
+  Le montant reste visible à titre indicatif.
+
+### 3. Vivre avec — être prévenu, et pouvoir dire non
+
+⚠️ **Le passager est prévenu DEUX FOIS avant chaque départ** :
+`alert_leads_min` vaut `[30, 1]` par défaut — **30 minutes pour se préparer,
+1 minute pour renoncer**. Un seul rappel loin du départ s'oublie ; un seul
+rappel juste avant ne laisse pas le temps de s'habiller.
+
+Les deux rappels sont la notification `ride_scheduled_soon` (data :
+`{ "type": "scheduled_ride", "schedule_id", "at" }`), suivie de
+`ride_scheduled_started` quand l'appel part — exactement comme une
+programmation ordinaire, parce que **c'en est une**.
+
+⚠️ **Un rappel sans bouton pour dire non est une alarme, pas un service.**
+Chaque rappel doit offrir, sur place :
+
+| Le passager veut | Vous appelez |
+|---|---|
+| « pas aujourd'hui » | `POST /scheduled-rides/{schedule_id}/skip-next` |
+| « dans 30 minutes » | `POST /scheduled-rides/{schedule_id}/postpone { "minutes": 30 }` |
+| « laissez partir » | rien — l'appel part à l'heure |
+
+Le `schedule_id` est celui du **trajet** (`legs[].schedule_id`), pas celui de
+l'abonnement : on saute un aller, pas un mois.
+
+Et sur l'abonnement lui-même :
+
+```
+GET  /subscriptions              # les miens en cours ; ?all=true pour l'historique
+GET  /subscriptions/{id}
+POST /subscriptions/{id}/pause · /resume · /cancel
+```
+
+- `pause` arrête les départs ; ⚠️ **la période ne s'allonge pas d'autant** —
+  un mois payé est un mois de calendrier. Pour une absence d'**un jour**,
+  `skip-next` sur le trajet concerné, pas une pause.
+- `cancel` : un abonnement encore `pending_payment` est simplement abandonné.
+  Un abonnement **actif n'est pas remboursé au prorata** par cette route —
+  le remboursement est une décision de l'exploitation, à demander au support.
+- Statuts : `pending_payment` · `active` · `paused` · `expired` (la période
+  est passée — notification `ride_subscription_ended`) · `cancelled`.
+- ⚠️ **Un abonnement ne se renouvelle PAS tout seul.** À `ends_on`, il
+  expire. Proposez de reprendre le même — c'est le moment où le passager y
+  pense, et le seul.
 
 ---
 

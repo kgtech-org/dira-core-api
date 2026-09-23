@@ -376,6 +376,47 @@ func TestWebhookConfirmsToTheRightVertical(t *testing.T) {
 	assert.Equal(t, rideID, got[0].ref)
 }
 
+// ⚠️ UN ABONNEMENT PAYÉ EN LIGNE DOIT S'ACTIVER.
+//
+// `ride_subscription` part chez la même verticale que `ride`, mais sous son
+// propre nom : son `ref_id` désigne un abonnement, pas une course. Confondus,
+// les courses iraient chercher une course de cet identifiant, ne la
+// trouveraient pas, et le passager aurait payé son mois sans jamais voir son
+// abonnement s'activer.
+//
+// Le doublon rejoue AUSSI : c'est la reprise du prestataire, et l'oublier
+// ferait dépendre l'activation du tout premier webhook.
+func TestASubscriptionPaymentIsConfirmedUnderItsOwnPurpose(t *testing.T) {
+	svc, _, _, mock := newTestService(t)
+
+	var purposes, refs []string
+	svc.OnRefPaid = func(_ context.Context, purpose, refID, _ string) error {
+		purposes, refs = append(purposes, purpose), append(refs, refID)
+		return nil
+	}
+	var replayed []string
+	svc.OnRefPaidDuplicate = func(_ context.Context, purpose, refID, _ string) error {
+		assert.Equal(t, PurposeRideSubscription, purpose)
+		replayed = append(replayed, refID)
+		return nil
+	}
+
+	subID := primitive.NewObjectID().Hex()
+	resp, err := svc.Initiate(context.Background(), primitive.NewObjectID().Hex(), InitiatePaymentRequest{
+		Purpose: PurposeRideSubscription, Amount: 92000, RefID: subID,
+	})
+	require.NoError(t, err)
+
+	payload, sig := signedEvent(t, mock, resp.Payment.ProviderRef, StatusSucceeded)
+	require.NoError(t, svc.HandleWebhook(context.Background(), "mock", payload, sig))
+	require.Equal(t, []string{PurposeRideSubscription}, purposes)
+	assert.Equal(t, []string{subID}, refs)
+
+	// La reprise du prestataire : elle doit ré-enfiler, pas se taire.
+	require.NoError(t, svc.HandleWebhook(context.Background(), "mock", payload, sig))
+	assert.Equal(t, []string{subID}, replayed)
+}
+
 // Un `purpose` dont aucune verticale n'est branchée doit faire ÉCHOUER le
 // webhook, pas l'acquitter : le prestataire réessaiera. Répondre « reçu » sans
 // avoir prévenu personne laisserait la course payée et jamais confirmée — et

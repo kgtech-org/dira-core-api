@@ -248,13 +248,30 @@ func (s *Service) replayRefPaid(ctx context.Context, p *Payment) {
 	if s.OnRefPaidDuplicate == nil {
 		return
 	}
-	if p.Purpose != PurposeOrder && p.Purpose != PurposeRide {
+	if !notifiesVertical(p.Purpose) {
 		return
 	}
 	if err := s.OnRefPaidDuplicate(ctx, p.Purpose, p.RefID.Hex(), p.ID.Hex()); err != nil {
 		slog.WarnContext(ctx, "payment: could not re-queue the vertical callback for a duplicate webhook",
 			"payment_id", p.ID.Hex(), "purpose", p.Purpose, "error", err)
 	}
+}
+
+// notifiesVertical dit si ce `purpose` désigne un objet qui vit dans une
+// VERTICALE — par opposition au portefeuille et aux jetons, que le socle
+// crédite lui-même.
+//
+// ⚠️ Une seule liste, lue par la confirmation ET par le rejeu d'un doublon.
+// Séparées, elles ont divergé : un `purpose` ajouté d'un côté seulement
+// confirmait le premier webhook et laissait tomber les reprises — l'échec le
+// plus difficile à voir, puisqu'il ne se produit que quand le prestataire
+// réessaie.
+func notifiesVertical(purpose string) bool {
+	switch purpose {
+	case PurposeOrder, PurposeRide, PurposeRideSubscription:
+		return true
+	}
+	return false
 }
 
 func (s *Service) confirmSucceeded(ctx context.Context, p *Payment) error {
@@ -272,7 +289,7 @@ func (s *Service) confirmSucceeded(ctx context.Context, p *Payment) error {
 	s.record(ctx, "payment.succeeded", p, StatusSucceeded)
 
 	switch p.Purpose {
-	case PurposeOrder, PurposeRide:
+	case PurposeOrder, PurposeRide, PurposeRideSubscription:
 		if s.OnRefPaid == nil {
 			slog.WarnContext(ctx, "payment: OnRefPaid hook not configured, skipping",
 				"payment_id", p.ID.Hex(), "purpose", p.Purpose, "ref_id", p.RefID.Hex())

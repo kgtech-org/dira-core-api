@@ -20,8 +20,17 @@ const (
 	// verticale qu'il faut prévenir quand le prestataire confirme, et confondre
 	// les deux enverrait la confirmation d'une course à la livraison — qui ne
 	// connaît aucune course et la refuserait.
-	PurposeRide          = "ride"
-	PurposeTokenPurchase = "token_purchase"
+	PurposeRide = "ride"
+	// PurposeRideSubscription paie un ABONNEMENT de courses — un mois de
+	// trajets réglé d'avance, pas une course.
+	//
+	// ⚠️ Distinct de `ride` alors que la MÊME verticale est prévenue : le
+	// `ref_id` ne désigne pas le même objet. Confondus, la confirmation d'un
+	// abonnement irait chercher une course de cet identifiant, ne la
+	// trouverait pas, et le passager aurait payé son mois sans jamais voir
+	// son abonnement s'activer.
+	PurposeRideSubscription = "ride_subscription"
+	PurposeTokenPurchase    = "token_purchase"
 	// PurposeWalletTopup recharge le portefeuille d'ARGENT d'un client. Le
 	// crédit n'a lieu qu'à la CONFIRMATION du prestataire : créditer sur la
 	// réponse d'une initiation reviendrait à offrir l'argent.

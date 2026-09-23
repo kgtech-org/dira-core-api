@@ -800,6 +800,30 @@ paths:
     post:
       tags: [payments]
       summary: Start a payment
+      description: >-
+        `purpose` dit CE QUI est payé, et c'est lui qui décide de qui sera
+        prévenu à la confirmation : `order` (livraison), `ride` et
+        `ride_subscription` (courses), `wallet_topup` et `token_purchase`
+        (le socle crédite lui-même).
+
+
+        ⚠️ `ref_id` désigne l'objet DE CE `purpose` : une commande, une
+        course, un abonnement, ou le propriétaire du portefeuille. Les
+        confondre enverrait la confirmation chercher un objet qui n'existe
+        pas.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purpose, ref_id, amount]
+              properties:
+                purpose: {type: string, enum: [order, ride, ride_subscription, token_purchase, wallet_topup]}
+                ref_id: {type: string}
+                amount: {type: integer}
+                provider: {type: string}
+                tokens: {type: integer, description: "requis (> 0) pour token_purchase"}
       responses:
         "201": {description: Payment with its checkout URL}
   /payments/{id}:
@@ -814,10 +838,15 @@ paths:
       tags: [payments]
       summary: Provider callback
       description: >-
-        Signature vérifiée. ⚠️ Confirmer le paiement d'une COMMANDE suppose de
-        prévenir la verticale, seule à savoir ce qu'est une commande : ce
-        rappel sortant n'existe pas encore, et le module le journalise
-        bruyamment plutôt que de le perdre.
+        Signature vérifiée. Confirmer le paiement d'un objet suppose de
+        prévenir la VERTICALE, seule à savoir ce qu'est une commande, une
+        course ou un abonnement : le rappel part en file, avec le `purpose`
+        du paiement, et les reprises sont durables.
+
+
+        ⚠️ Un échec de mise en file fait ÉCHOUER le webhook, et il le faut :
+        le prestataire réessaie. Acquitter sans avoir enfilé le rappel
+        laisserait l'objet payé et jamais confirmé.
       parameters: [{name: provider, in: path, required: true, schema: {type: string}}]
       responses:
         "204": {description: Acknowledged}

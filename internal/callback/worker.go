@@ -56,7 +56,7 @@ func (w *Worker) HandleRefPaid(ctx context.Context, t *asynq.Task) error {
 			"hint", "set FOOD_BASE_URL / VTC_BASE_URL and their callback tokens")
 		return fmt.Errorf("callback: no vertical for purpose %q: %w", p.Purpose, asynq.SkipRetry)
 	}
-	if err := v.RefPaid(ctx, p.RefID, p.PaymentID); err != nil {
+	if err := v.RefPaid(ctx, p.Purpose, p.RefID, p.PaymentID); err != nil {
 		// ⚠️ On JOURNALISE à chaque échec, avec le compte d'essais. Une file
 		// qui réessaie en silence pendant vingt minutes ressemble, vue de
 		// l'extérieur, à une plateforme qui a perdu un paiement.

@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.22.0** · 22 septembre 2026
+> **Version 4.23.0** · 23 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -1182,3 +1182,11 @@ Non commencé.
 `fare_xof` est le prix. Aucun champ ne dit « encaissez ceci » — pour une course
 en espèces, c'est le même montant. Un champ explicite serait plus sûr : à
 demander si l'écran en a besoin.
+
+> ⚠️ **`payment_method: "subscription"` (v4.23.0) — N'ENCAISSEZ RIEN.** Le
+> passager est abonné : la course a été payée d'avance, en même temps que
+> tout son mois. Votre part vous est créditée comme pour une course
+> `wallet`. Traitez ce moyen **exactement comme** `wallet` ou `online` à
+> l'écran de fin : `fare_xof` s'affiche, mais rien n'est à prendre. Un
+> chauffeur qui réclame l'argent d'une course déjà payée, c'est une
+> réclamation à tous les coups.
