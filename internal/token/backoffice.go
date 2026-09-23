@@ -219,50 +219,12 @@ func (r *Repository) ListWallets(ctx context.Context, walletType, ownerID, curso
 }
 
 // ListLedger pages token movements, newest first, optionally for one wallet.
+//
+// ⚠️ LE MOUVEMENT NE PORTE PAS DE PAYS, son PORTEFEUILLE si. Cette liste
+// balayait donc les mouvements de toute la plateforme dès qu'on ne nommait
+// pas un portefeuille — la surface de service que la livraison interroge
+// pour son écran « jetons ». Elle passe par la même lecture que la console,
+// qui joint le portefeuille et borne sur son pays.
 func (r *Repository) ListLedger(ctx context.Context, walletID, cursor string, limit int) ([]LedgerRow, string, error) {
-	limit = pageLimit(limit)
-	filter := bson.M{}
-	if walletID != "" {
-		wid, err := primitive.ObjectIDFromHex(walletID)
-		if err != nil {
-			return nil, "", apperr.Validation("invalid wallet id").WithCause(err)
-		}
-		filter["wallet_id"] = wid
-	}
-	opts := options.Find().SetSort(bson.D{{Key: "_id", Value: -1}}).SetLimit(int64(limit + 1))
-	cur, err := r.transactions.Find(ctx, beforeCursor(filter, cursor), opts)
-	if err != nil {
-		return nil, "", apperr.Internal(err)
-	}
-	var docs []struct {
-		ID        primitive.ObjectID  `bson:"_id"`
-		WalletID  primitive.ObjectID  `bson:"wallet_id"`
-		Kind      string              `bson:"kind"`
-		Reason    string              `bson:"reason"`
-		Amount    int                 `bson:"amount"`
-		RefID     *primitive.ObjectID `bson:"ref_id,omitempty"`
-		RefKind   string              `bson:"ref_kind,omitempty"`
-		CreatedAt time.Time           `bson:"created_at"`
-	}
-	if err := cur.All(ctx, &docs); err != nil {
-		return nil, "", apperr.Internal(err)
-	}
-	next := ""
-	if len(docs) > limit {
-		docs = docs[:limit]
-		next = docs[limit-1].ID.Hex()
-	}
-	out := make([]LedgerRow, 0, len(docs))
-	for _, d := range docs {
-		row := LedgerRow{
-			ID: d.ID.Hex(), WalletID: d.WalletID.Hex(), Kind: d.Kind,
-			Reason: d.Reason, Amount: d.Amount, CreatedAt: d.CreatedAt,
-		}
-		row.RefKind = d.RefKind
-		if d.RefID != nil {
-			row.RefID = d.RefID.Hex()
-		}
-		out = append(out, row)
-	}
-	return out, next, nil
+	return r.ListLedgerFiltered(ctx, LedgerFilter{WalletID: walletID}, cursor, limit)
 }

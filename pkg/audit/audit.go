@@ -20,6 +20,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
+	"github.com/kgtech-org/dira-core-api/pkg/country"
 )
 
 const Collection = "audit_logs"
@@ -28,7 +29,16 @@ type Entry struct {
 	ID primitive.ObjectID `bson:"_id,omitempty" json:"-"`
 	// Service est le SERVICE qui a écrit l'entrée — `core`, `vtc`, `food`.
 	// Vide sur les entrées d'avant le journal unique (livraison).
-	Service   string    `bson:"service,omitempty" json:"service,omitempty"`
+	Service string `bson:"service,omitempty" json:"service,omitempty"`
+	// Country est le pays où l'action a eu lieu, posé à l'écriture depuis la
+	// requête.
+	//
+	// ⚠️ UNE ACTION SE JUGE DANS SON PAYS. Le journal était unique et sans
+	// pays : la console de Dakar y lisait les suspensions de Lomé, mêlées aux
+	// siennes, sans rien pour les distinguer. Vide sur les entrées écrites
+	// avant ce champ — elles n'apparaissent plus sous aucun pays, et c'est
+	// préférable à les montrer sous tous.
+	Country   string    `bson:"country,omitempty" json:"country,omitempty"`
 	ActorID   string    `bson:"actor_id" json:"actor_id"`
 	ActorRole string    `bson:"actor_role" json:"actor_role"`
 	Action    string    `bson:"action" json:"action"` // e.g. "token.consume", "merchant.validate"
@@ -84,6 +94,7 @@ func (r *Recorder) Record(ctx context.Context, action, resourceType, resourceID 
 	actorRole, _ := auth.RoleFromContext(ctx)
 	entry := Entry{
 		Service:   r.service,
+		Country:   country.FromContext(ctx),
 		ActorID:   actorID,
 		ActorRole: actorRole,
 		Action:    action,
@@ -110,6 +121,11 @@ func (r *Recorder) Store(ctx context.Context, entry Entry) {
 	}
 	if entry.CreatedAt.IsZero() {
 		entry.CreatedAt = time.Now().UTC()
+	}
+	// Une entrée expédiée par une verticale porte DÉJÀ son pays ; si elle
+	// n'en a pas, celui de la requête qui l'apporte vaut mieux que rien.
+	if entry.Country == "" {
+		entry.Country = country.FromContext(ctx)
 	}
 	if _, err := r.col.InsertOne(ctx, entry); err != nil {
 		slog.ErrorContext(ctx, "audit: record failed", "action", entry.Action, "error", err)
