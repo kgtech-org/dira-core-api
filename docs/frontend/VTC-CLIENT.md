@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.23.0** · 23 septembre 2026
+> **Version 4.24.0** · 23 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -808,6 +808,45 @@ attente facturée = aucun de ces champs.
 Une course `arrived` s'annule encore (`POST /rides/{id}/cancel`) ; le
 chauffeur est là, dites-le avant de confirmer.
 
+#### 🔔 Il klaxonne — `ride_driver_honked` (v4.24.0)
+
+Le chauffeur est sur place et ne vous voit pas : il appuie sur un bouton, et
+vous recevez **`ride_driver_honked`** — « [driver] est devant, dans
+[vehicle]. Il vous cherche. »
+
+```
+data : { "type": "ride_status", "ride_id", "status": "arrived",
+         "event": "honk", "honk_count": "1" }
+```
+
+⚠️ **Ce n'est pas `ride_driver_arrived` à nouveau.** L'arrivée est une
+**information** ; le klaxon est un **appel** : il arrive plus tard, il veut
+dire « maintenant », et il doit sonner comme tel. Donnez-lui le son et la
+vibration que vous réservez aux choses urgentes — sinon il se noie dans un
+fil que le passager ne regarde pas, puisqu'il croyait avoir encore cinq
+minutes.
+
+Le passager n'a rien à répondre : le bon écran est celui de la course, avec
+le nom et la plaque **en grand**. C'est ce qu'il cherche des yeux en sortant.
+
+Le chauffeur ne peut klaxonner **qu'une fois arrivé**, et son application
+grise le bouton une minute après chaque coup. `honk_count` reste sur la
+course : un passager qui se plaint d'avoir été harcelé doit pouvoir être cru.
+
+#### 📍 Ce que le chauffeur a roulé pour venir (v4.24.0)
+
+Quand il signale son arrivée, la plateforme fige son **approche** sur la
+course : `approach_duration_s` (depuis l'**acceptation** — depuis le moment
+où vous avez commencé à attendre), `approach_distance_m`,
+`approach_polyline` (son parcours réel) et `approach_source`.
+
+De quoi dire « il a mis 14 min » sur l'écran de fin, et de quoi trancher une
+réclamation sur autre chose qu'une impression.
+
+⚠️ **`actual_distance_m` ne compte plus ces kilomètres-là** : la distance de
+la course commence là où vous montez. Une course de 8 km après 6 km
+d'approche affichait 14 km avant la v4.24.0.
+
 ### ⚠️ Le temps réel — 5 km en une heure ne coûtent pas 5 km en dix minutes (v4.14.0)
 
 Le devis tarife la **durée prévue** (`duration_s`, celle du réseau routier).
@@ -1119,6 +1158,7 @@ avant la réponse.
 | `ride_accepted` | un chauffeur a pris la course — nom et voiture dans le texte | `status: accepted` |
 | `ride_driver_on_the_way` | il roule vers vous | `status: picking_up` |
 | `ride_driver_arrived` | il est là et attend — les minutes offertes et le tarif ensuite dans le texte (v4.14.0) | `status: arrived`, `arrived_at`, `waiting_free_min`, `waiting_per_min_xof` |
+| `ride_driver_honked` | **il klaxonne** : sur place, il ne vous voit pas (v4.24.0) — ⚠️ son et vibration d'urgence, ce n'est pas l'arrivée redite | `status: arrived`, `event: honk`, `honk_count` |
 | `ride_cancelled` | annulée par le chauffeur ou la plateforme (`reason`) | `status: cancelled` |
 | `ride_search_exhausted` | personne n'a pris la course — relancer ou annuler (§5, v4.1.0) | `status: searching`, `dispatch_state: exhausted` |
 | `ride_fare_adjusted` | le trajet a changé en route, le prix aussi — ce qui a été débité ou rendu (§5, v4.4.0) | `event: stops_changed`, `fare_xof`, `delta_xof` |

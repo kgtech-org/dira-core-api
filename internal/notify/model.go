@@ -97,6 +97,13 @@ const (
 	// avant que l'appel ne parte, quand il part, et quand il n'a pas pu
 	// partir — une course qui devait partir à 7 h et qui ne part pas est
 	// pire qu'une course jamais programmée.
+	// KeyRideDriverHonked : le chauffeur est sur place et ne voit personne.
+	//
+	// ⚠️ Un message À PART de « votre chauffeur est là ». L'arrivée est une
+	// information ; le klaxon est un APPEL — il arrive plus tard, il veut
+	// dire « maintenant », et il doit sonner comme tel. Les confondre
+	// rendrait le second invisible, puisque le passager l'aurait déjà lu.
+	KeyRideDriverHonked     = "ride_driver_honked"
 	KeyRideScheduledSoon    = "ride_scheduled_soon"
 	KeyRideScheduledStarted = "ride_scheduled_started"
 	KeyRideScheduledFailed  = "ride_scheduled_failed"
@@ -405,6 +412,15 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "Your driver is here", Body: "[driver] is waiting for you · [vehicle]. [free] min of free waiting, then [rate]/min."},
 		},
 	},
+	KeyRideDriverHonked: {
+		Key:         KeyRideDriverHonked,
+		Description: "Le chauffeur klaxonne : il est sur place et ne voit personne — message au PASSAGER.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "🔔 Votre chauffeur vous attend", Body: "[driver] est devant, dans [vehicle]. Il vous cherche."},
+			LocaleEN: {Title: "🔔 Your driver is waiting", Body: "[driver] is outside, in [vehicle]. They are looking for you."},
+		},
+	},
 	KeyRideCancelled: {
 		Key:         KeyRideCancelled,
 		Description: "La course a été annulée par le chauffeur ou la plateforme — message au PASSAGER.",
@@ -672,30 +688,34 @@ var provided = map[string][]string{
 	KeyRideAccepted:           {"driver", "vehicle"},
 	KeyRideDriverOnTheWay:     {"driver"},
 	KeyRideDriverArrived:      {"driver", "vehicle", "free", "rate"},
-	KeyRideCancelled:          {"reason"},
-	KeyRideCancelledByRider:   {"reason"},
-	KeyDeliveryCancelled:      {"order_ref"},
-	KeyRideSearchExhausted:    {"pickup"},
-	KeyRideStopsChanged:       {"stops", "dest", "fare"},
-	KeyRideFareAdjusted:       {"fare", "adjustment"},
-	KeyMerchantNewOrder:       {"order_ref", "items", "amount"},
-	KeyLostItemReported:       {"item", "ref"},
-	KeyLostItemFound:          {"item"},
-	KeyLostItemNotFound:       {"item"},
-	KeyTicketReply:            {"reference"},
-	KeyTicketResolved:         {"reference"},
-	KeyStaffTicketOpened:      {"kind", "ref", "who"},
-	KeyStaffLostItemAnswered:  {"ref", "who", "answer", "item"},
-	KeyEquipmentProposed:      {"item", "mode"},
-	KeyEquipmentHandedOver:    {"item", "outstanding"},
-	KeyEquipmentDue:           {"item", "amount", "date"},
-	KeyEquipmentCharged:       {"item", "amount", "source"},
-	KeyEquipmentOverdue:       {"item", "amount"},
-	KeyEquipmentBlocked:       {"item", "amount"},
-	KeyEquipmentReturned:      {"item", "refund", "owed"},
-	KeyStaffEquipOverdue:      {"who", "item", "amount"},
-	KeyStaffEquipRequested:    {"who", "item", "mode"},
-	KeyStaffFinanceAlert:      {"kind", "who", "detail"},
+	// Le klaxon : QUI attend et DANS QUOI — c'est ce que le passager cherche
+	// des yeux en sortant. Ni l'heure, ni le prix : il n'a pas le temps de
+	// lire, il a le temps de reconnaître une voiture.
+	KeyRideDriverHonked:      {"driver", "vehicle"},
+	KeyRideCancelled:         {"reason"},
+	KeyRideCancelledByRider:  {"reason"},
+	KeyDeliveryCancelled:     {"order_ref"},
+	KeyRideSearchExhausted:   {"pickup"},
+	KeyRideStopsChanged:      {"stops", "dest", "fare"},
+	KeyRideFareAdjusted:      {"fare", "adjustment"},
+	KeyMerchantNewOrder:      {"order_ref", "items", "amount"},
+	KeyLostItemReported:      {"item", "ref"},
+	KeyLostItemFound:         {"item"},
+	KeyLostItemNotFound:      {"item"},
+	KeyTicketReply:           {"reference"},
+	KeyTicketResolved:        {"reference"},
+	KeyStaffTicketOpened:     {"kind", "ref", "who"},
+	KeyStaffLostItemAnswered: {"ref", "who", "answer", "item"},
+	KeyEquipmentProposed:     {"item", "mode"},
+	KeyEquipmentHandedOver:   {"item", "outstanding"},
+	KeyEquipmentDue:          {"item", "amount", "date"},
+	KeyEquipmentCharged:      {"item", "amount", "source"},
+	KeyEquipmentOverdue:      {"item", "amount"},
+	KeyEquipmentBlocked:      {"item", "amount"},
+	KeyEquipmentReturned:     {"item", "refund", "owed"},
+	KeyStaffEquipOverdue:     {"who", "item", "amount"},
+	KeyStaffEquipRequested:   {"who", "item", "mode"},
+	KeyStaffFinanceAlert:     {"kind", "who", "detail"},
 }
 
 // Provided rend les variables que la plateforme remplit pour une clé.
