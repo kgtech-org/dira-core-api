@@ -69,6 +69,11 @@ type Wallets interface {
 	CreateWallet(ctx context.Context, ownerID, walletType string) error
 	Consume(ctx context.Context, ownerID string, amount int, reason, refKind, refID string, ref map[string]any) error
 	Credit(ctx context.Context, ownerID string, amount int, reason string) error
+	// TopUp recharge un portefeuille en ARGENT, comme le ferait un paiement
+	// abouti. ⚠️ À ne pas confondre avec `Credit`, qui pose des JETONS :
+	// deux unités, deux économies — le VTC vit de la commission, la
+	// livraison des jetons.
+	TopUp(ctx context.Context, userID string, amountXOF int, ref map[string]any) error
 	// Pay et Refund déplacent l'ARGENT d'un client, pour une RÉFÉRENCE : une
 	// commande de repas, une course. Le couple (genre, identifiant) fait
 	// l'identité — deux verticales peuvent porter le même identifiant.
@@ -194,6 +199,10 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/wallets/create", h.createWallet)
 		g.Post("/internal/wallets/consume", h.consume)
 		g.Post("/internal/wallets/credit", h.credit)
+		// ⚠️ DEUX UNITÉS, deux routes : `credit` pose des JETONS, `topup`
+		// pose de l'ARGENT. Une seule route avec un champ « unité » aurait
+		// fini par créditer des francs à qui demandait des jetons.
+		g.Post("/internal/wallets/topup", h.topUp)
 		g.Post("/internal/wallets/pay", h.payRef)
 		g.Post("/internal/wallets/refund", h.refundRef)
 		g.Post("/internal/wallets/balance", h.balance)
@@ -353,6 +362,31 @@ func (h *Handler) consume(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) credit(w http.ResponseWriter, r *http.Request) {
 	h.move(w, r, func(ctx context.Context, req walletRequest) error {
 		return h.wallets.Credit(ctx, req.OwnerID, req.Amount, req.Reason)
+	})
+}
+
+// POST /internal/wallets/topup — recharger un portefeuille en ARGENT.
+//
+// ⚠️ DE LA MONNAIE CRÉÉE, comme `credit` crée des jetons. La porte est
+// gardée par le SECRET DE SERVICE, et c'est tout ce qui la protège : elle
+// n'est pas ouverte aux applications, et elle ne doit jamais l'être.
+//
+// Elle existe pour les jeux de démonstration — charger les portefeuilles
+// d'un pays avant une présentation — et pour un provisionnement
+// d'exploitation. Le mouvement est écrit au grand livre comme une recharge
+// ordinaire (`ReasonWalletTopup`) : un solde qui bougerait sans sa ligne
+// rendrait tout écart inexplicable.
+//
+// Elle rembourse la DETTE au passage, comme une vraie recharge : c'est la
+// même règle, et un solde chargé qui laisserait la dette intacte
+// surprendrait au premier débit.
+func (h *Handler) topUp(w http.ResponseWriter, r *http.Request) {
+	h.move(w, r, func(ctx context.Context, req walletRequest) error {
+		reason := req.Reason
+		if reason == "" {
+			reason = "service_topup"
+		}
+		return h.wallets.TopUp(ctx, req.OwnerID, req.Amount, map[string]any{"source": reason})
 	})
 }
 
