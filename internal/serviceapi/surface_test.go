@@ -81,6 +81,11 @@ var declaredSurface = []string{
 	"/internal/wallets/owe",
 	"/internal/wallets/pay",
 	"/internal/wallets/refund",
+	// ⚠️ DE LA MONNAIE CRÉÉE, comme `credit` crée des jetons : recharger un
+	// portefeuille en ARGENT sans qu'un prestataire ait encaissé. Pour les
+	// jeux de démonstration et le provisionnement d'exploitation ; gardée
+	// par le seul secret de service, et jamais ouverte aux applications.
+	"/internal/wallets/topup",
 }
 
 var internalRoute = regexp.MustCompile(`"(/internal/[a-z0-9/{}-]*)"`)
