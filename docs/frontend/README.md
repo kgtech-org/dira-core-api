@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.25.0** · 23 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.26.0** · 24 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,39 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.26.0 — 24 septembre 2026
+
+**Deux portes qui étaient ouvertes.** L'une laissait entrer le mauvais
+compte, l'autre laissait sonner le mauvais téléphone.
+
+**1. `app` à la connexion — `POST /auth/login`.** Un compte client se
+connectait dans l'application chauffeur, et l'inverse : le mot de passe est
+bon, le jeton est émis, puis chaque écran répond `403` et la personne croit
+l'application cassée. La connexion déclare désormais **qui demande** —
+`app: "client" | "driver" | "merchant" | "console"` — et le socle refuse un
+compte étranger avec **`403 wrong_app`**, dont `meta.open_instead` **nomme
+l'application à ouvrir**. Affichez l'orientation, jamais « identifiants
+invalides ».
+
+⚠️ **Rétrocompatible, et c'est un choix qui vous concerne** : `app` omis ne
+vérifie **rien**, pour qu'une version pas encore mise à jour continue de
+fonctionner — mais le mauvais compte y entre encore. La porte ne se ferme
+que dans les versions qui envoient le champ. ⚠️ La règle sépare des
+FAMILLES : `driver` couvre le chauffeur VTC **et** le livreur (même rôle au
+socle), `client` la course **et** la livraison ; deux applications d'une
+même famille ne se distinguent pas entre elles. Un compte de **direction**
+entre partout, volontairement — le support doit pouvoir reproduire ce qu'on
+lui décrit.
+
+**2. Hors ligne veut dire aucun appel — y compris par le véhicule**
+(`VTC-DRIVER.md` §2, `FOOD-DELIVERY.md` §4). L'attribution juge le COMPTE
+et le VÉHICULE. Le compte était bien filtré ; le véhicule ne regardait que
+son état mécanique, jamais la disponibilité de son propriétaire — et il
+décide **seul** quand une vague ne nomme aucun compte. Un chauffeur hors
+ligne ou un livreur retiré pouvait donc encore être appelé. Corrigé dans
+les deux verticales. Rien à coder côté application : c'est un bug à
+signaler désormais, plus une tolérance.
 
 ### 4.25.0 — 23 septembre 2026
 

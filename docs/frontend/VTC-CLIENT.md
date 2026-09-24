@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.25.0** · 23 septembre 2026
+> **Version 4.26.0** · 24 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -1403,7 +1403,7 @@ dans le fil : c'est ce qui protège les deux côtés.
 
 | | |
 |---|---|
-| `POST /auth/register` · `/auth/login` · `/auth/refresh` · `/auth/logout` | la session |
+| `POST /auth/register` · `/auth/login` · `/auth/refresh` · `/auth/logout` | la session — ⚠️ la connexion porte `app: "client"` depuis la v4.26.0 |
 | `GET · PATCH /me` · `PATCH /me/preferences` | le profil |
 | `POST /uploads?kind=avatar` | la photo de profil — **v3.0.0**, une seule porte pour toute la plateforme |
 | `POST /bug-reports` (**LIVRAISON**, `…/api/v1/food/bug-reports`) | signaler un bug de l'application — pas une réclamation : celles-ci sont §7 ter, sur `/vtc/tickets` |
@@ -1416,6 +1416,51 @@ dans le fil : c'est ce qui protège les deux côtés.
 - **Inscription** : `{ phone (E.164, avec le +), name, password, role: "client", email?, first_name?, last_name? }`. Sans `+`, `422` avec `fields: ["phone"]` ; `phone_taken` (409) → proposer la connexion ; `account_suspended` (403) → le dire tel quel.
 - **Un `422` nomme ses champs** (`fields`, `reason`) — §0.
 - `GET /wallet` répond toujours `200` à un client : le Dira Cash s'ouvre à la première lecture.
+
+### 🚪 DIRE QUELLE APPLICATION SE CONNECTE — `app` (v4.26.0)
+
+`POST /auth/login` accepte un champ `app`. **Envoyez `app: "client"` à chaque
+connexion**, à côté du téléphone et du mot de passe :
+
+```
+POST /auth/login   { phone | email, password, app: "client" }
+```
+
+⚠️ **Ce qui se passait sans lui** : un chauffeur ou un livreur se connectait ici, et rien ne
+l'arrêtait. Le mot de passe est bon, le jeton est émis, l'accueil s'ouvre —
+puis chaque écran répond `403`, et la personne conclut que l'application est
+cassée au lieu de comprendre qu'elle s'est trompée d'application. C'est du
+support pour rien, et une mauvaise première impression.
+
+Le socle refuse désormais, **`403 wrong_app`**, et le refus DIT OÙ ALLER :
+
+| champ de `meta` | ce qu'il porte |
+|---|---|
+| `open_instead` | l'application à ouvrir : `client` · `driver` · `merchant` · `console` |
+| `account_role` | ce qu'est ce compte (`client`, `driver`, `merchant`, `admin`) |
+| `app` | ce que l'application avait déclaré |
+
+Affichez « Ce compte est un compte chauffeur. Ouvrez l'application Dira
+Chauffeur. » — **jamais « identifiants invalides »** : le mot de passe était
+juste, et envoyer la personne changer un mot de passe correct ne mène nulle
+part.
+
+**Ce que la règle NE sépare PAS.** Elle sépare des FAMILLES de comptes, pas
+des applications. `driver` vaut pour le chauffeur VTC **et** le livreur —
+même rôle au socle ; `client` vaut pour la course **et** la livraison. Deux
+applications de la même famille ne se distinguent donc pas l'une de l'autre
+à la connexion. La famille `client`, elle, est bien tenue à l'écart des
+autres.
+
+**Un compte de DIRECTION entre partout.** C'est voulu, pas un trou :
+l'exploitation ouvre votre application pour reproduire ce qu'un utilisateur
+décrit au support.
+
+**`app` omis ne vérifie rien.** Une version d'application pas encore mise à
+jour continue donc de fonctionner exactement comme avant — mais le mauvais
+compte y entre aussi comme avant. C'est la raison d'envoyer le champ dès
+cette version.
+
 
 ---
 

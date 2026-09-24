@@ -25,6 +25,18 @@ type LoginRequest struct {
 	Phone    string `json:"phone,omitempty" validate:"omitempty,e164"`
 	Email    string `json:"email,omitempty" validate:"omitempty,email"`
 	Password string `json:"password" validate:"required"`
+	// App dit QUELLE APPLICATION demande, et c'est elle qui décide si ce
+	// compte a le droit d'entrer ici.
+	//
+	// ⚠️ LE SERVEUR NE PEUT PAS LE DEVINER. Sans ce mot, un client se
+	// connectait dans l'application chauffeur : le mot de passe est bon, le
+	// jeton est émis — puis chaque écran répond 403, et la personne croit
+	// l'application cassée plutôt que de comprendre qu'elle s'est trompée
+	// d'application.
+	//
+	// ABSENT = aucune vérification, le comportement d'avant : une
+	// application pas encore mise à jour continue de fonctionner.
+	App string `json:"app,omitempty" validate:"omitempty,oneof=client driver merchant console"`
 }
 
 // RefreshRequest rotates a refresh token.

@@ -62,7 +62,12 @@ var (
 	errPhoneTaken         = apperr.Conflict("phone_taken", "this phone number is already registered")
 	errInvalidCredentials = apperr.Unauthorized("invalid_credentials", "invalid phone number or password")
 	errAccountSuspended   = apperr.Forbidden("account_suspended", "this account is suspended")
-	errUserNotFound       = apperr.NotFound("user_not_found", "user not found")
+	// errWrongApp : le compte existe et le mot de passe est bon, mais ce
+	// n'est pas l'application de cette personne. `meta.open_instead` nomme
+	// celle qu'elle doit ouvrir — un refus qui ne dit pas où aller n'aide
+	// personne.
+	errWrongApp     = apperr.Forbidden("wrong_app", "this account cannot sign in to this app")
+	errUserNotFound = apperr.NotFound("user_not_found", "user not found")
 )
 
 // Service implements accounts and authentication.
@@ -241,12 +246,65 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 	if u.Status == StatusSuspended {
 		return AuthResponse{}, errAccountSuspended
 	}
+	// ⚠️ LA BONNE APPLICATION. Le mot de passe est juste — mais un compte
+	// client n'a rien à faire dans l'application chauffeur, et l'y laisser
+	// entrer lui donne un jeton qu'aucun de ses écrans n'accepte. Il croit
+	// alors l'application cassée, appelle le support, et personne ne
+	// comprend que c'est la mauvaise application qu'il a installée.
+	if err := allowedIn(req.App, u.Role); err != nil {
+		return AuthResponse{}, err
+	}
 
 	pair, err := s.issueTokens(ctx, u)
 	if err != nil {
 		return AuthResponse{}, err
 	}
 	return AuthResponse{User: s.userResponse(ctx, u), AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken}, nil
+}
+
+// appRole dit quel RÔLE une application attend. `console` sert
+// l'administration ; les deux applications de chauffeurs (VTC et livraison)
+// partagent le rôle `driver`, comme les deux applications de clients
+// partagent `client` — la frontière qui compte ici est le rôle, pas le
+// métier.
+var appRole = map[string]string{
+	"client":   auth.RoleClient,
+	"driver":   auth.RoleDriver,
+	"merchant": auth.RoleMerchant,
+	"console":  auth.RoleAdmin,
+}
+
+// appOfRole nomme l'application où ce compte doit aller — pour le DIRE à la
+// personne plutôt que de la laisser chercher.
+var appOfRole = map[string]string{
+	auth.RoleClient:   "client",
+	auth.RoleDriver:   "driver",
+	auth.RoleMerchant: "merchant",
+	auth.RoleAdmin:    "console",
+}
+
+// allowedIn refuse un compte qui frappe à la porte d'une autre application.
+//
+// ⚠️ Application VIDE = aucune vérification. C'est le comportement d'avant,
+// et il doit le rester : une application pas encore mise à jour ne doit pas
+// voir ses utilisateurs enfermés dehors du jour au lendemain.
+//
+// ⚠️ L'ADMINISTRATION passe partout. Un opérateur ouvre l'application d'un
+// chauffeur pour reproduire ce qu'il décrit, et lui interdire la porte
+// rendrait le support aveugle.
+func allowedIn(app, role string) error {
+	if app == "" || role == auth.RoleAdmin {
+		return nil
+	}
+	want, known := appRole[app]
+	if !known || want == role {
+		return nil
+	}
+	return errWrongApp.WithMeta(map[string]any{
+		"account_role": role,
+		"app":          app,
+		"open_instead": appOfRole[role],
+	})
 }
 
 // Refresh rotates a refresh token: the presented token is verified, its

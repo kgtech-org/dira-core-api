@@ -32,6 +32,9 @@ other = "Numéro de téléphone ou mot de passe invalide"
 [errors.account_suspended]
 other = "Ce compte est suspendu"
 
+[errors.wrong_app]
+other = "Ce compte n'est pas un compte de cette application. Ouvrez l'application qui lui correspond."
+
 [errors.user_not_found]
 other = "Utilisateur introuvable"
 
