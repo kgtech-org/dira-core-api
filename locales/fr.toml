@@ -33,7 +33,7 @@ other = "Numéro de téléphone ou mot de passe invalide"
 other = "Ce compte est suspendu"
 
 [errors.wrong_app]
-other = "Ce compte n'est pas un compte de cette application. Ouvrez l'application qui lui correspond."
+other = "Ce compte n'est pas un compte de cette application. Ouvrez celle qui lui correspond — votre mot de passe est correct."
 
 [errors.user_not_found]
 other = "Utilisateur introuvable"

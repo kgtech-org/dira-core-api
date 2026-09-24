@@ -33,7 +33,7 @@ other = "Invalid phone number or password"
 other = "This account is suspended"
 
 [errors.wrong_app]
-other = "This account does not belong to this app. Open the app that matches it."
+other = "This account does not belong to this app. Open the one it belongs to — your password is fine."
 
 [errors.user_not_found]
 other = "User not found"
