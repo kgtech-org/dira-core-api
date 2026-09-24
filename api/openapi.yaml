@@ -116,8 +116,55 @@ paths:
     post:
       tags: [auth]
       summary: Sign in
+      description: >-
+        **`app` dit QUELLE APPLICATION demande la connexion**, et le socle
+        refuse un compte qui n'y a rien à faire : un client ne se connecte pas
+        dans l'application chauffeur, ni l'inverse. ⚠️ Sans ce champ, le mot de
+        passe suffisait : le jeton était émis, puis chaque écran répondait 403
+        et la personne croyait l'application cassée au lieu de comprendre
+        qu'elle s'était trompée d'application.
+
+
+        Correspondance : `client` → compte client, `driver` → chauffeur ET
+        livreur (une seule application de course), `merchant` → marchand,
+        `console` → direction.
+
+
+        **Deux portes restent ouvertes, volontairement.** Un `app` ABSENT ne
+        vérifie rien : une application pas encore mise à jour continue de
+        fonctionner telle quelle. Et un compte de DIRECTION entre partout —
+        l'exploitation doit pouvoir ouvrir l'application d'un chauffeur pour
+        reproduire ce qu'il décrit.
+
+
+        Le refus `403 wrong_app` DIT OÙ ALLER : `meta.open_instead` nomme
+        l'application à ouvrir (`account_role` et `app` disent le reste).
+        L'application affiche « Ce compte est un compte client, ouvrez
+        l'application Dira » plutôt qu'un échec nu.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, password]
+              properties:
+                phone: {type: string, description: E.164 avec le +}
+                password: {type: string}
+                app:
+                  type: string
+                  enum: [client, driver, merchant, console]
+                  description: >-
+                    L'application qui demande. Omis = aucune vérification
+                    (compatibilité).
       responses:
         "200": {description: Token pair}
+        "401": {description: invalid_credentials}
+        "403":
+          description: >-
+            `wrong_app` — le compte existe, le mot de passe est bon, mais il
+            n'appartient pas à cette application ; `meta.open_instead` nomme
+            la bonne. Ou `account_suspended`.
   /auth/refresh:
     post:
       tags: [auth]

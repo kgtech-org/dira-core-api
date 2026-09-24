@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.25.0** · 23 septembre 2026
+> **Version 4.26.0** · 24 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -206,6 +206,17 @@ PATCH /drivers/me/active-vehicle    { "vehicle_id": "…" }
 > `suspended`) ; `online` est ce que le chauffeur choisit maintenant. Les
 > confondre laisserait un chauffeur suspendu lever sa propre suspension en se
 > remettant en ligne.
+
+> ⚠️ **HORS LIGNE VEUT DIRE AUCUN APPEL — y compris par le véhicule
+> (v4.26.0).** L'attribution juge deux choses : le COMPTE et le VÉHICULE.
+> Le compte était bien filtré ; le véhicule, lui, ne regardait que son état
+> mécanique (`maintenance`), jamais la disponibilité de son propriétaire.
+> Quand une vague ne nommait que des véhicules, un chauffeur hors ligne
+> pouvait donc encore sonner. Le véhicule interroge désormais son chauffeur :
+> hors ligne ou suspendu, il est écarté aussi de cet axe. Si un chauffeur
+> hors ligne reçoit encore une course, c'est un bug à signaler, plus une
+> tolérance.
+
 
 > ⚠️ **`rating_avg` ne s'affiche JAMAIS sans `rating_count`.** 5,0 sur un avis
 > et 4,6 sur deux cents ne disent pas la même chose.
@@ -1175,7 +1186,7 @@ Reste dû : 0 F »). Un contrat rendu où rien ne reste dû passe `completed`.
 
 | | |
 |---|---|
-| `POST /auth/login` · `/auth/refresh` · `/auth/logout` | la session |
+| `POST /auth/login` · `/auth/refresh` · `/auth/logout` | la session — ⚠️ la connexion porte `app: "driver"` depuis la v4.26.0 |
 | `GET · PATCH /me` | le profil |
 | `PATCH /me/preferences` | `locale` ∈ `fr` · `en` (autre : 422), `theme` |
 | `POST /uploads?kind=vehicle` · `?kind=avatar` | les photos — **v3.0.0** : les courses n'avaient **aucune** porte d'envoi, c'est désormais celle du socle, pour tout le monde |
@@ -1187,6 +1198,51 @@ Reste dû : 0 F »). Un contrat rendu où rien ne reste dû passe `completed`.
 - **Téléphone en E.164 avec le `+`** ; sans indicatif, `422` avec `fields: ["phone"]`. `account_suspended` (403) à la connexion : le dire tel quel.
 - **Durées de vie des jetons — v3.1.0.** Access token **15 min** (staging : **10 min**), refresh token **30 jours**, consommé à la rotation (le rejouer → 401 → revenir à la connexion). ⚠️ Le socket du suivi est ouvert avec l'access token et **vit plus longtemps que lui** : à l'échéance, le suivi le ferme avec le code **4401 `token_expired`** — rafraîchir (`POST /auth/refresh`) **puis** reconnecter, jamais reconnecter avec le même jeton. Poignée de main : **401** = rafraîchir et revenir ; **403** = ce rôle ne peut pas pousser de positions, ne pas réessayer. L'ancien access token reste valide jusqu'à son échéance après une rotation : un court chevauchement socket / REST est normal.
 - **Un `422` nomme ses champs** (`fields`, `reason`) — §1 bis.
+
+### 🚪 DIRE QUELLE APPLICATION SE CONNECTE — `app` (v4.26.0)
+
+`POST /auth/login` accepte un champ `app`. **Envoyez `app: "driver"` à chaque
+connexion**, à côté du téléphone et du mot de passe :
+
+```
+POST /auth/login   { phone | email, password, app: "driver" }
+```
+
+⚠️ **Ce qui se passait sans lui** : un client se connectait ici, et rien ne
+l'arrêtait. Le mot de passe est bon, le jeton est émis, l'accueil s'ouvre —
+puis chaque écran répond `403`, et la personne conclut que l'application est
+cassée au lieu de comprendre qu'elle s'est trompée d'application. C'est du
+support pour rien, et une mauvaise première impression.
+
+Le socle refuse désormais, **`403 wrong_app`**, et le refus DIT OÙ ALLER :
+
+| champ de `meta` | ce qu'il porte |
+|---|---|
+| `open_instead` | l'application à ouvrir : `client` · `driver` · `merchant` · `console` |
+| `account_role` | ce qu'est ce compte (`client`, `driver`, `merchant`, `admin`) |
+| `app` | ce que l'application avait déclaré |
+
+Affichez « Ce compte est un compte client. Ouvrez l'application Dira
+(client). » — **jamais « identifiants invalides »** : le mot de passe était
+juste, et envoyer la personne changer un mot de passe correct ne mène nulle
+part.
+
+**Ce que la règle NE sépare PAS.** Elle sépare des FAMILLES de comptes, pas
+des applications. `driver` vaut pour le chauffeur VTC **et** le livreur —
+même rôle au socle ; `client` vaut pour la course **et** la livraison. Deux
+applications de la même famille ne se distinguent donc pas l'une de l'autre
+à la connexion. La famille `driver`, elle, est bien tenue à l'écart des
+autres.
+
+**Un compte de DIRECTION entre partout.** C'est voulu, pas un trou :
+l'exploitation ouvre votre application pour reproduire ce qu'un utilisateur
+décrit au support.
+
+**`app` omis ne vérifie rien.** Une version d'application pas encore mise à
+jour continue donc de fonctionner exactement comme avant — mais le mauvais
+compte y entre aussi comme avant. C'est la raison d'envoyer le champ dès
+cette version.
+
 
 ### Le compte — la photo, le nom d'affichage, le prénom et le nom (v4.8.1)
 

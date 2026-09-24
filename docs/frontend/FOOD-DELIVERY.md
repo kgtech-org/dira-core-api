@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.25.0** · 23 septembre 2026
+> **Version 4.26.0** · 24 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -170,6 +170,7 @@ session** : la résolution du démarrage suivant peut le changer.
 
 ```
 POST   /auth/register       { phone (E.164, avec le +), name, password, role: "driver", first_name?, last_name? }
+POST   /auth/login          { phone | email, password, app: "driver" }   ⚠️ v4.26.0
 GET    /me · PATCH /me · PATCH /me/preferences
 POST   /agent/vehicles      { type, brand?, model?, license_plate?, color?, photo_url?, images?, capacity? }
 GET    /agent/vehicles
@@ -181,6 +182,51 @@ PATCH  /agent/availability     { available }
 - ⚠️ **Le téléphone porte son indicatif** : `+22890100001`. Sans `+`, `422` avec `fields: ["phone"]` — le socle ne devine pas de pays. Espaces et tirets tolérés. `phone_taken` (409) : le numéro a déjà un compte → proposer la connexion.
 - **Un `422` nomme ses champs — v3.0.0.** `fields` liste les clés JSON en cause : soulignez ces cases. `reason: unknown_field` signifie que l'app envoie une clé que la route ne connaît pas — c'est refusé, pas ignoré, et c'est un bug à corriger côté app. `first_name` / `last_name` sont désormais **acceptés** à l'inscription.
 - **`account_suspended` (403)** à la connexion : le compte est suspendu, le mot de passe est bon — le dire tel quel.
+
+### 🚪 DIRE QUELLE APPLICATION SE CONNECTE — `app` (v4.26.0)
+
+`POST /auth/login` accepte un champ `app`. **Envoyez `app: "driver"` à chaque
+connexion**, à côté du téléphone et du mot de passe :
+
+```
+POST /auth/login   { phone | email, password, app: "driver" }
+```
+
+⚠️ **Ce qui se passait sans lui** : un client se connectait ici, et rien ne
+l'arrêtait. Le mot de passe est bon, le jeton est émis, l'accueil s'ouvre —
+puis chaque écran répond `403`, et la personne conclut que l'application est
+cassée au lieu de comprendre qu'elle s'est trompée d'application. C'est du
+support pour rien, et une mauvaise première impression.
+
+Le socle refuse désormais, **`403 wrong_app`**, et le refus DIT OÙ ALLER :
+
+| champ de `meta` | ce qu'il porte |
+|---|---|
+| `open_instead` | l'application à ouvrir : `client` · `driver` · `merchant` · `console` |
+| `account_role` | ce qu'est ce compte (`client`, `driver`, `merchant`, `admin`) |
+| `app` | ce que l'application avait déclaré |
+
+Affichez « Ce compte est un compte client. Ouvrez l'application Dira
+(client). » — **jamais « identifiants invalides »** : le mot de passe était
+juste, et envoyer la personne changer un mot de passe correct ne mène nulle
+part.
+
+**Ce que la règle NE sépare PAS.** Elle sépare des FAMILLES de comptes, pas
+des applications. `driver` vaut pour le chauffeur VTC **et** le livreur —
+même rôle au socle ; `client` vaut pour la course **et** la livraison. Deux
+applications de la même famille ne se distinguent donc pas l'une de l'autre
+à la connexion. La famille `driver`, elle, est bien tenue à l'écart des
+autres.
+
+**Un compte de DIRECTION entre partout.** C'est voulu, pas un trou :
+l'exploitation ouvre votre application pour reproduire ce qu'un utilisateur
+décrit au support.
+
+**`app` omis ne vérifie rien.** Une version d'application pas encore mise à
+jour continue donc de fonctionner exactement comme avant — mais le mauvais
+compte y entre aussi comme avant. C'est la raison d'envoyer le champ dès
+cette version.
+
 - `type` ∈ `moto` · `velo` · `voiture` · `pieton` · `tricycle`. `capacity` = courses simultanées.
 - **Couleur, description, photos (v4.10.0).** Chaque véhicule rendu porte
   **`description`**, GÉNÉRÉE — *marque modèle couleur* (« Yamaha Crypton
@@ -236,6 +282,17 @@ PATCH  /agent/availability     { available }
 > Sans véhicule actif, **accepter est refusé** (`409 no_active_vehicle`). Dites-le **avant** que le livreur tente d'accepter : à ce moment-là il court déjà vers une course qu'il ne peut pas prendre.
 
 **Disponibilité** : se retirer **n'arrête pas le GPS**. Le livreur rentre chez lui, ou termine la course en main, tout en refusant les suivantes. C'est pourquoi la disponibilité se déclare et ne se déduit pas du flux de positions.
+
+> ⚠️ **HORS SERVICE VEUT DIRE AUCUN APPEL — y compris par le véhicule
+> (v4.26.0).** L'attribution juge deux choses : le COMPTE et le VÉHICULE.
+> Le compte était bien filtré ; le véhicule, lui, ne regardait que son état
+> mécanique (`maintenance`), jamais la disponibilité de son propriétaire.
+> Quand une vague ne nommait que des véhicules, un livreur retiré pouvait
+> donc encore sonner. Le véhicule interroge désormais son livreur : hors
+> service ou suspendu, il est écarté aussi de cet axe. Si un livreur
+> indisponible reçoit encore une commande, c'est un bug à signaler, plus une
+> tolérance.
+
 
 > ⚠️ **LA PRÉSENCE — v4.7.0, la même règle que les chauffeurs VTC.** Un
 > livreur disponible qui **n'émet plus sa position pendant cinq minutes**

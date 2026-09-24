@@ -32,6 +32,9 @@ other = "Invalid phone number or password"
 [errors.account_suspended]
 other = "This account is suspended"
 
+[errors.wrong_app]
+other = "This account does not belong to this app. Open the app that matches it."
+
 [errors.user_not_found]
 other = "User not found"
 
