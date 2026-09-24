@@ -31,7 +31,9 @@ func TestTheRefusalNamesTheRightApp(t *testing.T) {
 	err := allowedIn("driver", auth.RoleMerchant)
 	require.Error(t, err)
 	meta := apperr.From(err).Meta
-	assert.Equal(t, "merchant", meta["open_instead"])
+	// `reason` part sur le fil ; les deux autres servent la phrase traduite et
+	// les journaux.
+	assert.Equal(t, "merchant", meta["reason"])
 	assert.Equal(t, "merchant", meta["account_role"])
 	assert.Equal(t, "driver", meta["app"])
 }
@@ -65,4 +67,15 @@ func TestAnAdminSignsInAnywhere(t *testing.T) {
 // comprend pas enfermerait dehors sur une faute de frappe.
 func TestAnUnknownAppNameLetsEveryoneThrough(t *testing.T) {
 	assert.NoError(t, allowedIn("kiosque", auth.RoleClient))
+}
+
+// ⚠️ LE CHAMP QUI SORT VRAIMENT. L'enveloppe d'erreur ne rend que `fields` et
+// `reason` : le reste de `Meta` ne sert qu'à composer la phrase traduite. Une
+// spec qui promettrait `meta.open_instead` promettrait du vide, et le
+// frontend le découvrirait à l'intégration.
+func TestTheRefusalNamesTheAppThroughReasonTheOnlyKeyThatIsServed(t *testing.T) {
+	err := allowedIn("driver", auth.RoleClient)
+	require.Error(t, err)
+	assert.Equal(t, "client", apperr.From(err).Meta["reason"],
+		"`reason` doit nommer l'application à ouvrir — c'est la seule clé que la réponse porte")
 }

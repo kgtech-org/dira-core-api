@@ -300,10 +300,14 @@ func allowedIn(app, role string) error {
 	if !known || want == role {
 		return nil
 	}
+	// ⚠️ `reason` EST LA SEULE CLÉ QUI SORT. L'enveloppe d'erreur ne rend que
+	// `fields` et `reason` ; le reste de `Meta` ne sert qu'à composer la phrase
+	// traduite. C'est donc `reason` qui porte l'application à ouvrir — et une
+	// spec qui promettrait un autre champ promettrait du vide.
 	return errWrongApp.WithMeta(map[string]any{
+		"reason":       appOfRole[role],
 		"account_role": role,
 		"app":          app,
-		"open_instead": appOfRole[role],
 	})
 }
 

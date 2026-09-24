@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.26.0** · 24 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.26.1** · 24 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -277,6 +277,18 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 
 ## Journal
 
+### 4.26.1 — 24 septembre 2026
+
+**Rectification de la 4.26.0, publiée le jour même.** La section `app`
+annonçait un `meta.open_instead` sur le refus `wrong_app`. **Ce champ
+n'existe pas** : l'enveloppe d'erreur du socle ne rend que `code`,
+`message`, `fields` et `reason`, et le reste ne sert qu'à composer la phrase
+traduite. C'est **`error.reason`** qui nomme l'application à ouvrir.
+
+Écrit plutôt que corrigé en silence : une spec qui promet un champ absent se
+paie à l'intégration, et savoir qu'on a failli le croire vaut mieux qu'un
+document propre.
+
 ### 4.26.0 — 24 septembre 2026
 
 **Deux portes qui étaient ouvertes.** L'une laissait entrer le mauvais
@@ -287,9 +299,10 @@ connectait dans l'application chauffeur, et l'inverse : le mot de passe est
 bon, le jeton est émis, puis chaque écran répond `403` et la personne croit
 l'application cassée. La connexion déclare désormais **qui demande** —
 `app: "client" | "driver" | "merchant" | "console"` — et le socle refuse un
-compte étranger avec **`403 wrong_app`**, dont `meta.open_instead` **nomme
-l'application à ouvrir**. Affichez l'orientation, jamais « identifiants
-invalides ».
+compte étranger avec **`403 wrong_app`**, dont **`error.reason` nomme
+l'application à ouvrir** (`client` · `driver` · `merchant` · `console`).
+Affichez l'orientation, jamais « identifiants invalides ». ⚠️ `reason`, et
+rien d'autre : l'enveloppe d'erreur du socle ne porte pas de `meta`.
 
 ⚠️ **Rétrocompatible, et c'est un choix qui vous concerne** : `app` omis ne
 vérifie **rien**, pour qu'une version pas encore mise à jour continue de

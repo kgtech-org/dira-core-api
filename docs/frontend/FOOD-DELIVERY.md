@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.26.0** · 24 septembre 2026
+> **Version 4.26.1** · 24 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -200,11 +200,17 @@ support pour rien, et une mauvaise première impression.
 
 Le socle refuse désormais, **`403 wrong_app`**, et le refus DIT OÙ ALLER :
 
-| champ de `meta` | ce qu'il porte |
+| champ | ce qu'il porte |
 |---|---|
-| `open_instead` | l'application à ouvrir : `client` · `driver` · `merchant` · `console` |
-| `account_role` | ce qu'est ce compte (`client`, `driver`, `merchant`, `admin`) |
-| `app` | ce que l'application avait déclaré |
+| `error.code` | `wrong_app` |
+| `error.reason` | **l'application à ouvrir** : `client` · `driver` · `merchant` · `console` |
+| `error.message` | la phrase déjà traduite, à afficher telle quelle si vous n'avez pas la vôtre |
+
+⚠️ **`reason`, et rien d'autre.** L'enveloppe d'erreur du socle ne rend que
+`code`, `message`, `fields` et `reason` — il n'y a pas de `meta` sur le fil.
+C'est écrit ici parce qu'une première rédaction de cette section promettait
+un `meta.open_instead` qui n'existe pas, et l'erreur se serait découverte à
+l'intégration.
 
 Affichez « Ce compte est un compte client. Ouvrez l'application Dira
 (client). » — **jamais « identifiants invalides »** : le mot de passe était
