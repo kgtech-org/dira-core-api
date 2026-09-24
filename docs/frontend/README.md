@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.26.1** · 24 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.27.0** · 24 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,44 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.27.0 — 24 septembre 2026
+
+🧳 **La course du voyageur** (`VTC-CLIENT.md` §3, `VTC-DRIVER.md` §4).
+
+**Une course se fait dans le pays où elle SE FAIT**, et non dans celui où
+son passager s'est inscrit. Un Togolais de passage à Dakar commande
+normalement.
+
+⚠️ **Ce qui se passait avant** : le pays du COMPTE décidait de tout. Un
+compte togolais à Dakar recevait « ce lieu est à 2 249 km de Lomé », et
+l'application — qui ne recevait que les villes du Togo — refusait le point
+**avant même d'appeler le serveur**. Écran bloqué, aucune raison lisible,
+alors que Dakar est desservie depuis des mois.
+
+Suivent le passager : villes desservies, tarifs et modes, majorations,
+promotions de ville, réglages d'appel, chauffeurs appelés, facturation. Le
+pays vient du **point de départ**, et il est **figé sur le devis** comme le
+prix. Restent chez lui : son compte, son historique, son portefeuille.
+
+**Deux choses à coder côté application :**
+
+1. ⚠️ **`country` sur le devis et sur la course dit LA MONNAIE du prix.**
+   Un montant est un entier dans la monnaie de son pays. Formatez avec la
+   monnaie de `country`, jamais avec celle du compte — sinon c'est le bon
+   nombre derrière le mauvais symbole.
+2. ⚠️ **`GET /cities` rend maintenant TOUTES les villes, tous pays
+   confondus**, chacune avec son `country`. Votre contrôle local fonctionne
+   tel quel ; c'est la borne au pays du compte qui bloquait à tort.
+
+**Le portefeuille, lui, ne traverse pas une monnaie** : `422
+wallet_other_currency` à la confirmation, et **ce moyen-là seulement** est
+refusé — proposez les espèces ou le paiement en ligne plutôt que d'annuler.
+Entre deux pays de même monnaie (Togo–Sénégal, Gabon–Tchad), il marche comme
+chez soi.
+
+**Côté chauffeur**, rien ne change — sauf que le numéro du passager peut
+porter un autre indicatif : composez-le tel que l'API le rend.
 
 ### 4.26.1 — 24 septembre 2026
 

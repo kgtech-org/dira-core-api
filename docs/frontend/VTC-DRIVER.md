@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.26.1** · 24 septembre 2026
+> **Version 4.27.0** · 24 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -442,6 +442,21 @@ WS wss://tracking-staging.dira.llc/track/agent
 > `rider_rating_count` sont ce que les chauffeurs précédents ont dit de ce
 > passager (§4 bis). **Absents** = jamais noté : n'affichez rien, pas un
 > « 0 ». Et jamais la moyenne sans le nombre.
+
+> 🧳 **Votre passager peut venir d'un autre pays — v4.27.0.** Depuis cette
+> version, une course se fait dans le pays où elle SE FAIT, et non dans
+> celui où le passager s'est inscrit : un Togolais de passage chez vous
+> commande normalement.
+>
+> **Rien ne change pour vous** : la course est une course de votre ville,
+> à votre tarif, avec votre commission — c'est le pays de la COURSE qui
+> règle tout, et c'est le vôtre.
+>
+> ⚠️ **Sauf son NUMÉRO, qui peut porter un autre indicatif** (`+228` chez
+> vous au Sénégal). Composez-le **tel que l'API le rend**, en E.164 avec
+> son `+` : un numéro raccourci ou complété de votre indicatif n'appelle
+> personne. Prévenez aussi que l'appel peut être facturé comme un appel
+> vers l'étranger.
 
 Puis, à la fermeture : `{ "type": "call_closed", "call_id": "…", "reason": "…" }`.
 

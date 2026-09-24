@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.26.1** · 24 septembre 2026
+> **Version 4.27.0** · 24 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -362,11 +362,75 @@ l'aéroport voisin). Le refus arrive **au devis**, avant tout prix :
 
 Afficher le message tel quel (il est localisé et porte la distance). Les
 villes sont publiques — `GET /cities` → `{ items: [ { key, name,
-center: [lng, lat], radius_km, tolerance_km, active } ] }` — pour dire « nous
-ne desservons pas encore ici » dès qu'un passager pose un point, avant même
-le devis : un point est acceptable s'il est à moins de `radius_km +
-tolerance_km` du `center` d'une ville active, et les deux points doivent
+center: [lng, lat], radius_km, tolerance_km, active, country } ] }` — pour
+dire « nous ne desservons pas encore ici » dès qu'un passager pose un point,
+avant même le devis : un point est acceptable s'il est à moins de `radius_km
++ tolerance_km` du `center` d'une ville active, et les deux points doivent
 tomber dans la **même** ville.
+
+---
+
+### 🧳 LA COURSE DU VOYAGEUR — elle se fait là où elle se fait (v4.27.0)
+
+**Un passager commande dans le pays où il EST, pas dans celui où il s'est
+inscrit.** Un Togolais de passage à Dakar pose son départ au Plateau et
+obtient un prix, comme chez lui.
+
+⚠️ **Ce qui se passait avant.** Le pays du COMPTE décidait de tout. Un
+compte togolais à Dakar recevait `out_of_service_area` — « ce lieu est à
+2 249 km de Lomé » — et l'application, qui ne recevait que les villes du
+Togo, refusait même le point **avant d'appeler le serveur** : écran bloqué,
+aucune raison lisible, alors que Dakar est desservie depuis des mois.
+
+**Ce qui suit le passager** — tout ce qui fait la course : villes
+desservies, tarifs et modes, majorations, promotions de ville, réglages
+d'appel, chauffeurs appelés, facturation. Le pays vient du **point de
+départ** et il est **figé sur le devis**, comme le prix ; la confirmation ne
+le relit pas.
+
+**Ce qui reste chez lui** : son compte, son historique, son portefeuille.
+
+```
+POST /rides/quote → items[].country = "SN"     ⚠️ v4.27.0
+GET  /rides/{id}  → country = "SN"
+```
+
+⚠️ **`country` DIT LA MONNAIE DU PRIX.** Un montant de la plateforme est un
+entier dans la monnaie de son pays : `fare_xof` vaut des francs CFA à Dakar,
+et des francs guinéens à Conakry. Formatez avec la monnaie de **`country`**
+(lue dans `GET /countries`), **jamais** avec celle du compte — sinon vous
+écrivez le bon nombre derrière le mauvais symbole.
+
+**`GET /cities` rend désormais TOUTES les villes, tous pays confondus**,
+chacune avec son `country`. Votre contrôle local marche donc tel quel : la
+ville qui sert le point est trouvée, où qu'elle soit.
+
+#### 💳 Le portefeuille, lui, ne traverse pas une monnaie
+
+```
+POST /rides   { quote_id, payment_method: "wallet" }
+422 { "error": { "code": "wallet_other_currency", "reason": "wallet_currency",
+                 "message": "Votre portefeuille est dans une autre monnaie que ce pays." } }
+```
+
+Le solde est un entier dans la monnaie de SON pays. Débiter 45 000 d'un
+solde en francs CFA pour une course facturée 45 000 francs guinéens
+prendrait **treize fois** le prix. Le refus ne vise donc **que ce
+moyen-là** : proposez les espèces ou le paiement en ligne, et n'annulez
+pas la course.
+
+Entre deux pays de **même monnaie** — Togo et Sénégal, Gabon et Tchad — le
+portefeuille marche comme chez soi : c'est le même franc.
+
+⚠️ **Le refus arrive à la CONFIRMATION, pas au devis** : le devis ne sait
+pas encore comment on paiera. Si votre écran présélectionne le
+portefeuille, prévoyez le repli.
+
+#### Là où nous ne sommes pas du tout
+
+Le pays du compte reste, et le refus nomme une ville de chez lui. C'est
+voulu : nous n'y opérons pas, et nommer une ville lointaine serait moins
+honnête que nommer la sienne.
 
 ---
 
