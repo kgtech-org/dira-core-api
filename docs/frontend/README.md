@@ -305,6 +305,10 @@ prix. Restent chez lui : son compte, son historique, son portefeuille.
 2. ⚠️ **`GET /cities` rend maintenant TOUTES les villes, tous pays
    confondus**, chacune avec son `country`. Votre contrôle local fonctionne
    tel quel ; c'est la borne au pays du compte qui bloquait à tort.
+3. ⚠️ **`GET /classes?near=lng,lat`** — le catalogue des modes doit suivre
+   le lieu comme le prix. Sans `near`, vous afficheriez les modes de chez
+   soi avec les prix d'ici, et un mode servi là-bas mais absent chez soi
+   n'aurait aucune ligne où s'afficher.
 
 **Le portefeuille, lui, ne traverse pas une monnaie** : `422
 wallet_other_currency` à la confirmation, et **ce moyen-là seulement** est

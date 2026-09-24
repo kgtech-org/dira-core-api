@@ -405,6 +405,26 @@ et des francs guinéens à Conakry. Formatez avec la monnaie de **`country`**
 chacune avec son `country`. Votre contrôle local marche donc tel quel : la
 ville qui sert le point est trouvée, où qu'elle soit.
 
+#### ⚠️ Le catalogue des modes doit suivre le lieu, lui aussi
+
+```
+GET /classes?near=-17.4370,14.6690      ⚠️ v4.27.0
+```
+
+**Envoyez `near` (le `lng,lat` du départ) dès que le passager a posé un
+point.** Sans lui, le catalogue reste celui du pays du COMPTE — et vous
+afficheriez les modes du Togo (leurs noms, leurs pictogrammes, leurs frais
+d'attente) avec des prix sénégalais collés dessus. Un mode servi à Dakar
+mais absent du Togo n'aurait même aucune ligne où s'afficher.
+
+Un `near` illisible est **ignoré, pas refusé** : le catalogue reste public
+et lisible.
+
+⚠️ **Re-demandez le catalogue quand le départ change de pays.** Les frais
+d'attente et de temps réel affichés sous chaque mode viennent de ce
+catalogue : laissés sur ceux de chez soi, ils annonceraient un tarif que la
+course n'appliquera pas.
+
 #### 💳 Le portefeuille, lui, ne traverse pas une monnaie
 
 ```
