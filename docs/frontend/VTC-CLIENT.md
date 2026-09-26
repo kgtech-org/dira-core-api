@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.31.0** · 26 septembre 2026
+> **Version 4.32.0** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -1524,6 +1524,38 @@ l'écran ne dit que l'information a cessé d'arriver.
 
 À chaque réouverture : relisez aussi **`GET /rides/{id}`**. Le socket rend la
 position ; la course, elle, a pu changer d'état pendant la coupure.
+
+### 📴 QUAND C'EST LE CHAUFFEUR QUI N'A PLUS DE RÉSEAU (v4.32.0)
+
+**Votre socket va très bien, et la voiture ne bouge plus.** Ce n'est pas la
+même panne, et cela ne se traite pas de la même façon.
+
+⚠️ **NE DITES JAMAIS QUE LA COURSE EST TERMINÉE, ANNULÉE OU PERDUE.** Elle a
+lieu : le chauffeur conduit, son téléphone garde tout, et il rendra le récit en
+retrouvant le réseau. Une application qui annonce « course introuvable » parce
+qu'une position manque fait descendre un passager d'une voiture qui l'emmenait
+au bon endroit.
+
+| Ce que vous observez | Ce que vous affichez |
+|---|---|
+| Aucune position depuis **> 1 min**, course vivante | « position en attente » sur le marqueur, **sans le déplacer** |
+| Aucune position depuis **> 3 min** | « nous ne voyons pas la voiture en ce moment — la course continue » |
+| L'état change (`status`) mais les positions manquent | l'état fait foi : **relisez `GET /rides/{id}`** |
+
+- ⚠️ **NE FAITES PAS GLISSER LE MARQUEUR VERS UNE POSITION VIEILLE.** Le
+  serveur ne rediffuse **pas** les positions rattrapées : il ne vous enverra
+  jamais le trajet manqué, justement pour que la voiture ne recule pas sur
+  votre carte. Après une coupure, la voiture **saute** à sa vraie position —
+  et c'est la vérité de la route, pas un défaut.
+- Le **temps d'arrivée estimé** vieillit pendant une coupure : montrez-le
+  comme une estimation, pas comme un compte à rebours exact.
+- ⚠️ **Le bouton d'appel téléphonique reste la sortie de secours.** C'est le
+  seul canal qui ne dépend pas de nos serveurs.
+
+**À la fin**, une course faite en partie hors ligne peut porter un prix qui
+n'est pas celui que le chauffeur vous a annoncé — il calculait avec la grille
+gardée dans son téléphone. **C'est le montant de la course qui fait foi**, et
+le support tranche les écarts.
 
 - **Reconnexion avec back-off** (1 s, 2 s, 4 s … 30 s) : le socket tombe
   quand le téléphone change de réseau ; ne laissez pas une voiture figée sur
