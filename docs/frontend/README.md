@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.30.0** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.31.0** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,49 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.31.0 — 26 septembre 2026
+
+💰 **CHAQUE MODE DE COURSE SE TARIFE SUR LA VOITURE** — et les réglages du
+pays ne portent plus d'argent du tout (`VTC-CLIENT.md` §4 quater,
+`VTC-DRIVER.md` §4 ter).
+
+Un van immobilisé cinq heures n'est pas une eco ; un compteur de rue n'a
+demandé ni recherche ni attente. Le prix **et la commission** dépendent donc
+du couple (mode × voiture), pas du seul mode.
+
+**Ce qui déménage**
+
+```
+GET /classes → items[].modes = {
+      "free":   { base_xof, per_km_xof, per_min_xof, min_fare_xof },
+      "rental": { tiers: [ { hours, price_xof, included_km } ], extra_per_km_xof } }
+```
+
+- ⚠️ **`GET /settings/modes` NE PORTE PLUS AUCUN PRIX.** Il lui reste la
+  POLITIQUE — `free.enabled`, `free.scannable`, `free.max_hours`,
+  `rental.enabled`, `rental.max_radius_km`, `rental.alert_km_before` — c'est-à-
+  dire ce qui ne dépend **pas** du véhicule. Une application qui lirait encore
+  `rental.tiers` n'y trouverait **plus rien**, et n'aurait aucune durée à
+  proposer.
+- ⚠️ **UNE CLÉ PRÉSENTE DANS `modes` = UN MODE VENDU PAR CETTE VOITURE, DANS
+  CE PAYS.** Le serveur croise les deux conditions à la source : `modes` ne
+  contient jamais un mode que le pays a fermé. Plus de recoupement à faire
+  écran par écran — le premier qui l'oublierait proposerait une location
+  refusée à la commande, au pire moment.
+- ⚠️ **IL N'Y A PLUS DE GRILLE COMMUNE À RECOUPER.** La v4.30.0 mettait un
+  `class_key` par ligne, les lignes sans `class_key` valant pour les autres, et
+  laissait l'emboîtement à l'application ; une seule qui inversait l'ordre
+  affichait un van au prix d'une eco. Chaque voiture porte maintenant ses
+  plages **entières** : prenez-les telles quelles.
+- Une voiture **sans** `modes.rental` ne se loue pas, **sans** `modes.free` ne
+  fait pas le compteur — retirez-la de l'écran correspondant. Elle reste
+  commandable normalement.
+- Côté chauffeur : le bouton du compteur dépend de **la voiture conduite ce
+  jour-là**, et le tarif du compteur est lisible dans le catalogue.
+
+Rien à changer dans `POST /rides/rental/quote` : `class_key` et `hours` y
+étaient déjà, et c'est le serveur qui y applique la bonne grille.
 
 ### 4.30.0 — 26 septembre 2026
 
