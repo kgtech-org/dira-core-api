@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.32.1** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.32.2** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,23 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.32.2 — 26 septembre 2026
+
+📴 **PRÉCISIONS SUR LE HORS-LIGNE** (`VTC-DRIVER.md` §4 quater).
+
+- ⚠️ **N'exigez rien avant d'envoyer une resynchronisation — surtout pas d'être
+  en ligne.** Les barrières du départ (en ligne, non suspendu, dette sous le
+  plafond) disent qui a le droit de **commencer** à travailler ; elles ne
+  s'appliquent pas à une course déjà faite. Le serveur ne les vérifie plus, et
+  l'application ne doit pas les vérifier à sa place : c'est **en rentrant chez
+  lui, hors ligne**, qu'un chauffeur vide sa file. Le seul refus qu'une course
+  bien formée peut recevoir est **`403 vehicle_not_yours`** — « est-ce sa
+  voiture ? » ne dépend pas du temps.
+- Le champ **`geo`** est nommé explicitement : `POST /rides/free` au départ,
+  `PATCH /rides/{id}/status` à l'arrêt. Facultatif — un téléphone sans fix ne
+  doit pas empêcher de travailler — mais sans lui la facture dit « de nulle
+  part à nulle part ».
 
 ### 4.32.1 — 26 septembre 2026
 
