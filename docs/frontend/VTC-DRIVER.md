@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.32.2** · 26 septembre 2026
+> **Version 4.33.0** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -987,6 +987,7 @@ haute (pas de O/0, I/1, S/5).
 
 | Refus au démarrage | Pourquoi |
 |---|---|
+| `403 vehicle_not_yours` | ce véhicule n'existe pas, ou n'est pas le vôtre (v4.33.0) |
 | `409 free_rides_off` | ce pays ne propose pas le mode — le bouton n'aurait pas dû s'afficher |
 | `403 driver_not_active` | hors ligne ou suspendu — **mettez-vous en ligne d'abord** |
 | `409 vehicle_not_usable` | ce véhicule est immobilisé par l'exploitation |
@@ -995,6 +996,12 @@ haute (pas de O/0, I/1, S/5).
 
 ⚠️ **Les mêmes barrières qu'une course appelée, et c'est voulu** : sans elles,
 ce bouton serait une façon de contourner toutes les règles.
+
+⚠️ **ET LE VÉHICULE DOIT EXISTER** (v4.33.0). Jusqu'au 26 septembre 2026, un
+`vehicle_id` inventé passait : sans véhicule il n'y a pas de classe, sans
+classe pas de grille, et **deux heures de compteur se facturaient 0 F**.
+Envoyez toujours l'identifiant d'un de **vos** véhicules — celui de
+`GET /drivers/me/vehicles`.
 
 ⚠️ **UN COMPTEUR OUBLIÉ EST FERMÉ D'OFFICE** au-delà de `free.max_hours`
 (réglages du pays — la même borne pour toutes les voitures). La
@@ -1116,10 +1123,21 @@ rendent la même. ⚠️ Une application qui retélécharge sans raison à chaqu
 retour de réseau consomme le forfait du chauffeur pour répéter ce qu'elle a
 déjà — et finit par ne plus télécharger du tout.
 
-**La version voyage aussi dans le `meta` de chaque appel** (`tariff_version`) :
-comparez-la à celle de votre cache et rafraîchissez si elle diffère. ⚠️ C'est
-le **seul moment où l'on est sûr que vous écoutez** — sans cela, vous pouvez
-rouler une journée entière avec la grille de la semaine dernière.
+**La version voyage aussi sur votre PROFIL** (v4.33.0) :
+
+```
+GET /drivers/me → { …, "tariff_version": "cec1c2074297ffdf" }
+```
+
+Comparez-la à celle de votre cache à chaque lecture du profil, et
+rafraîchissez si elle diffère. ⚠️ **C'est le canal d'invalidation**, et il est
+ici parce que c'est la réponse que vous relisez le plus souvent.
+
+⚠️ **ELLE VOYAGEAIT DANS LE `meta` DE L'APPEL, ET C'ÉTAIT INSUFFISANT.** Un
+chauffeur qui ne reçoit **aucun appel** de la journée — celui qui ne fait que
+des compteurs, justement le plus concerné par la grille en poche — n'apprenait
+jamais qu'elle avait changé. Le `meta` de l'appel la porte toujours, mais ne
+comptez pas dessus seul.
 
 ⚠️ **CE QUE VOUS CALCULEZ EST UNE ESTIMATION, JAMAIS UNE FACTURE.** Dites-le à
 l'écran (« montant estimé »). Le prix qui compte est celui que le serveur
@@ -1237,9 +1255,26 @@ pour une course libre faite hors ligne : le `mission_id` est l'identifiant que
 
 | Mode | Intervalle | Distance minimale |
 |---|---|---|
-| `normal` | 5 s | 20 m |
+| `normal` | 30 s | 40 m |
 | `free` | 20 s | 50 m |
 | `rental` | 30 s | 80 m |
+
+⚠️ **LES DEUX DÉCLENCHEURS NE GOUVERNENT PAS LA MÊME CHOSE**, et c'est la clé
+pour lire ces chiffres. Vous émettez dès que **l'un des deux** est atteint :
+
+- **en mouvement, c'est la DISTANCE qui décide.** 40 m à 30 km/h font une
+  émission toutes les cinq secondes — la voiture glisse sur l'écran du
+  passager sans que l'intervalle serve jamais ;
+- **à l'arrêt, c'est l'INTERVALLE**, qui n'est plus qu'un battement de cœur.
+
+Un intervalle de cinq secondes ne rendait donc **rien** de plus fluide : il
+réveillait le téléphone d'un chauffeur en train d'attendre, 720 fois par heure.
+
+⚠️ **ET L'INTERVALLE A UNE BORNE DURE : 60 SECONDES.** Le vivier d'appel ne
+contient que les véhicules dont la position n'a pas expiré côté suivi. **Un
+chauffeur à l'arrêt qui attend une course doit émettre dans cette fenêtre** —
+au-delà, il cesse d'être appelable et **rien ne le lui dit**. Trente secondes
+laissent survivre une trame perdue ; quarante-cinq n'en laissent aucune.
 
 ⚠️ **UNE LOCATION DE CINQ HEURES N'A PERSONNE DEVANT L'ÉCRAN.** Pousser toutes
 les quatre secondes pendant cinq heures vide une batterie et un forfait pour
@@ -1249,6 +1284,49 @@ rien — sur une course qui se facture à la durée, pas aux kilomètres.
 dépassement de kilomètres d'une location et la distance d'un compteur : une
 course qu'on ne suit plus est une course qu'on ne sait plus facturer — ni
 défendre quand elle est contestée.
+
+### 5 bis. Ce que les réglages vous disent d'autre
+
+```
+GET /settings/dispatch → { chain_calls, chain_radius_m, call_mode, call_radius_m,
+                           call_ranking, call_ttl_s, max_drivers, max_minutes,
+                           max_attempts, search_expiry_min, speed_limit_kmh }
+```
+
+⚠️ **`speed_limit_kmh` (v4.33.0) : alertez le chauffeur au-delà.** Un passager
+est à bord. **`0` = aucune alerte**, et c'est le défaut — n'inventez pas de
+seuil : celui d'un autre pays ferait sonner l'application dans une ville où il
+ne veut rien dire, et une alerte qui se déclenche à tort s'apprend à ignorer en
+une journée.
+
+⚠️ **CE N'EST PAS UNE SANCTION.** La plateforme ne coupe rien, ne signale rien,
+ne facture rien : elle vous donne le seuil, vous alertez sur place — au moment
+où cela sert encore.
+
+#### Les deux formes que le contrat nommait sans les décrire (v4.33.0)
+
+```jsonc
+// classes[].modes.rental.tiers — les forfaits de location, durée croissante
+[ { "hours": 1, "price_xof": 4000,  "included_km": 15 },
+  { "hours": 5, "price_xof": 16000, "included_km": 70 } ]
+
+// surge — les majorations actives, telles qu'un téléphone peut les tester
+[ { "name": "Aéroport", "center": [1.2543, 6.1656],
+    "radius_m": 1500, "multiplier": 1400 } ]
+```
+
+⚠️ **`multiplier` EST EN MILLIÈMES** : `1400` vaut **×1,4**. Un entier, pour la
+même raison que les montants — un ×1,1 flottant multiplié par un prix donne des
+centimes qui n'existent pas. Appliquez-le **avant** l'arrondi.
+
+⚠️ **LES MAJORATIONS NE S'APPLIQUENT NI AU COMPTEUR NI À LA LOCATION**, seulement
+à une course commandée. Un compteur majoré par une zone d'aéroport facturerait
+deux fois la même rareté.
+
+⚠️ **UNE DURÉE ABSENTE DES `tiers` EST REFUSÉE** (`422`). N'interpolez pas entre
+deux forfaits : le passager verrait un montant introuvable dans la grille.
+
+---
 
 ### 6. La course LIBRE entièrement hors ligne
 
@@ -1277,6 +1355,14 @@ le temps annoncé (120 km/h de moyenne). Un GPS qui décroche sous un pont fait
 bondir la position de plusieurs kilomètres, et ils seraient facturés au
 passager. Filtrez aussi de votre côté : un saut de plus de 200 m en une seconde
 n'est pas un déplacement.
+
+⚠️ **UN COMPTEUR ABANDONNÉ, C'EST À VOUS DE LE FERMER** (v4.33.0). La
+plateforme ferme les compteurs oubliés, mais elle ne peut fermer que ceux
+qu'elle **connaît** : un compteur ouvert hors réseau et jamais fermé — téléphone
+éteint, application tuée — n'existe nulle part chez nous. Fermez-le à
+`modes.free.max_hours`, envoyez-le avec l'`ended_at` que vous avez calculé, et
+marquez-le **`auto_closed: true`** : sans ce drapeau, l'exploitation lit une
+course de six heures sans savoir que personne n'a appuyé sur « arrêter ».
 
 ⚠️ **VOTRE HORLOGE NE FAIT PAS AUTORITÉ.** Le serveur recadre chaque instant
 entre l'étape précédente et maintenant. La réponse porte `server_time` :

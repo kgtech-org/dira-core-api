@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.32.2** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.33.0** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,33 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.33.0 — 26 septembre 2026
+
+🛠️ **CE QUE L'ÉQUIPE DE L'APP CHAUFFEUR A RELEVÉ** — relevé au curl sur la
+recette, reproduit ici, corrigé (`VTC-DRIVER.md` §4 ter et §4 quater).
+
+- ⚠️ **`tariff_version` est maintenant sur `GET /drivers/me`.** Elle ne
+  voyageait que dans le `meta` de l'appel : un chauffeur qui ne reçoit **aucun
+  appel** de la journée — celui qui ne fait que des compteurs, justement le plus
+  concerné — n'apprenait jamais que sa grille avait changé.
+- ⚠️ **`403 vehicle_not_yours` au démarrage d'un compteur.** Un `vehicle_id`
+  inventé passait : sans véhicule pas de classe, sans classe pas de grille, et
+  **deux heures de compteur facturées 0 F**.
+- ⚠️ **La cadence `normal` passe à 30 s / 40 m**, et le contrat explique enfin
+  pourquoi : **les deux déclencheurs ne gouvernent pas la même chose**. En
+  mouvement c'est la **distance** (40 m à 30 km/h = cinq secondes) ; à l'arrêt
+  c'est l'**intervalle**, un simple battement de cœur. Et il a une **borne dure
+  de 60 s** : au-delà, le vivier d'appel oublie le véhicule et **rien ne le dit
+  au chauffeur**.
+- **`speed_limit_kmh`** dans `GET /settings/dispatch` : alertez au-delà. ⚠️ Pas
+  une sanction, `0` = aucune alerte, et **n'inventez pas de seuil**.
+- **`tiers` et `surge` sont décrits.** ⚠️ **`multiplier` est en MILLIÈMES**
+  (1400 = ×1,4), à appliquer **avant** l'arrondi ; les majorations ne touchent
+  **ni le compteur ni la location**.
+- **`auto_closed`** sur un élément de `POST /rides/sync` : un compteur
+  abandonné hors ligne, c'est au téléphone de le fermer — nous ne pouvons
+  fermer que ce que nous connaissons.
 
 ### 4.32.2 — 26 septembre 2026
 
