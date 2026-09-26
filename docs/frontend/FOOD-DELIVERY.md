@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.31.0** · 26 septembre 2026
+> **Version 4.32.0** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -617,6 +617,41 @@ sources, et `heading_source` dit laquelle :
 Sans capteur exploitable (téléphone sans magnétomètre, calibration
 impossible), omettez les deux champs : le serveur garde le dernier cap
 connu. N'envoyez jamais `0` pour « inconnu » — c'est le nord.
+
+### 📴 LE RATTRAPAGE — les positions gardées pendant une coupure (v4.32.0)
+
+**Un tunnel, un parking, un creux de couverture : gardez vos positions et
+poussez-les en sortant**, avec leur horodatage d'origine et une marque :
+
+```json
+{ "vehicle_id": "…", "mission_id": "<delivery_id>", "lng": 1.2255, "lat": 6.1319,
+  "ts": 1789044151142, "backfill": true }
+```
+
+⚠️ **C'EST CE QUI PAIE.** La distance d'une livraison se mesure sur les
+positions réellement poussées (`distance_source: tracked`) ; sans rattrapage,
+une coupure de dix minutes est un trou dans le parcours — donc des kilomètres
+qui n'ont jamais existé pour la paie.
+
+- ⚠️ **`backfill: true` ET LE `ts` D'ORIGINE, TOUJOURS.** Un rattrapage **sans
+  `ts` est refusé** : daté de maintenant, il prétendrait dire où vous êtes.
+- Une position ancienne **ne remplace jamais** la position courante : le
+  serveur s'en garde. Sans cette règle, la dernière trame rejouée — la plus
+  ancienne — vous ferait « revenir en arrière » sur la carte de
+  l'exploitation, et le vivier d'appel vous chercherait là où vous n'êtes plus.
+- **L'ordre d'envoi est libre** : chaque point porte son temps, et le serveur
+  remet le parcours en ordre avant de le mesurer.
+- Le rattrapage **échappe à la limite de cadence** du serveur : videz votre
+  tampon d'un trait, sans attendre entre deux trames.
+- Il n'est **pas rediffusé** au client qui suit la livraison : sa carte ne doit
+  pas faire reculer votre moto.
+
+⚠️ **CE QUI N'EST PAS ENCORE POSSIBLE HORS LIGNE**, et il faut le dire :
+**changer l'état d'une livraison** (collecter, terminer) demande le réseau. Le
+rattrapage porte les **positions**, pas les gestes. Une livraison terminée hors
+ligne doit être terminée **à nouveau** une fois le réseau revenu — gardez le
+geste en file et rejouez-le, mais attendez-vous à un refus si l'état a changé
+entre-temps.
 
 > ### 🧭 ⚠️ LES DEUX PINS D'UN VÉHICULE, ET LEUR ORIENTATION (v4.20.0)
 >

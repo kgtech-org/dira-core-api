@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.31.0** · 26 septembre 2026
+> **Version 4.32.0** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -1066,6 +1066,223 @@ Terminez comme une course ordinaire. ⚠️ **Le retard n'est pas facturé** —
 durée est ce qui a été vendu. Les **kilomètres** au-delà des compris, eux, le
 sont (`rental_overage_km`, motif `rental_overage`) : c'est votre carburant et
 votre usure.
+
+---
+
+## 4 quater. 📴 HORS LIGNE — conduire sans réseau (v4.32.0)
+
+**Une course ne s'arrête pas parce que le réseau s'arrête.** Vous conduisez, le
+passager descend, il vous paie en espèces : tout cela a lieu. Ce qui manque,
+c'est le **récit** — et cette section dit comment le garder, puis le rendre.
+
+⚠️ **RIEN NE DOIT ÊTRE PERDU EN SILENCE.** Un geste qui disparaît parce que le
+réseau a coupé est pire qu'un refus affiché : le chauffeur croit avoir fait le
+travail, et l'apprend deux jours plus tard par une paie qui ne tombe pas.
+
+### Ce qui marche sans réseau, et ce qui ne marche pas
+
+| Vous pouvez | Vous ne pouvez pas |
+|---|---|
+| **Lancer et arrêter un compteur** (course libre) | Recevoir un appel |
+| Avancer une course déjà acceptée (`arrived`, `in_transit`, `completed`) | Accepter une course |
+| Noter les arrêts d'une location | Être payé par portefeuille |
+| **Annoncer un prix** (estimé avec la grille en cache) | Facturer — c'est le serveur qui facture |
+
+### 1. La grille en poche — `GET /tariffs/snapshot`
+
+```
+GET /tariffs/snapshot            → { country, currency, version, issued_at,
+                                     rounding_xof, classes[], surge[],
+                                     modes{…}, tracking{…} }
+```
+
+**Téléchargez-le à la connexion, gardez-le sur le disque, et ne le jetez
+jamais** — même périmé, il vaut mieux que rien.
+
+⚠️ **UN SEUL DOCUMENT, ET C'EST LE POINT.** Vous ne choisissez pas le moment où
+le réseau tombe : ce que vous avez en poche doit être **complet et cohérent**.
+Trois documents rafraîchis à trois instants différents se contredisent au pire
+moment — une grille de janvier avec une politique de mars.
+
+**Revalidez avec `ETag`**, ne retéléchargez pas :
+
+```
+GET /tariffs/snapshot
+If-None-Match: "04176fcc6442bae8"     → 304 si rien n'a changé
+```
+
+`version` empreinte le **contenu** : deux lectures d'une facturation inchangée
+rendent la même. ⚠️ Une application qui retélécharge sans raison à chaque
+retour de réseau consomme le forfait du chauffeur pour répéter ce qu'elle a
+déjà — et finit par ne plus télécharger du tout.
+
+**La version voyage aussi dans le `meta` de chaque appel** (`tariff_version`) :
+comparez-la à celle de votre cache et rafraîchissez si elle diffère. ⚠️ C'est
+le **seul moment où l'on est sûr que vous écoutez** — sans cela, vous pouvez
+rouler une journée entière avec la grille de la semaine dernière.
+
+⚠️ **CE QUE VOUS CALCULEZ EST UNE ESTIMATION, JAMAIS UNE FACTURE.** Dites-le à
+l'écran (« montant estimé »). Le prix qui compte est celui que le serveur
+recalcule à la resynchronisation : la grille a pu changer, la distance réelle
+différer de ce que le GPS a mesuré. **N'imprimez pas de reçu définitif hors
+ligne.**
+
+### 2. La file locale — ce qu'on garde, et comment
+
+**Une file persistante sur le disque**, vidée dans l'ordre, qui survit à la
+fermeture de l'application et au redémarrage du téléphone. Chaque élément
+porte :
+
+| Champ | Pourquoi |
+|---|---|
+| `client_ref` | ⚠️ **La clé d'idempotence**, tirée au sort par VOUS (UUID). Sans elle, chaque tentative crée une course de plus : le chauffeur en voit trois, et la commission est prise trois fois. |
+| `kind` | `free_ride` · `status` · `stops` |
+| `at` | L'instant du geste, **à la seconde où il a eu lieu** — pas celui de l'envoi |
+| le corps | ce que l'appel aurait porté en ligne |
+
+⚠️ **LA CLÉ SE TIRE AU MOMENT DU GESTE, PAS AU MOMENT DE L'ENVOI.** Une clé
+tirée à l'envoi change à chaque nouvelle tentative, et l'idempotence ne sert
+plus à rien — c'est l'erreur qui fait les courses en triple.
+
+### 3. Rendre le récit — `POST /rides/sync`
+
+```
+POST /rides/sync
+{ "items": [
+    { "client_ref": "3f2a…", "kind": "free_ride", "at": "…",
+      "vehicle_id": "…", "started_at": "…", "ended_at": "…",
+      "start": { "geo": [1.2231, 6.1375] }, "end": { "geo": [1.2456, 6.1301] },
+      "distance_m": 4200, "quoted_xof": 2300 },
+    { "client_ref": "9b41…", "kind": "status", "at": "…",
+      "ride_id": "…", "status": "completed" } ] }
+
+→ 200 { "server_time": "…",
+        "results": [ { "client_ref": "3f2a…", "outcome": "applied",
+                       "ride_id": "6ab…", "fare_xof": 2500 },
+                     { "client_ref": "9b41…", "outcome": "rejected",
+                       "code": "ride_not_found", "message": "…",
+                       "retryable": false } ] } 
+```
+
+**Cinquante éléments au plus par envoi.** Envoyez-les par paquets ; ne tentez
+pas de vider une journée en une requête.
+
+| `outcome` | Ce que vous faites |
+|---|---|
+| `applied` | **Retirez** l'élément de la file. Affichez le `fare_xof` **du serveur**. |
+| `duplicate` | **Retirez-le aussi** — il était déjà passé. `ride_id` est le même. |
+| `rejected` + `retryable: true` | **Gardez-le**, réessayez plus tard |
+| `rejected` + `retryable: false` | **Retirez-le** et **dites-le au chauffeur** : ce refus sera le même dans une heure |
+
+⚠️ **LA RÉPONSE EST `200` MÊME QUAND DES ÉLÉMENTS SONT REFUSÉS.** Ne traitez
+pas le lot en bloc : un seul élément fautif ferait rejouer le lot entier, le
+même élément le ferait échouer à chaque fois, et **rien ne passerait plus
+jamais**. Lisez `results`, élément par élément.
+
+⚠️ **UN REFUS DÉFINITIF SE MONTRE.** Retirer en silence un travail réel est
+exactement ce qu'il ne faut pas faire : le chauffeur a roulé, il doit savoir
+que cette course n'a pas été enregistrée et pourquoi.
+
+#### Réessayer : le rythme
+
+**Exponentiel avec du hasard**, et un plafond :
+
+```
+1 s · 2 s · 4 s · 8 s · 16 s · 32 s · 60 s · 60 s · 60 s…   (± 30 % de hasard)
+```
+
+⚠️ **LE HASARD N'EST PAS UN DÉTAIL.** Quand une antenne revient, tous les
+téléphones du quartier réessaient **à la même seconde** : sans dispersion, ils
+font tomber le service qu'ils attendaient. C'est le seul rôle du ±30 %.
+
+**Réessayez tout de suite** — sans attendre le prochain palier — quand le
+système signale que le réseau est revenu. Et **ne réessayez jamais en boucle
+serrée** : une file vide n'a rien à envoyer, une file pleine attend son palier.
+
+### 4. Les positions — le parcours qu'on rattrape
+
+**Gardez vos positions hors ligne** (avec leur `ts`), puis poussez-les sur le
+socket comme d'habitude, en les marquant :
+
+```json
+{ "vehicle_id": "…", "mission_id": "<ride_id>", "lng": 1.2231, "lat": 6.1375,
+  "ts": 1790000000000, "backfill": true }
+```
+
+⚠️ **`backfill: true` ET SON `ts` D'ORIGINE, TOUJOURS.** Un rattrapage sans
+horodatage est **refusé** : daté de maintenant, il prétendrait dire où vous
+êtes. Une position plus ancienne ne remplace jamais la position courante — le
+serveur s'en garde — mais c'est elle qui **complète le parcours, donc la
+distance, donc le prix**.
+
+⚠️ **L'ORDRE D'ENVOI EST LIBRE** : chaque point porte son temps, et le serveur
+les remet en ordre. En revanche, **poussez-les après la resynchronisation**
+pour une course libre faite hors ligne : le `mission_id` est l'identifiant que
+`POST /rides/sync` vient de vous rendre — il n'existait pas avant.
+
+### 5. La cadence — pousser moins souvent, jamais s'arrêter
+
+`snapshot.tracking` donne, **par mode**, l'intervalle et la distance minimale :
+
+| Mode | Intervalle | Distance minimale |
+|---|---|---|
+| `normal` | 5 s | 20 m |
+| `free` | 20 s | 50 m |
+| `rental` | 30 s | 80 m |
+
+⚠️ **UNE LOCATION DE CINQ HEURES N'A PERSONNE DEVANT L'ÉCRAN.** Pousser toutes
+les quatre secondes pendant cinq heures vide une batterie et un forfait pour
+rien — sur une course qui se facture à la durée, pas aux kilomètres.
+
+⚠️ **MAIS ESPACER N'EST PAS ÉTEINDRE.** C'est le parcours qui mesure le
+dépassement de kilomètres d'une location et la distance d'un compteur : une
+course qu'on ne suit plus est une course qu'on ne sait plus facturer — ni
+défendre quand elle est contestée.
+
+### 6. La course LIBRE entièrement hors ligne
+
+1. Le bouton s'affiche si **votre cache** dit que le pays ouvre le mode
+   (`modes.free.enabled`) **et** que la classe de votre véhicule vend le mode.
+2. **Relevez votre position** au démarrage, et **à l'arrêt** : ce sont les deux
+   points de la facture. ⚠️ Ne cherchez pas l'adresse — **le serveur la
+   nommera** par géocodage inverse. Un géocodeur demande du réseau, celui-là
+   même qui vous manque.
+3. Comptez la distance avec le GPS, annoncez le montant **estimé**.
+4. À la reconnexion : `POST /rides/sync` (`kind: "free_ride"`), puis poussez
+   les positions sous le `ride_id` rendu.
+
+⚠️ **LA DISTANCE QUE VOUS ENVOYEZ EST BORNÉE** à ce qu'on peut parcourir dans
+le temps annoncé (120 km/h de moyenne). Un GPS qui décroche sous un pont fait
+bondir la position de plusieurs kilomètres, et ils seraient facturés au
+passager. Filtrez aussi de votre côté : un saut de plus de 200 m en une seconde
+n'est pas un déplacement.
+
+⚠️ **VOTRE HORLOGE NE FAIT PAS AUTORITÉ.** Le serveur recadre chaque instant
+entre l'étape précédente et maintenant. La réponse porte `server_time` :
+**mesurez votre dérive** et corrigez vos prochains horodatages, plutôt que de
+les laisser recadrer en silence.
+
+### 7. Ce que le chauffeur DOIT voir
+
+| Situation | À l'écran |
+|---|---|
+| Hors ligne | Un bandeau permanent, pas une icône discrète : « **hors ligne — vos courses sont enregistrées** » |
+| File non vide | « **3 courses en attente d'envoi** », avec la plus ancienne |
+| Envoi en cours | Un état visible, et jamais bloquant : on continue de conduire |
+| Élément refusé définitivement | Un message qui **nomme** la course et le motif |
+| Prix estimé | Le mot « **estimé** » à côté du montant, tant que le serveur ne l'a pas confirmé |
+
+⚠️ **NE MONTREZ JAMAIS UNE FILE VIDE COMME UNE RÉUSSITE TANT QU'ELLE N'EST PAS
+PARTIE.** « Tout est synchronisé » alors que trois courses attendent est le
+message qui fait perdre confiance dans l'application entière.
+
+### 8. Pendant ce temps, côté exploitation
+
+Au bout de **deux minutes** sans position pendant une course, la console
+affiche « course hors radar » avec votre nom et votre numéro. ⚠️ **Elle
+n'annule rien** — la course continue, et votre téléphone la reprendra. C'est
+une alerte, pas une sanction : un tunnel et un accident commencent de la même
+façon, et l'exploitation préfère appeler pour rien.
 
 ---
 

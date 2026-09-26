@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.31.0** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.32.0** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,67 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.32.0 — 26 septembre 2026
+
+📴 **HORS LIGNE — une course ne s'arrête pas parce que le réseau s'arrête**
+(`VTC-DRIVER.md` §4 quater, `VTC-CLIENT.md` §6, `FOOD-DELIVERY.md` §6).
+
+Le chauffeur conduit, le passager descend, il paie en espèces : tout cela a
+lieu sans nous. Ce qui manquait, c'est le **récit** — et de quoi le reprendre.
+
+**1. La grille en poche** — `GET /tariffs/snapshot`
+
+Un **seul** document : monnaie, arrondi, grille ordinaire et grilles des modes
+par véhicule, zones de majoration, politique des modes, cadences de suivi. Vous
+ne choisissez pas le moment où le réseau tombe, et ce que vous avez en poche
+doit être complet et cohérent.
+
+- ⚠️ `version` empreinte le **contenu** → revalidez avec `ETag` /
+  `If-None-Match` et recevez `304`. Une application qui retélécharge sans
+  raison à chaque retour de réseau finit par ne plus télécharger du tout.
+- La même version voyage dans le **`meta` de chaque appel**
+  (`tariff_version`) : c'est le seul moment où l'on est sûr que le téléphone
+  écoute.
+- ⚠️ **Ce que le téléphone calcule est une ESTIMATION.** Affichez le mot, et
+  n'imprimez pas de reçu définitif hors ligne.
+
+**2. La file locale et la resynchronisation** — `POST /rides/sync`
+
+- ⚠️ **`client_ref` est tirée au moment du GESTE**, pas de l'envoi. Tirée à
+  l'envoi, elle change à chaque tentative et l'idempotence ne sert plus à
+  rien — c'est l'erreur qui fait les courses en triple.
+- ⚠️ **`200` même avec des refus**, un résultat **par élément**. Un lot traité
+  en bloc serait rejoué indéfiniment sur son seul élément fautif, et **rien ne
+  passerait plus jamais**.
+- `retryable` sépare nos pannes des refus définitifs. ⚠️ Un refus définitif se
+  **montre** au chauffeur : retirer en silence un travail réel est exactement
+  ce qu'il ne faut pas faire.
+- Réessais **exponentiels avec ±30 % de hasard** : quand une antenne revient,
+  tous les téléphones du quartier réessaient à la même seconde.
+
+**3. Les positions rattrapées** — `backfill: true` + le `ts` d'origine
+
+⚠️ **Un rattrapage sans `ts` est refusé** : daté de maintenant, il prétendrait
+dire où l'on est. Une position ancienne ne remplace jamais la courante, n'est
+pas rediffusée aux passagers, et **échappe à la limite de cadence**. Le
+parcours est remis en ordre du temps avant d'être mesuré — c'est lui qui donne
+la distance, donc le prix.
+
+**4. Les cadences** : 5 s (course commandée) · 20 s (compteur) · 30 s
+(location). ⚠️ **Espacer n'est pas éteindre** : une course qu'on ne suit plus
+est une course qu'on ne sait plus facturer.
+
+**5. Deux minutes de silence, et l'exploitation le voit.** ⚠️ Une alerte, pas
+une sanction : la console n'annule rien, la course continue.
+
+**6. Le passager** : ⚠️ **ne dites jamais qu'une course est perdue** parce
+qu'une position manque. La voiture **saute** à sa vraie position après une
+coupure — c'est la vérité de la route, pas un défaut.
+
+**7. Les points d'un compteur ou d'une location sont relevés par le téléphone
+et NOMMÉS par le serveur** (géocodage inverse) : un géocodeur demande du
+réseau, celui-là même qui manque.
 
 ### 4.31.0 — 26 septembre 2026
 
