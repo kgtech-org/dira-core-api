@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.28.0** · 26 septembre 2026
+> **Version 4.29.0** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -805,6 +805,146 @@ POST /subscriptions/{id}/pause · /resume · /cancel
 - ⚠️ **Un abonnement ne se renouvelle PAS tout seul.** À `ends_on`, il
   expire. Proposez de reprendre le même — c'est le moment où le passager y
   pense, et le seul.
+
+---
+
+## 4 quater. 🚕 LES AUTRES MODES DE COURSE (v4.29.0)
+
+**Deux modes en plus du mode ordinaire, et chacun s'allume PAR PAYS.**
+
+```
+GET /settings/modes → { free:   { enabled, min_fare_xof, scannable, max_hours },
+                        rental: { enabled, tiers: [ { hours, price_xof, included_km } ],
+                                  extra_per_km_xof, max_radius_km, alert_km_before } }
+```
+
+⚠️ **LISEZ CE RÉGLAGE AVANT DE MONTRER QUOI QUE CE SOIT.** Un mode éteint doit
+**disparaître de l'écran**, pas y rester et échouer. Et n'écrivez jamais les
+durées d'une location en dur : c'est cette liste qui dit ce que le pays vend.
+
+---
+
+### 📷 La course LIBRE — scanner un taxi qu'on a hélé
+
+Un chauffeur peut lancer un compteur sans que personne ne l'ait commandé : un
+taxi dans la rue. Vous montez, puis vous **scannez son code** pour suivre la
+course et recevoir la facture à la fin.
+
+```
+GET  /rides/free/{code}        → la course, avec la carte du chauffeur
+POST /rides/free/{code}/join   → elle devient la vôtre
+```
+
+**Deux temps, et l'ordre compte.** Montrez d'abord ce que `GET` rend — le nom
+du chauffeur, la voiture, la plaque — et ne rattachez qu'après confirmation.
+⚠️ Un scan qui rattache d'un coup, sans rien montrer, fait des réclamations :
+la personne n'a pas vérifié dans quelle voiture elle monte.
+
+Le code fait **6 caractères** de `ABCDEFGHJKLMNPQRTUVWXYZ2346789` — **sans
+O/0, I/1 ni S/5**, parce qu'on le recopie à la main quand la caméra refuse.
+Acceptez la saisie manuelle, en majuscules, et validez sur cet alphabet avant
+d'appeler.
+
+| Refus | Ce que ça veut dire | Ce que vous affichez |
+|---|---|---|
+| `404 free_ride_not_found` | code inconnu, course finie, ou **course d'un autre pays** | « ce code n'est plus valable » — proposez de réessayer |
+| `409 free_ride_taken` | quelqu'un a scanné avant vous | « cette course est déjà suivie par un autre passager » |
+| `409 free_ride_not_scannable` | le pays veut le compteur sans le rattachement | ne montrez pas le scanner du tout |
+| `409 free_ride_own` | c'est votre propre course (compte chauffeur) | — |
+
+⚠️ **RATTACHER NE CHANGE PAS LE MOYEN DE PAIEMENT.** La course reste **en
+espèces** : un passager monté dans la rue n'a pas de portefeuille Dira.
+Vous obtenez la **facture**, pas une autre façon de payer. Ne proposez ni
+portefeuille ni mobile money sur une course libre.
+
+⚠️ **LE PRIX N'EXISTE PAS AVANT LA FIN.** `fare_xof` vaut **0** pendant toute
+la course : elle est facturée sur ce qui a été réellement roulé, au tarif du
+mode du véhicule. **N'affichez pas « 0 F »** — dites « compteur en cours », et
+montrez le montant à `completed`.
+
+⚠️ **`auto_closed: true`** : la plateforme a fermé le compteur elle-même,
+parce qu'il tournait depuis plus longtemps que la borne du pays. La course est
+**terminée et facturée**. Dites-le, sans accuser le chauffeur.
+
+---
+
+### ⏳ La LOCATION — retenir un chauffeur pour une durée
+
+Vous n'achetez pas un trajet, vous achetez **du temps**. Le prix est le
+**forfait de la plage**, et il ne bouge pas avec le chemin parcouru.
+
+```
+POST /rides/rental/quote  { "hours": 5, "pickup": { "label": "…", "geo": [lng, lat] } }
+  → { mode: "rental", fare_xof: 20000, rental_hours: 5,
+      rental_included_km: 80, rental_extra_per_km_xof: 150,
+      rental_max_radius_km: 60, rental_alert_km_before: 10, expires_at }
+
+POST /rides  { quote_id, payment_method }        # comme un devis ordinaire
+```
+
+⚠️ **PAS DE DESTINATION À DEMANDER.** Un seul point : le départ. Un écran qui
+réclamerait une arrivée empêcherait de commander ce que le passager veut
+justement — un chauffeur à disposition.
+
+⚠️ **LA DURÉE DOIT ÊTRE UNE PLAGE VENDUE.** `tiers` dit lesquelles. « 3 h »
+entre 1 h et 5 h est refusé (`422`, `fields: ["hours"]`) : interpoler
+inventerait un prix que personne n'a décidé, et le passager verrait un montant
+introuvable dans la grille.
+
+#### Dire les garde-fous AVANT de réserver
+
+**Les trois chiffres du devis sont à montrer sur l'écran de confirmation**,
+pas enfouis dans des conditions générales :
+
+| Champ | Ce que vous dites |
+|---|---|
+| `rental_included_km` | « 80 km compris » |
+| `rental_extra_per_km_xof` | « puis 150 F le km » — `0` : le dépassement est offert, ne dites rien |
+| `rental_max_radius_km` | « à 60 km de votre départ au plus » |
+
+⚠️ **« CINQ HEURES » NE VEUT PAS DIRE « CINQ HEURES DE ROUTE ».** Personne ne
+roule cinq heures d'affilée en ville, et le forfait n'est pas calculé pour ça.
+Un passager qui découvre ces bornes à la facture n'a pas acheté ce qu'on lui
+avait promis — et c'est la réclamation la plus coûteuse qui existe.
+
+#### Pendant la location
+
+```
+PUT /rides/{id}/rental-stops  { "stops": [ { "label": "…", "geo": [lng, lat] }, … ] }
+```
+
+**Donnez les destinations au fur et à mesure.** La liste ENTIÈRE des arrêts
+après le départ, dans l'ordre ; le départ ne se change pas.
+
+⚠️ **CE N'EST PAS `PATCH /rides/{id}/stops`, et surtout ne l'utilisez pas
+ici.** L'autre route **recalcule le prix** et fait bouger l'argent. Sur une
+location, le prix ne change **jamais** avec le trajet : c'est la durée qui est
+vendue.
+
+⚠️ **LE CHAUFFEUR PEUT AUSSI APPELER CETTE ROUTE** — pour noter ce qu'on lui a
+dit de vive voix. Vos arrêts peuvent donc changer sans que vous les ayez
+envoyés : **relisez la course** sur une trame `status` comme d'habitude, et
+n'écrasez pas la liste sans l'avoir relue.
+
+**`422 rental_out_of_range`** : l'arrêt demandé sort du rayon. `meta` porte
+`distance_km` et `max_km` — **affichez les deux** : « Kaolack est à 190 km,
+votre location va jusqu'à 60 km ». Un « trop loin » sans chiffres laisse
+deviner de combien.
+
+#### Le temps qui reste
+
+⚠️ **`rental_ends_at` COURT À LA MONTÉE À BORD**, pas à la commande : le temps
+que le chauffeur met à venir n'est pas du temps loué. Le champ est **absent**
+tant que vous n'êtes pas monté — n'affichez pas de compte à rebours avant.
+
+C'est un **instant** : décomptez-le localement, sans réinterroger.
+
+#### À la fin
+
+`rental_overage_km` dit les kilomètres facturés au-delà des compris, et le
+supplément apparaît dans `fare_adjustments` avec le motif `rental_overage`.
+⚠️ **Le kilomètre commencé est dû** — c'était écrit dans les conditions.
+Aucun supplément pour un **retard** : la durée est ce qu'on a vendu.
 
 ---
 

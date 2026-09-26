@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.28.0** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.29.0** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,67 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.29.0 — 26 septembre 2026
+
+🚕 **DEUX MODES DE COURSE EN PLUS**, et chacun s'allume **par pays**
+(`GET /settings/modes`).
+
+⚠️ **LISEZ CE RÉGLAGE AVANT DE MONTRER QUOI QUE CE SOIT.** Un mode éteint doit
+**disparaître de l'écran**, pas y rester et répondre `409` — un bouton qui
+échoue se lit comme une panne. Et n'écrivez jamais les durées d'une location
+en dur : c'est ce réglage qui dit ce que le pays vend.
+
+**1. La course LIBRE — le taxi qu'on hèle** (`VTC-DRIVER.md` §4 ter,
+`VTC-CLIENT.md` §4 quater).
+
+Le chauffeur lance un compteur sans que personne n'ait commandé. **Le prix
+naît à la FIN**, de ce qui a été réellement roulé. Un client qui monte scanne
+le code affiché pour suivre la course et recevoir la facture.
+
+- ⚠️ **`fare_xof` vaut 0 pendant toute la course.** N'affichez pas « 0 F » :
+  dites « compteur en cours », et montrez le montant à `completed`.
+- ⚠️ **Le chauffeur doit pousser ses positions sous `mission_id` =
+  l'identifiant de la course**, dès le démarrage — c'est ce tampon qui donne
+  la distance, donc le prix. Sans lui, la course est facturée à la durée
+  seule.
+- ⚠️ **Deux temps côté client : montrer, puis rattacher.** `GET` rend le
+  chauffeur et la voiture ; `POST …/join` engage la facture. Un scan qui
+  rattache d'un coup fait des réclamations.
+- ⚠️ **Rattacher ne change pas le moyen de paiement** : la course reste en
+  espèces. Le client obtient la facture, pas une autre façon de payer.
+- Le code fait **6 caractères sans O/0, I/1 ni S/5** — il se recopie à la
+  main quand la caméra refuse. Acceptez la saisie manuelle.
+- ⚠️ **`auto_closed: true`** : la plateforme a fermé un compteur oublié. La
+  course est **terminée et facturée**, jamais annulée — elle a eu lieu.
+
+**2. La LOCATION — un chauffeur retenu pour une durée** (mêmes sections).
+
+Le passager achète **du temps**, au forfait de la plage vendue par son pays.
+
+- ⚠️ **Pas de destination à demander** : un seul point, le départ. Un écran
+  qui réclamerait une arrivée empêcherait de commander ce que le passager
+  veut justement.
+- ⚠️ **La durée doit être une plage VENDUE** (`tiers`). « 3 h » entre 1 h et
+  5 h est refusé : interpoler inventerait un prix que personne n'a décidé.
+- ⚠️ **DITES LES TROIS GARDE-FOUS AVANT DE RÉSERVER** — kilomètres compris,
+  prix du km au-delà, rayon autour du départ. « Cinq heures » ne veut pas
+  dire « cinq heures de route », et un passager qui découvre ces bornes à la
+  facture n'a pas acheté ce qu'on lui avait promis.
+- ⚠️ **`PUT /rides/{id}/rental-stops`, PAS `PATCH /rides/{id}/stops`.**
+  L'autre route recalcule le prix ; ici le prix ne change **jamais** avec le
+  trajet. **Les deux côtés peuvent l'appeler** — le passager donne ses
+  destinations au fur et à mesure, le chauffeur note celles qu'on lui a dites
+  de vive voix.
+- ⚠️ **`rental_ends_at` court à la MONTÉE À BORD**, pas à la commande :
+  absent tant que le passager n'est pas monté, donc pas de compte à rebours
+  avant.
+- ⚠️ **Un écran d'appel DISTINCT côté chauffeur** (`meta.mode`,
+  `rental_hours`, `no_destination`). Il a cinq secondes pour décider et
+  bloque des **heures** : accepter une location en croyant prendre une course
+  de quinze minutes se répare en annulant, ce qui pénalise tout le monde.
+- `422 rental_out_of_range` porte `distance_km` **et** `max_km` : affichez
+  les deux. Un « trop loin » sans chiffres laisse deviner de combien.
 
 ### 4.28.0 — 26 septembre 2026
 
