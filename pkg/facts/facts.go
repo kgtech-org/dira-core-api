@@ -54,6 +54,21 @@ const (
 	// a renoncé pendant la recherche). ⚠️ Un paiement refusé n'est PAS une
 	// demande non satisfaite : l'offre n'y est pour rien.
 	DemandUnmet = "demand.unmet"
+	// RideConnectionLost : une course EN COURS a disparu des écrans — le
+	// suivi ne voit plus le véhicule depuis plus que le silence toléré.
+	//
+	// ⚠️ CE N'EST PAS UNE DEMANDE NON SATISFAITE. La course a trouvé preneur,
+	// elle a lieu ; c'est le RÉSEAU qui manque, pas l'offre. Les confondre
+	// ferait compter une panne de couverture comme un manque de chauffeurs,
+	// et l'exploitation renforcerait une zone qui n'en a pas besoin.
+	//
+	// `Attrs` porte `status`, `mode`, `silent_s`, `vehicle`, `has_rider` :
+	// de quoi distinguer un livreur à vide d'un passager à bord.
+	RideConnectionLost = "ride.connection_lost"
+	// RideConnectionBack : elle est revenue. `Attrs.outage_s` dit combien de
+	// temps elle a manqué — c'est ce qui permet, plus tard, de distinguer un
+	// tunnel d'un quartier sans couverture.
+	RideConnectionBack = "ride.connection_back"
 )
 
 // Raisons d'une demande non satisfaite.
