@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.27.0** · 24 septembre 2026
+> **Version 4.28.0** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -518,19 +518,58 @@ wss://tracking-staging.dira.llc/track/subscribe/{mission_id}?token=<access_token
   le nouveau. Un socket ouvert ne se ré-authentifie pas tout seul.
 
 ```jsonc
-{ "type": "hello",    "mission_id": "6ab…" }
+{ "type": "hello",    "mission_id": "6ab…", "vehicle_id": "…", "vehicle_type": "moto",
+  "plate": "TG-3421-AB", "lng": 1.2255, "lat": 6.1319, "heading": 122.5,
+  "heading_source": "gps", "speed": 8.3, "ts": 1757… }          ⚠️ v4.28.0
 { "type": "position", "vehicle_id": "…", "vehicle_type": "moto", "plate": "TG-3421-AB",
   "lng": 1.2255, "lat": 6.1319, "heading": 122.5, "heading_source": "gps",
   "speed": 8.3, "ts": 1757… }
 { "type": "status",   "status": "in_transit", "ts": 1757… }
 ```
 
+### 🛰️ L'ACCUEIL PORTE LA DERNIÈRE POSITION CONNUE (v4.28.0)
+
+**`hello` arrive désormais avec la position du véhicule**, aux mêmes champs
+qu'une trame `position`. **Dessinez la moto dès l'accueil.**
+
+⚠️ **Ce que ça répare.** L'accueil ne disait que « bonjour », et il fallait
+attendre la trame suivante — jusqu'à plusieurs secondes. À chaque
+reconnexion (réseau retrouvé, application revenue au premier plan, jeton
+rafraîchi), le client voyait **sa carte se vider puis se remplir**.
+
+- **`ts` est l'horodatage du DERNIER point reçu**, pas l'instant de la
+  connexion : il peut dater de quelques dizaines de secondes. À vous de dire
+  « il y a 12 s » si vous le jugez utile ; la plateforme ne l'invente pas.
+- **Un `hello` NU — sans `lng`/`lat` — reste possible** (livreur pas encore
+  attribué, téléphone silencieux, suivi indisponible) : comportez-vous alors
+  comme avant. **Ne dessinez jamais un `hello` sans coordonnées** comme s'il
+  en avait.
+
+### 🔁 LA RECONNEXION EST OBLIGATOIRE, PAS OPTIONNELLE (v4.28.0)
+
+Tant qu'une livraison est en cours, l'application **doit** rouvrir le socket
+toute seule. Un socket tombé sans reconnexion laisse une moto figée sur la
+carte, et rien à l'écran ne dit que l'information a cessé d'arriver.
+
+| Événement | Ce que l'application fait |
+|---|---|
+| Socket fermé, quelle qu'en soit la cause | rouvrir, back-off **1 s, 2 s, 4 s … 30 s** |
+| Retour au **premier plan** | rouvrir **immédiatement**, sans attendre le back-off |
+| Réseau retrouvé | rouvrir immédiatement |
+| Code **4401 `token_expired`** | rafraîchir le jeton **puis** rouvrir — jamais avec le même |
+| **403** à la poignée de main | s'arrêter : ce rôle ne suit pas cette course |
+| Livraison terminée ou annulée | fermer, et ne plus rouvrir |
+
+À chaque réouverture, relisez aussi la commande : le socket rend la position,
+mais l'état a pu changer pendant la coupure.
+
 ### Dessiner
 
-- **La première position peut tarder** : le téléphone du livreur émet toutes
-  les quelques secondes, et il vient peut-être de démarrer. En attendant,
-  centrez sur la **boutique** et tracez `planned_route` — le client voit le
-  chemin prévu avant de voir la moto.
+- **La première position peut tarder** *(moins souvent depuis la v4.28.0 :
+  l'accueil la porte quand elle est connue)* : le téléphone du livreur émet
+  toutes les quelques secondes, et il vient peut-être de démarrer. En
+  attendant, centrez sur la **boutique** et tracez `planned_route` — le
+  client voit le chemin prévu avant de voir la moto.
 - **Interpolez** entre deux trames, sinon le marqueur saute. `heading`
   oriente la flèche ; `heading_source` dit si le cap est mesuré (`gps`) ou
   déduit — un cap déduit à l'arrêt tourne dans le vide, ne l'animez pas.

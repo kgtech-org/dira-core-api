@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.27.0** · 24 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.28.0** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,49 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.28.0 — 26 septembre 2026
+
+**La carte ne clignote plus, et le décompte suit les étapes.**
+
+**1. L'accueil du socket porte la dernière position connue**
+(`VTC-CLIENT.md` §6, `FOOD-CLIENT.md` §6). `hello` arrivait nu : il fallait
+attendre la trame suivante — jusqu'à plusieurs secondes — pour savoir où
+était le véhicule. À chaque reconnexion (réseau retrouvé, application revenue
+au premier plan, jeton rafraîchi), la carte se vidait puis se remplissait.
+Elle porte maintenant les mêmes champs qu'une trame `position` : **dessinez
+dès l'accueil**.
+
+⚠️ `ts` est l'horodatage du **dernier point reçu**, pas de la connexion — il
+peut dater de quelques dizaines de secondes. ⚠️ Un `hello` **nu** reste
+possible (véhicule pas encore attribué, téléphone silencieux) : ne le
+dessinez pas comme s'il portait des coordonnées.
+
+**2. La reconnexion automatique devient une EXIGENCE**, plus une bonne
+pratique. Tant qu'une course ou une livraison est vivante, l'application
+rouvre le socket toute seule : back-off 1 s → 30 s, et **immédiatement** au
+retour au premier plan. Un socket tombé sans reconnexion laisse un véhicule
+figé sur la carte, et rien à l'écran ne dit que l'information a cessé
+d'arriver. Le tableau des cas est dans chaque spec.
+
+**3. Le décompte porte sur le PROCHAIN arrêt** (`VTC-CLIENT.md` §5) :
+`eta_stop_index` + `eta_at` sur `GET /rides/{id}`.
+
+⚠️ La seule durée servie était `duration_s`, celle du devis — le trajet
+entier. On ne pouvait donc décompter que l'arrivée **finale** : pendant
+l'approche, le passager qui attend sur le trottoir n'avait aucun chiffre, et
+un trajet à plusieurs arrêts sautait les étapes intermédiaires.
+
+`eta_at` est un **instant**, à décompter localement — pas une durée à
+réinterroger. `eta_stop_index` vaut `0` pendant l'approche (le départ), puis
+l'arrêt suivant celui atteint. ⚠️ **Les deux champs absents veulent dire « on
+ne sait pas »** (chauffeur silencieux, position de plus de 2 min, moteur
+d'itinéraire muet, chauffeur à l'arrêt) : n'affichez alors **aucun** chiffre,
+surtout pas le dernier connu.
+
+Côté chauffeur (`VTC-DRIVER.md` §4) : ce sont **ses positions** qui font ce
+décompte — émettre dès l'acceptation, et prévenir le chauffeur quand
+l'émission s'arrête.
 
 ### 4.27.0 — 24 septembre 2026
 
