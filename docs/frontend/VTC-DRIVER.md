@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.32.1** · 26 septembre 2026
+> **Version 4.32.2** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -1174,6 +1174,17 @@ pas de vider une journée en une requête.
 | `rejected` + `retryable: true` | **Gardez-le**, réessayez plus tard |
 | `rejected` + `retryable: false` | **Retirez-le** et **dites-le au chauffeur** : ce refus sera le même dans une heure |
 
+⚠️ **N'EXIGEZ RIEN AVANT D'ENVOYER — surtout pas d'être en ligne.** Les
+barrières du départ (en ligne, non suspendu, dette sous le plafond, véhicule
+non immobilisé) disent qui a le droit de **commencer** à travailler ; elles ne
+s'appliquent **pas** à une course déjà faite. Le serveur ne les vérifie plus
+sur une resynchronisation, et votre application ne doit pas les vérifier à sa
+place : c'est en rentrant chez lui, hors ligne, qu'un chauffeur vide sa file.
+
+Le seul refus qu'une course bien formée peut recevoir est **`403
+vehicle_not_yours`** : « est-ce sa voiture ? » ne dépend pas du temps, et c'est
+la seule barrière qui garde son sens après coup.
+
 ⚠️ **LA RÉPONSE EST `200` MÊME QUAND DES ÉLÉMENTS SONT REFUSÉS.** Ne traitez
 pas le lot en bloc : un seul élément fautif ferait rejouer le lot entier, le
 même élément le ferait échouer à chaque fois, et **rien ne passerait plus
@@ -1244,9 +1255,19 @@ défendre quand elle est contestée.
 1. Le bouton s'affiche si **votre cache** dit que le pays ouvre le mode
    (`modes.free.enabled`) **et** que la classe de votre véhicule vend le mode.
 2. **Relevez votre position** au démarrage, et **à l'arrêt** : ce sont les deux
-   points de la facture. ⚠️ Ne cherchez pas l'adresse — **le serveur la
-   nommera** par géocodage inverse. Un géocodeur demande du réseau, celui-là
-   même qui vous manque.
+   points de la facture.
+
+   ```
+   POST  /rides/free            { "vehicle_id": "…", "geo": [1.2231, 6.1375] }
+   PATCH /rides/{id}/status     { "status": "completed", "geo": [1.2456, 6.1301] }
+   ```
+
+   ⚠️ **Ne cherchez pas l'adresse — le serveur la nommera** par géocodage
+   inverse. Un géocodeur demande du réseau, celui-là même qui vous manque.
+   ⚠️ `geo` est **facultatif** (un téléphone sans fix ne doit pas empêcher de
+   travailler) mais sans lui la facture dit « de nulle part à nulle part » :
+   personne n'a tapé d'adresse sur cette course. Le même champ vaut pour une
+   **location**, qui n'a pas de destination non plus.
 3. Comptez la distance avec le GPS, annoncez le montant **estimé**.
 4. À la reconnexion : `POST /rides/sync` (`kind: "free_ride"`), puis poussez
    les positions sous le `ride_id` rendu.
