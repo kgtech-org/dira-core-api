@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.29.0** · 26 septembre 2026
+> **Version 4.30.0** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -1010,7 +1010,7 @@ quinze minutes se répare en annulant, ce qui pénalise tout le monde.
 | À montrer | Pourquoi |
 |---|---|
 | **« LOCATION · 5 h »**, en grand | c'est la seule information qui change la décision |
-| Le forfait (`fare_xof`) | ce que vous gagnez pour ces heures |
+| Le forfait (`fare_xof`) | ce que vous gagnez pour ces heures — il dépend de **votre mode** : un van ne se loue pas au prix d'une eco |
 | **« sans destination »** (`no_destination`) | ne dessinez pas un point d'arrivée vide |
 | Les km compris et le rayon | ce que vous vous engagez à ne pas dépasser |
 

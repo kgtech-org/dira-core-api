@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.29.0** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.30.0** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,31 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.30.0 — 26 septembre 2026
+
+💰 **LA LOCATION SE TARIFE PAR MODE DE VÉHICULE** (`VTC-CLIENT.md`
+§4 quater).
+
+Une journée de van ne se vend pas au prix d'une journée d'eco : ce n'est ni
+le même véhicule, ni le même carburant, ni le même chauffeur qu'on
+immobilise.
+
+- ⚠️ **`class_key` devient OBLIGATOIRE** sur `POST /rides/rental/quote`, et
+  **il sert deux fois** : il choisit le prix **et** il décide qui sera
+  appelé. Sans lui, une location faisait sonner tous les modes, et un van
+  pouvait répondre à une course vendue au tarif eco.
+- Chaque ligne de `rental.tiers` porte un `class_key`. ⚠️ **Une ligne SANS
+  `class_key` vaut pour tous les modes qui n'ont pas la leur** — c'est ce qui
+  permet de vendre une grille unique sans la recopier trois fois.
+- ⚠️ **LE MODE EXACT L'EMPORTE TOUJOURS** sur la ligne commune. Appliquer la
+  commune en premier afficherait un van au prix d'une eco.
+- ⚠️ **NE PROPOSEZ QUE LES DURÉES DU MODE CHOISI** : les siennes, plus les
+  communes. Un passager qui choisit « 24 h » sur une eco qui ne se loue pas à
+  la journée se verrait refuser après coup — pire qu'une durée jamais
+  proposée. L'exemple complet est dans la spec.
+
+Côté chauffeur : le forfait affiché sur l'appel dépend de **son** mode.
 
 ### 4.29.0 — 26 septembre 2026
 
