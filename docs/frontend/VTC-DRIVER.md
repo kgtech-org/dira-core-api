@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.28.0** · 26 septembre 2026
+> **Version 4.29.0** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -928,6 +928,128 @@ Afficher « prochaine course : … » sur l'écran de la course en cours quand
 `chained_from` existe, et « enchaînement actif » dans le profil quand le
 réglage l'est — pour que le chauffeur comprenne pourquoi son téléphone sonne
 avant d'avoir déposé. Réglage inactif : rien ne change, une course à la fois.
+
+---
+
+## 4 ter. 🚕 LES AUTRES MODES DE COURSE (v4.29.0)
+
+**Deux modes en plus du mode ordinaire, et chacun s'allume PAR PAYS.**
+
+```
+GET /settings/modes → { free:   { enabled, min_fare_xof, scannable, max_hours },
+                        rental: { enabled, tiers, extra_per_km_xof,
+                                  max_radius_km, alert_km_before } }
+```
+
+⚠️ **LISEZ-LE AVANT DE MONTRER LE BOUTON.** Un mode éteint doit **disparaître
+de l'écran**, pas y rester et répondre `409`. Un chauffeur qui appuie sur un
+bouton qui échoue croit à une panne.
+
+---
+
+### 🧾 La course LIBRE — votre compteur
+
+Un passager monte dans la rue, sans avoir rien commandé. Vous lancez un
+compteur ; la facture s'affiche à la fin.
+
+```
+POST /rides/free  { "vehicle_id": "…" }   → la course, avec son free_code
+PATCH /rides/{id}/status { "status": "completed" }   → la facture
+```
+
+La course naît directement **`in_transit`** : il n'y a personne à aller
+chercher. Elle est **en espèces** — le passager vous paie à la descente.
+
+⚠️ **POUSSEZ VOS POSITIONS SOUS `mission_id` = l'identifiant de cette course,
+dès le démarrage.** C'est ce tampon qui donne la distance réelle, **donc le
+prix**. Sans lui, la course est facturée **à la durée seule** — c'est légal,
+mais moins juste pour vous comme pour le passager.
+
+⚠️ **MONTREZ LE `free_code` EN GRAND.** C'est ce que le passager scanne pour
+suivre la course et recevoir sa facture. Un QR **et** les 6 caractères en
+clair : la caméra refuse souvent, et le code est fait pour être lu à voix
+haute (pas de O/0, I/1, S/5).
+
+| Refus au démarrage | Pourquoi |
+|---|---|
+| `409 free_rides_off` | ce pays ne propose pas le mode — le bouton n'aurait pas dû s'afficher |
+| `403 driver_not_active` | hors ligne ou suspendu — **mettez-vous en ligne d'abord** |
+| `409 vehicle_not_usable` | ce véhicule est immobilisé par l'exploitation |
+| `409 ride_in_progress` | vous avez déjà une course — terminez-la |
+| `402 debt_limit_reached` | dette au-dessus du plafond — voir §6 |
+
+⚠️ **Les mêmes barrières qu'une course appelée, et c'est voulu** : sans elles,
+ce bouton serait une façon de contourner toutes les règles.
+
+⚠️ **UN COMPTEUR OUBLIÉ EST FERMÉ D'OFFICE** au-delà de `free.max_hours`. La
+course est **terminée et facturée** — jamais annulée, elle a bien eu lieu — et
+elle revient avec `auto_closed: true`. Dites-le clairement : « la plateforme a
+fermé ce compteur après 6 h ». Un compteur qui tourne la nuit facture la nuit,
+et c'est le passager du lendemain qui découvrirait le problème.
+
+---
+
+### ⏳ La LOCATION — un passager vous retient pour des heures
+
+```json
+{ "type": "call", "call_id": "…", "ref": "<ride_id>",
+  "meta": { "mode": "rental", "rental_hours": 5, "rental_included_km": 80,
+            "rental_max_radius_km": 60, "no_destination": true,
+            "fare_xof": 20000 } }
+```
+
+⚠️ **UN ÉCRAN D'APPEL DISTINCT, ET CE N'EST PAS UNE COQUETTERIE.** L'appel
+arrive dans la même trame qu'une course ordinaire, avec les mêmes **cinq
+secondes** pour décider — mais ce n'est pas du tout le même engagement : vous
+bloquez **des heures**, sans destination, et vous ne prendrez rien d'autre
+pendant ce temps. Accepter une location en croyant prendre une course de
+quinze minutes se répare en annulant, ce qui pénalise tout le monde.
+
+**Ce que l'écran doit dire, en un coup d'œil :**
+
+| À montrer | Pourquoi |
+|---|---|
+| **« LOCATION · 5 h »**, en grand | c'est la seule information qui change la décision |
+| Le forfait (`fare_xof`) | ce que vous gagnez pour ces heures |
+| **« sans destination »** (`no_destination`) | ne dessinez pas un point d'arrivée vide |
+| Les km compris et le rayon | ce que vous vous engagez à ne pas dépasser |
+
+Une couleur ou un liseré différents, et le mot **LOCATION** écrit : pas
+seulement un badge discret dans un coin.
+
+#### Pendant la location
+
+```
+PUT /rides/{id}/rental-stops  { "stops": [ { "label": "…", "geo": [lng, lat] }, … ] }
+```
+
+⚠️ **VOUS POUVEZ NOTER LES DESTINATIONS VOUS-MÊME.** Le passager vous les dit
+souvent de vive voix, et il faut pouvoir les inscrire : c'est ce qui trace le
+parcours et ce qui vérifie le rayon. Le passager peut les envoyer aussi, de
+son côté — **relisez la course** quand une trame `status` arrive.
+
+**Vous pouvez aussi rouler sans destination du tout.** C'est normal pour ce
+mode : ne bloquez pas l'écran sur « ajoutez une arrivée ».
+
+⚠️ **`422 rental_out_of_range`** : l'arrêt sort du rayon. `meta` porte
+`distance_km` et `max_km` — dites les deux au passager, il choisit encore.
+Refuser sans chiffres vous met en position de ne rien pouvoir expliquer.
+
+**Prévenez AVANT le plafond.** Vous avez votre position et le départ :
+alertez à `rental_alert_km_before` km du rayon. Prévenir laisse le temps de
+faire demi-tour ; découvrir un refus au franchissement laisse un passager en
+route à qui l'on dit non trop tard.
+
+#### La durée, et la fin
+
+⚠️ **`rental_ends_at` COURT À LA MONTÉE À BORD**, pas à l'acceptation : le
+temps que vous mettez à venir n'est pas du temps loué. C'est un **instant**, à
+décompter localement.
+
+Terminez comme une course ordinaire. ⚠️ **Le retard n'est pas facturé** — la
+durée est ce qui a été vendu. Les **kilomètres** au-delà des compris, eux, le
+sont (`rental_overage_km`, motif `rental_overage`) : c'est votre carburant et
+votre usure.
 
 ---
 
