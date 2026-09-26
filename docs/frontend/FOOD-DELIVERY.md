@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.32.0** · 26 septembre 2026
+> **Version 4.32.1** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -646,12 +646,62 @@ qui n'ont jamais existé pour la paie.
 - Il n'est **pas rediffusé** au client qui suit la livraison : sa carte ne doit
   pas faire reculer votre moto.
 
-⚠️ **CE QUI N'EST PAS ENCORE POSSIBLE HORS LIGNE**, et il faut le dire :
-**changer l'état d'une livraison** (collecter, terminer) demande le réseau. Le
-rattrapage porte les **positions**, pas les gestes. Une livraison terminée hors
-ligne doit être terminée **à nouveau** une fois le réseau revenu — gardez le
-geste en file et rejouez-le, mais attendez-vous à un refus si l'état a changé
-entre-temps.
+### 📴 LES GESTES GARDÉS — `POST /deliveries/sync` (v4.32.1)
+
+Le rattrapage ci-dessus porte les **positions**. Les **gestes** — collecter,
+terminer — se rejouent ici :
+
+```
+POST /deliveries/sync
+{ "items": [
+    { "client_ref": "7d1e…", "kind": "pickup",   "at": "…",
+      "delivery_id": "…", "pickup_id": "…" },
+    { "client_ref": "b40c…", "kind": "complete", "at": "…", "delivery_id": "…" } ] }
+
+→ 200 { "server_time": "…",
+        "results": [ { "client_ref": "7d1e…", "outcome": "duplicate", "status": "in_transit" },
+                     { "client_ref": "b40c…", "outcome": "applied",   "status": "completed" } ] }
+```
+
+**Gardez une file persistante** sur le disque : elle doit survivre à la
+fermeture de l'application et au redémarrage du téléphone. Chaque ligne porte
+son `client_ref` (pour relier la réponse à la ligne), son `kind`, et **l'instant
+du geste** — pas celui de l'envoi.
+
+| `outcome` | Ce que vous faites |
+|---|---|
+| `applied` | **Retirez** la ligne de la file |
+| `duplicate` | **Retirez-la aussi** : le geste était déjà passé. `status` dit où en est la livraison |
+| `rejected` + `retryable: true` | **Gardez-la**, réessayez plus tard |
+| `rejected` + `retryable: false` | **Retirez-la** et **dites-le au livreur** : ce refus sera le même dans une heure |
+
+⚠️ **« DÉJÀ FAIT » EST UNE RÉUSSITE ICI**, pas un refus : c'est la preuve que
+le geste est passé — en ligne, ou lors d'une tentative précédente dont la
+réponse s'est perdue. **Mais pas tout refus** : une collecte **hors séquence**
+(`pickup_out_of_order`) est un vrai échec — votre file est dans le désordre, et
+l'avaler en silence ferait croire à un travail enregistré qui ne l'est pas.
+
+⚠️ **LA RÉPONSE EST `200` MÊME QUAND DES ÉLÉMENTS SONT REFUSÉS.** Lisez
+`results`, élément par élément. Un lot traité en bloc serait rejoué
+indéfiniment sur son seul élément fautif, et **rien ne passerait plus jamais**.
+
+⚠️ **L'ORDRE DU TEMPS COMPTE**, et le serveur s'en charge : il applique les
+éléments par `at` croissant, pas dans l'ordre du tableau. Envoyez votre file
+telle qu'elle est.
+
+⚠️ **VOTRE HORLOGE EST RECADRÉE** entre le début de la course et maintenant.
+L'instant d'une remise donne le **délai de livraison** — celui qu'on affiche au
+client et qu'on compare d'une semaine à l'autre : daté de la
+resynchronisation, un plat remis à midi et envoyé à midi vingt aurait mis vingt
+minutes de plus. La réponse porte `server_time` : **mesurez votre dérive**.
+
+**Réessais** : exponentiels avec du hasard — 1 s, 2 s, 4 s … 60 s, ± 30 %.
+⚠️ Le hasard n'est pas un détail : quand une antenne revient, tous les
+téléphones du quartier réessaient à la même seconde.
+
+⚠️ **CE QUI RESTE IMPOSSIBLE HORS LIGNE** : **accepter** une course. Elle est
+attribuée par le serveur, à plusieurs livreurs à la fois, et l'accepter de
+mémoire reviendrait à promettre une course qu'un autre a déjà prise.
 
 > ### 🧭 ⚠️ LES DEUX PINS D'UN VÉHICULE, ET LEUR ORIENTATION (v4.20.0)
 >
