@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.30.0** · 26 septembre 2026
+> **Version 4.31.0** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -808,19 +808,41 @@ POST /subscriptions/{id}/pause · /resume · /cancel
 
 ---
 
-## 4 quater. 🚕 LES AUTRES MODES DE COURSE (v4.29.0)
+## 4 quater. 🚕 LES AUTRES MODES DE COURSE (v4.31.0)
 
-**Deux modes en plus du mode ordinaire, et chacun s'allume PAR PAYS.**
+**Deux modes en plus du mode ordinaire. Le PAYS les ouvre, et chaque VOITURE
+dit lesquels elle vend — les deux conditions, pas l'une ou l'autre.**
 
 ```
-GET /settings/modes → { free:   { enabled, min_fare_xof, scannable, max_hours },
-                        rental: { enabled, tiers: [ { hours, price_xof, included_km } ],
-                                  extra_per_km_xof, max_radius_km, alert_km_before } }
+GET /settings/modes → { free:   { enabled, scannable, max_hours },
+                        rental: { enabled, max_radius_km, alert_km_before } }
+
+GET /classes        → items[].modes = {
+       "free":   { base_xof, per_km_xof, per_min_xof, min_fare_xof },
+       "rental": { tiers: [ { hours, price_xof, included_km } ], extra_per_km_xof } }
 ```
 
-⚠️ **LISEZ CE RÉGLAGE AVANT DE MONTRER QUOI QUE CE SOIT.** Un mode éteint doit
-**disparaître de l'écran**, pas y rester et échouer. Et n'écrivez jamais les
-durées d'une location en dur : c'est cette liste qui dit ce que le pays vend.
+⚠️ **DEUX DOCUMENTS, ET ILS NE DISENT PAS LA MÊME CHOSE.** Les réglages disent
+ce que le pays **ouvre** et les bornes qui valent pour toutes les voitures ; le
+catalogue dit ce que **cette voiture-là** vend, et **à quel prix**.
+
+⚠️ **LISEZ-LES AVANT DE MONTRER QUOI QUE CE SOIT.** Un mode éteint doit
+**disparaître de l'écran**, pas y rester et échouer.
+
+⚠️ **UNE CLÉ PRÉSENTE DANS `modes` = UN MODE VENDU PAR CETTE VOITURE, DANS CE
+PAYS.** Le serveur a déjà croisé les deux conditions : `modes` ne contient
+jamais un mode que le pays a fermé. Vous n'avez donc **pas** à recouper les
+deux documents écran par écran — et c'est le point : le premier écran qui
+l'oublierait proposerait une location qu'on refuse à la commande, au pire
+moment. Une voiture **sans** `modes.rental` ne se loue pas ; ne l'affichez pas
+dans la liste des locations.
+
+⚠️ **LES PRIX D'UN MODE NE SONT PLUS DANS LES RÉGLAGES DEPUIS LA v4.31.0.**
+Les plages de location, leur forfait, les kilomètres compris, le tarif du
+compteur et son plancher **vivent sur la voiture**, parce qu'ils en dépendent :
+un van immobilisé cinq heures n'est pas une eco. Une application qui lirait
+encore `settings.rental.tiers` n'y trouverait **plus rien** — et n'aurait aucune
+durée à proposer.
 
 ---
 
@@ -897,32 +919,41 @@ justement — un chauffeur à disposition.
 interpoler inventerait un prix que personne n'a décidé, et le passager verrait
 un montant introuvable dans la grille.
 
-#### ⚠️ Ne proposez que les durées DU MODE choisi
+#### ⚠️ Ne proposez que les durées DE LA VOITURE choisie
 
-`rental.tiers` porte un `class_key` par ligne, et **une ligne sans `class_key`
-vaut pour tous les modes qui n'ont pas la leur**. Pour un mode donné, les
-durées à afficher sont donc :
+Les durées à afficher sont **celles de sa classe, et rien d'autre** :
 
-> **les `tiers` de ce `class_key`**, plus **les `tiers` sans `class_key`** dont
-> ce mode n'a pas déjà sa propre ligne.
-
-```jsonc
-// "van" se loue 1 h, 5 h et 24 h ; "eco" se loue 1 h et 5 h.
-"tiers": [
-  { "hours": 1,  "price_xof": 5000,   "included_km": 20 },   // tous les modes
-  { "hours": 5,  "price_xof": 20000,  "included_km": 80 },   // tous les modes
-  { "class_key": "van", "hours": 5,  "price_xof": 35000, "included_km": 80 },
-  { "class_key": "van", "hours": 24, "price_xof": 200000, "included_km": 300 }
-]
+```
+GET /classes → items[].modes.rental.tiers
 ```
 
-⚠️ **LE MODE EXACT L'EMPORTE TOUJOURS** sur la ligne commune : ci-dessus, 5 h
-en van coûte 35 000 et non 20 000. Si vous appliquiez la ligne commune en
-premier, vous afficheriez un van au prix d'une eco.
+```jsonc
+// "van" se loue 1 h, 5 h et 24 h ; "eco" se loue 1 h et 5 h — et pas au même prix.
+{ "key": "eco", "name": "Eco", "modes": {
+    "rental": { "extra_per_km_xof": 150, "tiers": [
+      { "hours": 1, "price_xof": 5000,  "included_km": 20 },
+      { "hours": 5, "price_xof": 20000, "included_km": 80 } ] } } }
 
-⚠️ **MONTRER TOUTE LA GRILLE EST UNE ERREUR.** Un passager qui choisit « 24 h »
-sur une eco qui ne se loue pas à la journée se verrait refuser après coup —
-c'est pire qu'une durée qu'on ne lui a jamais proposée.
+{ "key": "van", "name": "Van", "modes": {
+    "rental": { "extra_per_km_xof": 250, "tiers": [
+      { "hours": 1,  "price_xof": 12000,  "included_km": 20 },
+      { "hours": 5,  "price_xof": 35000,  "included_km": 80 },
+      { "hours": 24, "price_xof": 200000, "included_km": 300 } ] } } }
+```
+
+⚠️ **IL N'Y A PLUS DE GRILLE COMMUNE À RECOUPER** (v4.31.0). Jusqu'à la
+v4.30.0 les plages vivaient dans les réglages du pays, une ligne pouvait ne
+nommer aucune classe, et il fallait faire l'emboîtement soi-même — le mode
+exact l'emportant sur la ligne commune. Une seule application qui inversait
+l'ordre affichait un van au prix d'une eco. **Chaque voiture porte maintenant
+ses propres plages, entières.** Prenez-les telles quelles.
+
+⚠️ **MONTRER LA GRILLE D'UNE AUTRE VOITURE EST UNE ERREUR.** Un passager qui
+choisit « 24 h » sur une eco qui ne se loue pas à la journée se verrait refuser
+après coup — c'est pire qu'une durée qu'on ne lui a jamais proposée.
+
+⚠️ **NI `modes.rental` NI DE `tiers` = CETTE VOITURE NE SE LOUE PAS.** Retirez-la
+de l'écran de location ; elle reste commandable normalement.
 
 #### Dire les garde-fous AVANT de réserver
 

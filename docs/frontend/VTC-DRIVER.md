@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.30.0** · 26 septembre 2026
+> **Version 4.31.0** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -931,19 +931,34 @@ avant d'avoir déposé. Réglage inactif : rien ne change, une course à la fois
 
 ---
 
-## 4 ter. 🚕 LES AUTRES MODES DE COURSE (v4.29.0)
+## 4 ter. 🚕 LES AUTRES MODES DE COURSE (v4.31.0)
 
-**Deux modes en plus du mode ordinaire, et chacun s'allume PAR PAYS.**
+**Deux modes en plus du mode ordinaire. Le PAYS les ouvre, et chaque VOITURE
+dit lesquels elle sert — les deux conditions, pas l'une ou l'autre.**
 
 ```
-GET /settings/modes → { free:   { enabled, min_fare_xof, scannable, max_hours },
-                        rental: { enabled, tiers, extra_per_km_xof,
-                                  max_radius_km, alert_km_before } }
+GET /settings/modes → { free:   { enabled, scannable, max_hours },
+                        rental: { enabled, max_radius_km, alert_km_before } }
+
+GET /classes        → items[].modes = {
+       "free":   { base_xof, per_km_xof, per_min_xof, min_fare_xof },
+       "rental": { tiers: [ { hours, price_xof, included_km } ], extra_per_km_xof } }
 ```
 
-⚠️ **LISEZ-LE AVANT DE MONTRER LE BOUTON.** Un mode éteint doit **disparaître
+⚠️ **LISEZ-LES AVANT DE MONTRER LE BOUTON.** Un mode éteint doit **disparaître
 de l'écran**, pas y rester et répondre `409`. Un chauffeur qui appuie sur un
 bouton qui échoue croit à une panne.
+
+⚠️ **LE BOUTON DU COMPTEUR DÉPEND DE LA VOITURE QUE VOUS CONDUISEZ CE JOUR-LÀ.**
+Cherchez la classe de votre véhicule dans `GET /classes` : sans `modes.free`,
+cette voiture ne fait pas le compteur, même si le pays l'ouvre — une
+exploitation peut vouloir le compteur en eco et pas en van. Changez de
+véhicule, le bouton change.
+
+⚠️ **CE QUE LE COMPTEUR FACTURE EST ÉCRIT LÀ AUSSI** (`base_xof`, `per_km_xof`,
+`per_min_xof`, `min_fare_xof`, v4.31.0 — c'était dans les réglages du pays, le
+même tarif pour toutes les voitures). Montrez-le au passager qui le demande :
+un compteur dont on ne peut pas lire le tarif n'inspire rien.
 
 ---
 
@@ -981,7 +996,8 @@ haute (pas de O/0, I/1, S/5).
 ⚠️ **Les mêmes barrières qu'une course appelée, et c'est voulu** : sans elles,
 ce bouton serait une façon de contourner toutes les règles.
 
-⚠️ **UN COMPTEUR OUBLIÉ EST FERMÉ D'OFFICE** au-delà de `free.max_hours`. La
+⚠️ **UN COMPTEUR OUBLIÉ EST FERMÉ D'OFFICE** au-delà de `free.max_hours`
+(réglages du pays — la même borne pour toutes les voitures). La
 course est **terminée et facturée** — jamais annulée, elle a bien eu lieu — et
 elle revient avec `auto_closed: true`. Dites-le clairement : « la plateforme a
 fermé ce compteur après 6 h ». Un compteur qui tourne la nuit facture la nuit,
@@ -1010,7 +1026,7 @@ quinze minutes se répare en annulant, ce qui pénalise tout le monde.
 | À montrer | Pourquoi |
 |---|---|
 | **« LOCATION · 5 h »**, en grand | c'est la seule information qui change la décision |
-| Le forfait (`fare_xof`) | ce que vous gagnez pour ces heures — il dépend de **votre mode** : un van ne se loue pas au prix d'une eco |
+| Le forfait (`fare_xof`) | ce que vous gagnez pour ces heures — il dépend de **votre voiture** : un van ne se loue pas au prix d'une eco, et la commission non plus n'est pas la même (v4.31.0) |
 | **« sans destination »** (`no_destination`) | ne dessinez pas un point d'arrivée vide |
 | Les km compris et le rayon | ce que vous vous engagez à ne pas dépasser |
 
