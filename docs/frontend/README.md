@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.32.0** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.32.1** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,26 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.32.1 — 26 septembre 2026
+
+📴 **RECTIFICATION — le livreur peut rejouer ses gestes, pas seulement ses
+positions** (`FOOD-DELIVERY.md` §6).
+
+La 4.32.0 écrivait, il y a une heure, que « changer l'état d'une livraison
+demande le réseau ». **C'est faux depuis `POST /deliveries/sync`** : collecter
+et terminer se rejouent comme les gestes d'une course VTC.
+
+⚠️ **Une différence à connaître avec `POST /rides/sync`** : l'idempotence se
+lit dans **l'état**, pas dans une clé. Ces deux gestes portent sur un objet qui
+existe déjà ; `client_ref` ne sert qu'à relier la réponse à la ligne de votre
+file. Conséquence pratique : **« déjà fait » est une réussite**
+(`outcome: duplicate`), pas un refus — mais **une collecte hors séquence reste
+un échec**.
+
+⚠️ **Ce qui reste impossible hors ligne** : **accepter** une course. Elle est
+proposée à plusieurs livreurs à la fois, et l'accepter de mémoire reviendrait à
+promettre une course qu'un autre a déjà prise.
 
 ### 4.32.0 — 26 septembre 2026
 
