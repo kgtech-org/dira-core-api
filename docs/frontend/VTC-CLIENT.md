@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.29.0** · 26 septembre 2026
+> **Version 4.30.0** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -874,22 +874,55 @@ Vous n'achetez pas un trajet, vous achetez **du temps**. Le prix est le
 **forfait de la plage**, et il ne bouge pas avec le chemin parcouru.
 
 ```
-POST /rides/rental/quote  { "hours": 5, "pickup": { "label": "…", "geo": [lng, lat] } }
-  → { mode: "rental", fare_xof: 20000, rental_hours: 5,
+POST /rides/rental/quote  { "class_key": "van", "hours": 5,
+                            "pickup": { "label": "…", "geo": [lng, lat] } }
+  → { mode: "rental", class_key: "van", fare_xof: 35000, rental_hours: 5,
       rental_included_km: 80, rental_extra_per_km_xof: 150,
       rental_max_radius_km: 60, rental_alert_km_before: 10, expires_at }
 
 POST /rides  { quote_id, payment_method }        # comme un devis ordinaire
 ```
 
+⚠️ **`class_key` EST OBLIGATOIRE, ET IL SERT DEUX FOIS** : il choisit le
+**prix** et il décide **qui sera appelé**. Une journée de van ne se vend pas
+au prix d'une journée d'eco — ce n'est ni le même véhicule, ni le même
+carburant, ni le même chauffeur qu'on immobilise.
+
 ⚠️ **PAS DE DESTINATION À DEMANDER.** Un seul point : le départ. Un écran qui
 réclamerait une arrivée empêcherait de commander ce que le passager veut
 justement — un chauffeur à disposition.
 
-⚠️ **LA DURÉE DOIT ÊTRE UNE PLAGE VENDUE.** `tiers` dit lesquelles. « 3 h »
-entre 1 h et 5 h est refusé (`422`, `fields: ["hours"]`) : interpoler
-inventerait un prix que personne n'a décidé, et le passager verrait un montant
-introuvable dans la grille.
+⚠️ **LA DURÉE DOIT ÊTRE UNE PLAGE VENDUE POUR CE MODE.** « 3 h » entre 1 h et
+5 h est refusé (`422`, `fields: ["hours"]`, avec `class_key` dans `meta`) :
+interpoler inventerait un prix que personne n'a décidé, et le passager verrait
+un montant introuvable dans la grille.
+
+#### ⚠️ Ne proposez que les durées DU MODE choisi
+
+`rental.tiers` porte un `class_key` par ligne, et **une ligne sans `class_key`
+vaut pour tous les modes qui n'ont pas la leur**. Pour un mode donné, les
+durées à afficher sont donc :
+
+> **les `tiers` de ce `class_key`**, plus **les `tiers` sans `class_key`** dont
+> ce mode n'a pas déjà sa propre ligne.
+
+```jsonc
+// "van" se loue 1 h, 5 h et 24 h ; "eco" se loue 1 h et 5 h.
+"tiers": [
+  { "hours": 1,  "price_xof": 5000,   "included_km": 20 },   // tous les modes
+  { "hours": 5,  "price_xof": 20000,  "included_km": 80 },   // tous les modes
+  { "class_key": "van", "hours": 5,  "price_xof": 35000, "included_km": 80 },
+  { "class_key": "van", "hours": 24, "price_xof": 200000, "included_km": 300 }
+]
+```
+
+⚠️ **LE MODE EXACT L'EMPORTE TOUJOURS** sur la ligne commune : ci-dessus, 5 h
+en van coûte 35 000 et non 20 000. Si vous appliquiez la ligne commune en
+premier, vous afficheriez un van au prix d'une eco.
+
+⚠️ **MONTRER TOUTE LA GRILLE EST UNE ERREUR.** Un passager qui choisit « 24 h »
+sur une eco qui ne se loue pas à la journée se verrait refuser après coup —
+c'est pire qu'une durée qu'on ne lui a jamais proposée.
 
 #### Dire les garde-fous AVANT de réserver
 
