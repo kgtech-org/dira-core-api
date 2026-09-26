@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.27.0** · 24 septembre 2026
+> **Version 4.28.0** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -442,6 +442,25 @@ WS wss://tracking-staging.dira.llc/track/agent
 > `rider_rating_count` sont ce que les chauffeurs précédents ont dit de ce
 > passager (§4 bis). **Absents** = jamais noté : n'affichez rien, pas un
 > « 0 ». Et jamais la moyenne sans le nombre.
+
+> ⏱️ **VOS POSITIONS FONT LE DÉCOMPTE DU PASSAGER — v4.28.0.** Depuis cette
+> version, son application affiche « il arrive dans 4 min », puis « prochain
+> arrêt dans 7 min » à chaque étape. Ce chiffre est calculé **depuis votre
+> dernière position connue** vers le prochain point de la course.
+>
+> Deux conséquences pour vous :
+>
+> - **Émettez dès l'acceptation**, pas seulement une fois le passager à bord.
+>   Sans position, le passager n'a aucun chiffre et croit que rien n'avance.
+> - **Une position de plus de 2 minutes ne compte plus** : la plateforme se
+>   tait plutôt que d'annoncer une arrivée sur la foi d'un point périmé. Si
+>   votre application détecte que l'émission s'est arrêtée (veille, réseau,
+>   permission retirée), **dites-le au chauffeur** — c'est la première cause
+>   d'un passager qui appelle pour demander où vous êtes.
+>
+> La même course porte `eta_at` pour vous aussi, si vous voulez l'afficher :
+> c'est un INSTANT, à décompter localement, et il concerne
+> `eta_stop_index`, l'arrêt vers lequel vous roulez.
 
 > 🧳 **Votre passager peut venir d'un autre pays — v4.27.0.** Depuis cette
 > version, une course se fait dans le pays où elle SE FAIT, et non dans

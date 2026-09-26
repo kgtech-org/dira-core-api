@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.27.0** · 24 septembre 2026
+> **Version 4.28.0** · 26 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -855,9 +855,9 @@ aucune réponse, et sont refusés en entrée) :
 |---|---|
 | `searching` | « nous cherchons un chauffeur » — `driver_id` est vide ; `dispatch_state` dit si l'on appelle encore (v4.1.0, ci-dessous) |
 | `accepted` | un chauffeur a pris la course — `driver` dit qui (v3.8.0) |
-| `picking_up` | il roule vers le point de départ |
+| `picking_up` | il roule vers le point de départ — `eta_at` dit quand il y sera (v4.28.0) |
 | `arrived` | il est là et attend (v4.14.0) — `arrived_at`, et le compteur d'attente : `waiting_free_min` minutes offertes, puis `waiting_per_min_xof` la minute |
-| `in_transit` | le passager est à bord — `waiting_minutes` / `waiting_fee_xof` disent ce que l'attente a coûté, déjà compris dans `fare_xof` |
+| `in_transit` | le passager est à bord — `waiting_minutes` / `waiting_fee_xof` disent ce que l'attente a coûté, déjà compris dans `fare_xof` ; `eta_at` décompte le **prochain arrêt** (v4.28.0) |
 | `completed` | terminée |
 | `cancelled` | `cancelled_by` dit qui, `cancelled_reason` pourquoi |
 
@@ -867,6 +867,50 @@ GET /rides?cursor=…     # l'historique de VOS courses, page par page
 ```
 
 L'historique rend **les plus récentes d'abord** — par date de création, puis identifiant (v4.12.1) ; `?cursor=` est l'identifiant de la dernière course reçue et rend la page suivante, plus ancienne.
+
+### ⏱️ DANS COMBIEN DE TEMPS — le décompte du PROCHAIN arrêt (v4.28.0)
+
+```jsonc
+GET /rides/{id} → {
+  "status": "picking_up",
+  "eta_stop_index": 0,                    // de quel arrêt on parle
+  "eta_at": "2026-09-26T08:41:30Z"        // quand il y sera
+}
+```
+
+⚠️ **`eta_at` EST UN INSTANT, à décompter localement.** Pas une durée à
+réinterroger : une durée vieillit dans le tuyau et dans l'écran — « 4 min »
+servi il y a trois minutes en vaut une. Faites tourner votre compteur sur
+`eta_at`, et ne rappelez l'API que sur un signal (trame `status`, push, ou
+votre rafraîchissement ordinaire).
+
+⚠️ **CE QUI MANQUAIT.** La seule durée servie était `duration_s`, celle du
+devis : le trajet entier, du départ à la destination. Vous ne pouviez donc
+décompter que l'arrivée FINALE. Pendant l'approche, le passager qui attend
+sur le trottoir n'avait **aucun chiffre** ; et sur un trajet à plusieurs
+arrêts, le décompte sautait les étapes intermédiaires comme si elles
+n'existaient pas.
+
+**`eta_stop_index` dit DE QUEL arrêt il s'agit** — et il change en cours de
+route :
+
+| État de la course | `eta_stop_index` | Ce que vous affichez |
+|---|---|---|
+| `accepted`, `picking_up` | **`0`** — le départ | « il arrive dans 4 min » |
+| `arrived` | *absent* | rien : il est là. C'est le compteur d'**attente** qui prend le relais |
+| `in_transit` | l'arrêt **suivant** celui atteint (`stop_index + 1`) | « prochain arrêt dans 7 min » |
+| dernier arrêt atteint, `completed`, `cancelled`, `searching` | *absent* | rien |
+
+⚠️ **ABSENTS, LES DEUX CHAMPS VEULENT DIRE « ON NE SAIT PAS »** — chauffeur
+silencieux, position trop vieille (plus de 2 min), moteur d'itinéraire muet,
+course à l'arrêt. **N'affichez alors aucun chiffre, et surtout pas le dernier
+connu** : un décompte qui continue de tourner sur une estimation morte
+afficherait « 2 min » pendant que le chauffeur est immobile depuis un quart
+d'heure. Effacez la ligne, ou dites « position en attente ».
+
+⚠️ **Ne recalculez pas d'estimation vous-même** à partir de la position du
+socket et d'une distance à vol d'oiseau. Elle serait systématiquement
+optimiste — et le passager la comparerait à la nôtre.
 
 ### ⚠️ Le chauffeur est là — `arrived` et l'attente facturée (v4.14.0)
 
@@ -1220,7 +1264,9 @@ par cette API.
 ```
 WS wss://tracking-staging.dira.llc/track/subscribe/{ride_id}
 
-{ "type": "hello",    "mission_id": "…" }
+{ "type": "hello",    "mission_id": "…", "vehicle_id": "…", "vehicle_type": "voiture",
+  "plate": "…", "lng": 1.2255, "lat": 6.1319, "heading": 122.5,
+  "heading_source": "gps", "speed": 8.3, "ts": 1757… }          ⚠️ v4.28.0
 { "type": "position", "vehicle_id": "…", "vehicle_type": "voiture", "plate": "…",
   "lng": 1.2255, "lat": 6.1319, "heading": 122.5, "speed": 8.3, "ts": 1757… }
 { "type": "status",   "status": "picking_up", "ts": 1757… }
@@ -1229,6 +1275,51 @@ WS wss://tracking-staging.dira.llc/track/subscribe/{ride_id}
 L'identifiant de course sert d'identifiant de mission (`mission_id` =
 `ride_id`). Le jeton d'accès passe dans l'URL (`?token=`) — un WebSocket de
 navigateur ne porte pas d'en-tête.
+
+### 🛰️ L'ACCUEIL PORTE LA DERNIÈRE POSITION CONNUE (v4.28.0)
+
+**`hello` arrive désormais avec la position du véhicule**, aux mêmes champs
+qu'une trame `position`. **Dessinez la voiture dès l'accueil**, sans attendre
+autre chose.
+
+⚠️ **Ce que ça répare.** L'accueil ne disait que « bonjour ». Il fallait
+attendre la trame suivante — jusqu'à plusieurs secondes — pour savoir où
+était le chauffeur. À chaque reconnexion (réseau retrouvé, application
+revenue au premier plan, jeton rafraîchi), le passager voyait donc **sa carte
+se vider, puis se remplir**. Sur un trajet, ce clignotement revenait
+plusieurs fois.
+
+- **`ts` est l'horodatage du DERNIER point reçu**, pas l'instant de la
+  connexion. Il peut dater de quelques dizaines de secondes ; c'est à vous
+  de dire « il y a 12 s » si vous le jugez utile. La plateforme ne l'invente
+  pas et ne l'extrapole pas.
+- **Un `hello` NU — sans `lng`/`lat` — reste possible** : chauffeur pas
+  encore attribué, téléphone silencieux depuis trop longtemps, suivi
+  indisponible. Comportez-vous alors comme avant : attendez la première
+  `position`. **Ne dessinez jamais un `hello` sans coordonnées** comme s'il
+  en avait.
+- Un `hello` n'annule pas la règle du §5 : **l'état de la course se relit sur
+  `GET /rides/{id}`**, le socket ne porte que la position et le mot du
+  statut.
+
+### 🔁 LA RECONNEXION EST OBLIGATOIRE, PAS OPTIONNELLE (v4.28.0)
+
+**Tant qu'une course est vivante** (`searching` → `in_transit`), l'application
+**doit** rouvrir le socket toute seule. Ce n'est pas un confort : un socket
+tombé sans reconnexion laisse une voiture figée sur la carte, et rien à
+l'écran ne dit que l'information a cessé d'arriver.
+
+| Événement | Ce que l'application fait |
+|---|---|
+| Socket fermé, quelle qu'en soit la cause | rouvrir, back-off **1 s, 2 s, 4 s … 30 s** |
+| Retour au **premier plan** | rouvrir **immédiatement**, sans attendre le back-off |
+| Réseau retrouvé | rouvrir immédiatement |
+| Code **4401 `token_expired`** | `POST /auth/refresh` **puis** rouvrir — jamais avec le même jeton |
+| **403** à la poignée de main | s'arrêter : ce rôle ne suit pas cette course |
+| Course terminée ou annulée | fermer, et ne plus rouvrir |
+
+À chaque réouverture : relisez aussi **`GET /rides/{id}`**. Le socket rend la
+position ; la course, elle, a pu changer d'état pendant la coupure.
 
 - **Reconnexion avec back-off** (1 s, 2 s, 4 s … 30 s) : le socket tombe
   quand le téléphone change de réseau ; ne laissez pas une voiture figée sur
