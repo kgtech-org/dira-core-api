@@ -132,3 +132,30 @@ func TestRefusingGoogleWithoutAKeyIsNamed(t *testing.T) {
 	assert.NotEmpty(t, errGoogleWithoutKey.Message)
 	assert.True(t, strings.Contains(strings.ToLower(errGoogleWithoutKey.Message), "key"))
 }
+
+// ⚠️ RETIRER LA DERNIÈRE CLÉ DOIT RAMENER LE PAYS À NOTRE FOND. La garde de
+// lecture empêche déjà le rectangle gris ; ce qu'elle n'empêche pas, c'est que
+// l'écran de réglage affiche « GOOGLE » alors que personne ne l'obtient — et on
+// cherche alors pendant une heure pourquoi le fond ne change pas. Un écran
+// d'administration qui affirme une chose fausse est pire qu'un écran vide.
+//
+// Trouvé en éprouvant le réglage en direct : le pays est resté sur `google`
+// après le retrait, et seule la lecture rattrapait.
+func TestRemovingTheLastKeyMustBringTheCountryBack(t *testing.T) {
+	// L'état qu'on ne veut plus voir : réglé sur Google, sans aucune clé.
+	orphan := Maps{Basemap: BasemapGoogle, Google: map[string]GoogleMaps{}}
+	assert.False(t, hasAnyKey(orphan), "c'est la condition du rattrapage")
+
+	// Ce que la lecture en fait de toute façon — la carte, elle, est sauve.
+	base, k, _ := resolveGrant(orphan, PlatformWeb)
+	assert.Equal(t, BasemapDira, base)
+	assert.Empty(t, k)
+
+	// Et tant qu'une clé reste, on ne touche à rien : retirer celle du web ne
+	// doit pas éteindre Google pour Android.
+	kept := Maps{Basemap: BasemapGoogle, Google: map[string]GoogleMaps{PlatformAndroid: {Key: key}}}
+	assert.True(t, hasAnyKey(kept))
+	base, k, _ = resolveGrant(kept, PlatformAndroid)
+	assert.Equal(t, BasemapGoogle, base)
+	assert.Equal(t, key, k)
+}
