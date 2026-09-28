@@ -108,6 +108,22 @@ paths:
                 email: {type: string, format: email}
                 first_name: {type: string, maxLength: 80}
                 last_name: {type: string, maxLength: 80}
+                platform:
+                  type: string
+                  enum: [web, android, ios]
+                  description: >-
+                    Sur QUOI l'application tourne. ⚠️ Elle ne sert qu'au **fond
+                    de carte**, et elle est indispensable pour ça : une clé
+                    Google se restreint par ce qui l'utilise (empreinte SHA-1 +
+                    nom de paquet sur Android, identifiant de bundle sur iOS,
+                    référent HTTP sur le web), donc chaque plateforme a la
+                    SIENNE. Servir la clé du web à une application Android
+                    donnerait une carte grise et une facture pour rien.
+
+
+                    Omise = aucune clé servie, donc fond Dira. Repli silencieux
+                    et correct : une application pas encore mise à jour garde
+                    une carte qui marche.
       responses:
         "201": {description: Account created with a token pair}
         "409": {description: phone_taken}
@@ -195,6 +211,22 @@ paths:
                     Android 13 ». Il sert à ce que l'écran de l'appareil chassé
                     puisse dire « vous vous êtes connecté sur Tecno Spark 10 »
                     au lieu d'« erreur de connexion ». Tronqué, jamais refusé.
+                platform:
+                  type: string
+                  enum: [web, android, ios]
+                  description: >-
+                    Sur QUOI l'application tourne. ⚠️ Elle ne sert qu'au **fond
+                    de carte**, et elle est indispensable pour ça : une clé
+                    Google se restreint par ce qui l'utilise (empreinte SHA-1 +
+                    nom de paquet sur Android, identifiant de bundle sur iOS,
+                    référent HTTP sur le web), donc chaque plateforme a la
+                    SIENNE. Servir la clé du web à une application Android
+                    donnerait une carte grise et une facture pour rien.
+
+
+                    Omise = aucune clé servie, donc fond Dira. Repli silencieux
+                    et correct : une application pas encore mise à jour garde
+                    une carte qui marche.
       responses:
         "200":
           description: >-
@@ -205,6 +237,23 @@ paths:
             cette connexion vient de **chasser** un autre appareil — c'est la
             seule occasion de prévenir quelqu'un dont le compte servait
             ailleurs, l'appareil chassé étant peut-être éteint.
+
+
+            Et **`maps`** quand `platform` a été envoyée : `{basemap,
+            google_key?, google_map_type?}`. `basemap` (`dira` | `google`) est
+            le fond par DÉFAUT du pays — la case cochée d'avance, que la
+            personne peut changer. ⚠️ `google_key` ABSENT = **ne pas proposer le
+            choix** : une bascule vers un fond qu'aucune clé ne sert donne un
+            rectangle gris, et la personne croit l'application cassée.
+
+
+            ⚠️ **La clé est en clair, et c'est inévitable** : Google l'exige sur
+            chaque requête de tuile, en plus du jeton de session. Ce qui la
+            protège est sa RESTRICTION côté Google et son plafond de quota, pas
+            le secret — la chiffrer pour que l'application la déchiffre ne
+            protégerait rien, la phrase de passe voyageant dans le même
+            binaire. ⚠️ **Ne jamais l'écrire dans un journal ni dans un rapport
+            de plantage.**
         "401":
           description: >-
             `invalid_credentials`.
@@ -228,8 +277,32 @@ paths:
         le rafraîchissement — c'est le suivi qui la ferme, à l'échéance,
         avec le code 4401 `token_expired`, et le client revient avec le
         nouveau. Un court chevauchement est donc normal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: {type: string}
+                platform:
+                  type: string
+                  enum: [web, android, ios]
+                  description: >-
+                    Pour recevoir le **fond de carte à jour**. ⚠️ Sans elle, une
+                    clé révoquée vit aussi longtemps que la session : un
+                    chauffeur reste connecté trente jours, et la changer dans la
+                    console ne l'atteindrait qu'un mois plus tard — c'est-à-dire
+                    que la rotation, seule raison de servir la clé depuis le
+                    serveur, ne servirait à rien. Renvoyée ici, la dérive se
+                    borne à la durée d'un jeton d'accès.
       responses:
-        "200": {description: New token pair}
+        "200":
+          description: >-
+            New token pair, plus **`maps`** quand `platform` a été envoyée —
+            même forme qu'à la connexion. C'est ici que la rotation d'une clé
+            atteint une application connectée depuis des semaines.
         "401":
           description: >-
             `invalid_token` — consommé, expiré ou révoqué : se reconnecter.
@@ -360,6 +433,84 @@ paths:
         "404": {description: country_unknown — not in the catalog}
         "409": {description: country_default — the default country cannot be closed}
         "422": {description: unknown currency, or nothing to update}
+  /admin/countries/{code}/maps:
+    get:
+      tags: [admin, countries]
+      summary: The country's basemap settings — without the keys
+      description: >-
+        ⚠️ Les clés Google ne ressortent JAMAIS : chaque plateforme rend
+        `configured`, la FIN de la clé (`hint`, quatre caractères) et la date de
+        sa pose. Une clé qu'un écran d'administration réaffiche finit dans une
+        capture d'écran, un ticket, un canal de discussion — et il n'y a aucune
+        raison de la relire : on la remplace, on ne la consulte pas.
+      parameters:
+        - {name: code, in: path, required: true, schema: {type: string, example: SN}}
+      responses:
+        "200":
+          description: Basemap settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  basemap: {type: string, enum: [dira, google]}
+                  google:
+                    type: object
+                    description: Une entrée par plateforme (web, android, ios).
+                    additionalProperties:
+                      type: object
+                      properties:
+                        configured: {type: boolean}
+                        hint: {type: string, example: "…ABCD"}
+                        map_type: {type: string, enum: [roadmap, satellite, terrain]}
+                        updated_at: {type: string, format: date-time}
+        "404": {description: country_unknown — not in the catalog}
+    put:
+      tags: [admin, countries]
+      summary: Set the default basemap and the per-platform Google keys
+      description: >-
+        `basemap` est le fond par DÉFAUT du pays — la case cochée d'avance ; la
+        personne choisit ensuite celui qui lui va, et son choix vit chez elle.
+
+
+        ⚠️ UNE CLÉ PAR PLATEFORME, et ce n'est pas un caprice : Google restreint
+        une clé par ce qui l'utilise (empreinte SHA-1 + nom de paquet sur
+        Android, identifiant de bundle sur iOS, référent HTTP sur le web). Une
+        clé unique pour les trois ne peut être restreinte à aucun des trois —
+        c'est-à-dire qu'elle reste utilisable par quiconque l'aura lue, et c'est
+        la seule protection qui vaille ici.
+
+
+        Champs facultatifs : absent = ne pas y toucher. `google.<plateforme>.key`
+        VIDE retire la clé — il faut un moyen explicite de retirer, sinon une clé
+        compromise ne pourrait qu'être remplacée. `map_type` seul change la vue
+        sans qu'on ait à renvoyer la clé, donc sans avoir à la connaître.
+      parameters:
+        - {name: code, in: path, required: true, schema: {type: string, example: SN}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                basemap: {type: string, enum: [dira, google]}
+                google:
+                  type: object
+                  additionalProperties:
+                    type: object
+                    properties:
+                      key: {type: string, description: "Vide = retirer la clé."}
+                      map_type: {type: string, enum: [roadmap, satellite, terrain]}
+      responses:
+        "200": {description: Basemap settings — without the keys}
+        "404": {description: country_unknown — not in the catalog}
+        "409":
+          description: >-
+            maps_google_without_key — on refuse de mettre un pays sur `google`
+            sans qu'une seule plateforme puisse l'afficher. Sans cette garde, la
+            bascule « réussit » et toutes les cartes du pays deviennent grises.
+        "422": {description: unknown platform, or nothing to update}
   /map-markers:
     get:
       tags: [map-markers]

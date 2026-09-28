@@ -28,6 +28,13 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		admin := middleware.RequireRole(auth.RoleAdmin)
 		g.With(admin).Get("/admin/countries", h.listAdmin)
 		g.With(admin).Put("/admin/countries/{code}", h.update)
+		// LE FOND DE CARTE. ⚠️ La lecture ne rend JAMAIS les clés — seulement
+		// « configurée » et leurs quatre derniers caractères. Une clé qu'un
+		// écran d'administration réaffiche finit dans une capture d'écran, un
+		// ticket, un canal de discussion ; et il n'y a aucune raison de la
+		// relire : on la remplace, on ne la consulte pas.
+		g.With(admin).Get("/admin/countries/{code}/maps", h.maps)
+		g.With(admin).Put("/admin/countries/{code}/maps", h.updateMaps)
 	})
 }
 
@@ -61,6 +68,31 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := h.svc.Update(r.Context(), chi.URLParam(r, "code"), req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// GET /admin/countries/{code}/maps
+func (h *Handler) maps(w http.ResponseWriter, r *http.Request) {
+	out, err := h.svc.Maps(r.Context(), chi.URLParam(r, "code"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// PUT /admin/countries/{code}/maps {basemap?, google?}
+func (h *Handler) updateMaps(w http.ResponseWriter, r *http.Request) {
+	var req MapsUpdateRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := h.svc.UpdateMaps(r.Context(), chi.URLParam(r, "code"), req)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

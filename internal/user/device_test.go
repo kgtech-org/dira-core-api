@@ -124,11 +124,11 @@ func TestASecondDriverDeviceChasesTheFirst(t *testing.T) {
 	// ⚠️ LE REFUS EST NOMMÉ. Avec `invalid_token`, l'écran affiche « session
 	// expirée » : la personne se reconnecte, chasse l'autre téléphone à son
 	// tour, et les deux appareils se renvoient la balle indéfiniment.
-	_, err := svc.Refresh(context.Background(), first.RefreshToken)
+	_, err := svc.Refresh(context.Background(), first.RefreshToken, "")
 	assertUserCode(t, err, "session_superseded")
 
 	// Et le nouveau, lui, travaille.
-	_, err = svc.Refresh(context.Background(), second.RefreshToken)
+	_, err = svc.Refresh(context.Background(), second.RefreshToken, "")
 	require.NoError(t, err)
 }
 
@@ -140,7 +140,7 @@ func TestTheRefusalNamesTheDeviceThatTookOver(t *testing.T) {
 	first := loginDriver(t, svc, "install-A", "Tecno Spark 10")
 	loginDriver(t, svc, "install-B", "Itel A70")
 
-	_, err := svc.Refresh(context.Background(), first.RefreshToken)
+	_, err := svc.Refresh(context.Background(), first.RefreshToken, "")
 	require.Error(t, err)
 	// ⚠️ `reason` est la SEULE clé de `Meta` qui atteint le réseau, avec
 	// `fields` : une spec qui promettrait un autre champ promettrait du vide.
@@ -171,9 +171,9 @@ func TestAClientKeepsEveryDevice(t *testing.T) {
 	assert.Empty(t, sessions.current(first.User.ID), "rien ne doit être inscrit au registre")
 
 	// LES DEUX continuent de vivre : c'est tout ce qui compte.
-	_, err = svc.Refresh(context.Background(), first.RefreshToken)
+	_, err = svc.Refresh(context.Background(), first.RefreshToken, "")
 	require.NoError(t, err)
-	_, err = svc.Refresh(context.Background(), second.RefreshToken)
+	_, err = svc.Refresh(context.Background(), second.RefreshToken, "")
 	require.NoError(t, err)
 }
 
@@ -248,7 +248,7 @@ func TestRelogOnTheSameDeviceReplacesTheSession(t *testing.T) {
 	first := loginDriver(t, svc, "install-A", "Tecno Spark 10")
 	loginDriver(t, svc, "install-A", "Tecno Spark 10")
 
-	_, err := svc.Refresh(context.Background(), first.RefreshToken)
+	_, err := svc.Refresh(context.Background(), first.RefreshToken, "")
 	assertUserCode(t, err, "invalid_token")
 }
 
@@ -278,9 +278,9 @@ func TestAnAppThatSendsNoDeviceIsNotLockedOut(t *testing.T) {
 	// envoient leur identifiant — c'est ce que les specs demandent aux équipes
 	// mobiles, et c'est pour cela que la livraison de ce mécanisme n'est pas
 	// terminée sans elles.
-	_, err = svc.Refresh(context.Background(), old.RefreshToken)
+	_, err = svc.Refresh(context.Background(), old.RefreshToken, "")
 	require.NoError(t, err)
-	_, err = svc.Refresh(context.Background(), withDevice.RefreshToken)
+	_, err = svc.Refresh(context.Background(), withDevice.RefreshToken, "")
 	require.NoError(t, err)
 }
 
@@ -320,7 +320,7 @@ func TestRefreshRepairsTheRegistry(t *testing.T) {
 	delete(sessions.bound, userID) // Redis a tout oublié
 	sessions.mu.Unlock()
 
-	_, err := svc.Refresh(context.Background(), live.RefreshToken)
+	_, err := svc.Refresh(context.Background(), live.RefreshToken, "")
 	require.NoError(t, err)
 	assert.Equal(t, "install-A", sessions.current(userID))
 	assert.Contains(t, sessions.asserted, userID)
