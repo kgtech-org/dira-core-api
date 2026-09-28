@@ -207,7 +207,10 @@ func mapsResponse(m Maps) MapsResponse {
 		status := GoogleKeyStatus{Configured: g.Key != "", MapType: g.MapType}
 		if status.Configured {
 			status.Hint = hint(g.Key)
-			status.UpdatedAt = g.UpdatedAt.UTC()
+			if !g.UpdatedAt.IsZero() {
+				at := g.UpdatedAt.UTC()
+				status.UpdatedAt = &at
+			}
 			if status.MapType == "" {
 				status.MapType = MapTypeRoadmap
 			}

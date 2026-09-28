@@ -84,7 +84,8 @@ func TestTheConsoleNeverSeesTheKey(t *testing.T) {
 	web := out.Google[PlatformWeb]
 	assert.True(t, web.Configured)
 	assert.Equal(t, MapTypeTerrain, web.MapType)
-	assert.False(t, web.UpdatedAt.IsZero(), "« depuis quand » se lit sans la clé")
+	require.NotNil(t, web.UpdatedAt, "« depuis quand » se lit sans la clé")
+	assert.False(t, web.UpdatedAt.IsZero())
 
 	// La fin suffit à reconnaître laquelle est en place, pas à s'en servir.
 	assert.Equal(t, "…ABCD", web.Hint)
@@ -101,6 +102,9 @@ func TestTheConsoleAlwaysSeesTheThreePlatforms(t *testing.T) {
 		require.Contains(t, out.Google, platform)
 		assert.False(t, out.Google[platform].Configured)
 		assert.Empty(t, out.Google[platform].Hint)
+		// ⚠️ PAS DE DATE POUR UNE PLATEFORME SANS CLÉ. Une date de l'an 1 se
+		// lit comme une vraie date, et la console l'afficherait.
+		assert.Nil(t, out.Google[platform].UpdatedAt)
 	}
 }
 
