@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/kgtech-org/dira-core-api/pkg/obs"
 )
 
 // Client calls the SIG. Base d'URL DISTINCTE de l'API et du suivi : les trois
@@ -30,7 +32,7 @@ func New(baseURL string) *Client {
 		// Court, et c'est délibéré : la durée est un CONFORT. Retenir la
 		// création d'une course pendant trente secondes parce qu'un service
 		// de cartographie rame serait un très mauvais échange.
-		http: &http.Client{Timeout: 4 * time.Second},
+		http: obs.HTTPClient("maps", 4*time.Second),
 	}
 }
 

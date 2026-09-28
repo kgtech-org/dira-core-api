@@ -225,12 +225,12 @@ func run(logger *slog.Logger) error {
 	// et EXIGE l'autre : réutiliser le même ferait qu'un secret volé chez la
 	// livraison ouvrirait tous les portefeuilles du socle.
 	verticals := callback.NewRegistry(map[string]*callback.Client{
-		payment.PurposeOrder: callback.New(cfg.FoodBaseURL, cfg.FoodCallbackToken),
-		payment.PurposeRide:  callback.New(cfg.VTCBaseURL, cfg.VTCCallbackToken),
+		payment.PurposeOrder: callback.New("food", cfg.FoodBaseURL, cfg.FoodCallbackToken),
+		payment.PurposeRide:  callback.New("vtc", cfg.VTCBaseURL, cfg.VTCCallbackToken),
 		// L'abonnement de courses va chez les COURSES, comme une course —
 		// mais sous son propre nom, parce que son `ref_id` n'est pas une
 		// course.
-		payment.PurposeRideSubscription: callback.New(cfg.VTCBaseURL, cfg.VTCCallbackToken),
+		payment.PurposeRideSubscription: callback.New("vtc", cfg.VTCBaseURL, cfg.VTCCallbackToken),
 	})
 	if len(verticals.Purposes()) == 0 {
 		logger.Error("no vertical configured: no mobile-money payment can ever be confirmed",
@@ -321,6 +321,13 @@ func run(logger *slog.Logger) error {
 	// cadence ou d'authentification rejette soit compté lui aussi : une
 	// attaque qui se fait refuser mille fois par minute doit se VOIR.
 	metrics := obs.NewMetrics("core", version)
+	// Et la moitié SORTANTE : ce que le socle va demander aux cartes, et ce
+	// qu'il rappelle aux verticales. ⚠️ Les ponts sont construits BIEN AVANT
+	// cette ligne ; leur transport lit la couche au moment de l'appel, pas à la
+	// construction — sans quoi l'ordre de ce fichier déciderait de ce qui se
+	// mesure, et un déplacement de deux lignes ferait disparaître une courbe
+	// sans message d'erreur.
+	obs.SetDefault(metrics, logger)
 	router.Use(middleware.RequestID)
 	router.Use(metrics.Middleware)
 	router.Use(middleware.Logger(logger))

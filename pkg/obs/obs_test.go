@@ -236,3 +236,116 @@ func TestTheStandardMuxPatternIsReadToo(t *testing.T) {
 	has(t, m, `route="GET /track/missions/{id}"`)
 	hasNot(t, m, "m1")
 }
+
+// ⚠️ LE PONT NE DOIT PAS AVOIR À PENSER AU FIL. Posé sur le transport, il
+// voyage sur tout ce que le pont enverra, y compris la méthode que quelqu'un
+// ajoutera dans six mois sans lire ce fichier.
+func TestTheTransportCarriesTheThreadWithoutTheBridgeAskingForIt(t *testing.T) {
+	var got http.Header
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Clone()
+	}))
+	defer srv.Close()
+
+	ctx := WithField(WithField(context.Background(), KeyRequest, "fil-7"), KeyCountry, "TG")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/api/v1/internal/wallets", nil)
+	require.NoError(t, err)
+	resp, err := HTTPClient("core", 5*time.Second).Do(req)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+
+	assert.Equal(t, "fil-7", got.Get(HeaderRequestID))
+	assert.Equal(t, "TG", got.Get("X-Dira-Country"))
+}
+
+// ⚠️ ET IL NE TOUCHE PAS À LA REQUÊTE QU'ON LUI CONFIE : la bibliothèque
+// standard la rejoue (redirection, reprise), et une en-tête posée sur
+// l'original resterait collée au rejeu suivant.
+func TestTheTransportLeavesTheOriginalRequestAlone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+
+	ctx := WithField(context.Background(), KeyRequest, "fil-8")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
+	require.NoError(t, err)
+	resp, err := HTTPClient("core", 5*time.Second).Do(req)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+
+	assert.Empty(t, req.Header.Get(HeaderRequestID))
+}
+
+// C'est la moitié qui manquait : « lent » ne suffit pas, il faut « lent OÙ ».
+func TestTheTransportMeasuresWhoWasSlow(t *testing.T) {
+	m := useObservation(t, "vtc")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+
+	call(t, "core", srv.URL+"/api/v1/internal/wallets/68d2f4a1b9c3e5d7f0a2b4c6/debit")
+
+	// Le gabarit, pas le chemin : `/wallets/-/debit` répond à « débiter est-il
+	// lent ? », la seule question qu'on pose. Et `v1` a survécu.
+	has(t, m, `dira_outbound_calls_total{operation="POST /api/v1/internal/wallets/-/debit",outcome="ok",service="vtc",target="core"} 1`)
+	hasNot(t, m, "68d2f4a1b9c3e5d7f0a2b4c6")
+	hasNot(t, m, `/api/-/`)
+}
+
+// ⚠️ UN `4xx` N'EST PAS UNE PANNE. « Solde insuffisant » est une RÉPONSE : la
+// compter comme échec ferait clignoter l'alerte à chaque client fauché — et
+// une alerte qui clignote tous les jours ne se regarde plus.
+func TestABusinessRefusalIsNotAnOutage(t *testing.T) {
+	m := useObservation(t, "vtc")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/boom" {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusPaymentRequired)
+	}))
+	defer srv.Close()
+
+	call(t, "core", srv.URL+"/pay")
+	call(t, "core", srv.URL+"/boom")
+
+	has(t, m, `dira_outbound_calls_total{operation="POST /pay",outcome="ok",service="vtc",target="core"} 1`)
+	has(t, m, `dira_outbound_calls_total{operation="POST /boom",outcome="error",service="vtc",target="core"} 1`)
+}
+
+// Sans couche déclarée, le fil voyage quand même et rien ne tombe : un outil de
+// ligne de commande n'a pas à s'inscrire pour pouvoir appeler le socle.
+func TestWithoutADeclaredLayerTheBridgeStillWorks(t *testing.T) {
+	current.Store(nil)
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get(HeaderRequestID)
+	}))
+	defer srv.Close()
+
+	ctx := WithField(context.Background(), KeyRequest, "fil-9")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
+	require.NoError(t, err)
+	resp, err := HTTPClient("core", 5*time.Second).Do(req)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	assert.Equal(t, "fil-9", got)
+}
+
+// useObservation déclare la couche du service pour UN test, et la retire après
+// lui : elle est globale, et un test qui la laisserait en place ferait mesurer
+// le suivant dans le registre du précédent.
+func useObservation(t *testing.T, service string) *Metrics {
+	t.Helper()
+	m := NewMetrics(service, "test")
+	SetDefault(m, nil)
+	t.Cleanup(func() { current.Store(nil) })
+	return m
+}
+
+func call(t *testing.T, target, url string) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, nil)
+	require.NoError(t, err)
+	resp, err := HTTPClient(target, 5*time.Second).Do(req)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+}

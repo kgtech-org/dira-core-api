@@ -21,6 +21,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kgtech-org/dira-core-api/pkg/obs"
 )
 
 // Client appelle une verticale.
@@ -75,14 +77,18 @@ func (r *Registry) Purposes() []string {
 
 // New builds the client. baseURL vide = client INERTE : chaque appel échoue
 // avec une erreur nommée plutôt que d'atteindre une adresse vide.
-func New(baseURL, token string) *Client {
+//
+// `target` nomme la verticale rappelée (`food`, `vtc`) : c'est l'étiquette des
+// mesures, et sans elle les deux verticales se confondraient dans une seule
+// courbe — celle qui ne dit rien.
+func New(target, baseURL, token string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
 		// Plus long que le sens inverse : ce rappel n'est pas dans le chemin
 		// d'un écran. C'est un prestataire de paiement qui attend, et il
 		// réessaiera.
-		http: &http.Client{Timeout: 10 * time.Second},
+		http: obs.HTTPClient(target, 10*time.Second),
 	}
 }
 
