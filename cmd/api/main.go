@@ -185,7 +185,16 @@ func run(logger *slog.Logger) error {
 	// l'écran puisse dire ce qui s'est passé au lieu d'afficher « erreur de
 	// connexion ». Ne voit que les chauffeurs et les livreurs : les autres
 	// comptes n'ont pas d'appareil dans leur jeton.
+	// ⚠️ LA CADENCE PAR COMPTE SE POSE ICI, ET NULLE PART AILLEURS. Elle a besoin
+	// du compte, donc de `Auth` avant elle ; la cadence GLOBALE, elle, s'applique
+	// avant toute authentification et ne peut compter que par adresse. Les deux
+	// étages sont nécessaires : sans celui-ci, tout le monde était compté par
+	// adresse, et chez un opérateur mobile — où des milliers d'abonnés sortent
+	// par une poignée d'adresses publiques — un opérateur entier plafonnait à
+	// 120 requêtes par minute. La branche « par compte » de `clientKey` existait
+	// depuis toujours, et l'ordre des middlewares la rendait inatteignable.
 	authMW := chain(middleware.Auth(tokens, middleware.WithSessions(sessions)),
+		middleware.RateLimitAccount(rdb, cfg.RateLimitRPM),
 		onlyUnder("/api/v1/admin/", middleware.RequireScope(auth.ScopeCore)))
 
 	// Le portefeuille de jetons est créé À L'INSCRIPTION d'un livreur — c'est

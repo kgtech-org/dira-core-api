@@ -113,3 +113,17 @@ func TestAnEmptyHeaderNeverYieldsAnEmptyKey(t *testing.T) {
 		assert.Equal(t, "10.1.2.3", ClientIP(r), "xff=%q", xff)
 	}
 }
+
+// ⚠️ UNE REQUÊTE QUI PRÉSENTE UN JETON A DROIT À LA LIMITE LARGE PAR ADRESSE,
+// parce que son vrai plafond est celui de son COMPTE. Sans cela, on étranglait
+// par adresse des gens qui ont un compte — et chez un opérateur mobile, des
+// milliers d'abonnés sortent par une poignée d'adresses publiques.
+//
+// ⚠️ Le jeton n'est pas VÉRIFIÉ à ce stade (la cadence passe avant
+// l'authentification) : un jeton inventé ne donne donc que la limite large,
+// jamais l'absence de limite — et la requête échoue de toute façon ensuite.
+// C'est ce qui rend le raccourci sans danger, et il faut que ce soit écrit.
+func TestPresentingATokenWidensTheAddressLimitButNeverRemovesIt(t *testing.T) {
+	assert.Equal(t, 10, authenticatedFactor,
+		"la limite large reste un garde-fou : dix fois, pas « sans limite »")
+}
