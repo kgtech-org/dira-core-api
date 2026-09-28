@@ -202,6 +202,19 @@ const (
 	// trouvé un écart — un solde qui ne vaut plus ses mouvements, une
 	// écriture déséquilibrée, un mouvement sans écriture.
 	KeyStaffFinanceAlert = "staff_finance_alert"
+	// LES ALERTES DE LA SUPERVISION (v4.34.0) — la machine, pas le métier :
+	// un service qui ne répond plus, un disque qui se remplit, une panique.
+	//
+	// ⚠️ ELLES EMPRUNTENT LE MÊME CHEMIN QUE LE RESTE, et c'est délibéré. Un
+	// canal de plus — un courriel que personne n'ouvre, une interface qu'il
+	// faut penser à visiter — est un canal qu'on ignore au bout de trois
+	// semaines. Celui-ci est déjà regardé tous les jours.
+	//
+	// ⚠️ ET LE RÉTABLISSEMENT SE DIT AUSSI. Une alerte qui ne se referme
+	// jamais oblige à aller vérifier soi-même que c'est fini — après quoi on
+	// n'y croit plus, dans un sens comme dans l'autre.
+	KeyPlatformAlert         = "staff_platform_alert"
+	KeyPlatformAlertResolved = "staff_platform_alert_resolved"
 )
 
 // defaults sont les gabarits COMPILÉS, servis tant que la base n'en porte pas.
@@ -610,6 +623,24 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "Financial integrity: [kind]", Body: "[who] — [detail]. Check Finance › Integrity."},
 		},
 	},
+	KeyPlatformAlert: {
+		Key:         KeyPlatformAlert,
+		Description: "STAFF — la supervision signale une panne : service muet, disque plein, panique, courses hors radar.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "[severity] — [summary]", Body: "[what]"},
+			LocaleEN: {Title: "[severity] — [summary]", Body: "[what]"},
+		},
+	},
+	KeyPlatformAlertResolved: {
+		Key:         KeyPlatformAlertResolved,
+		Description: "STAFF — c'est rentré dans l'ordre. ⚠️ Sans ce message, une alerte ne se referme jamais et on finit par n'y plus croire.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Rentré dans l'ordre — [alert]", Body: "[summary]"},
+			LocaleEN: {Title: "Back to normal — [alert]", Body: "[summary]"},
+		},
+	},
 	KeyStaffEquipRequested: {
 		Key:         KeyStaffEquipRequested,
 		Description: "STAFF — un agent demande du matériel depuis l'application.",
@@ -716,6 +747,12 @@ var provided = map[string][]string{
 	KeyStaffEquipOverdue:     {"who", "item", "amount"},
 	KeyStaffEquipRequested:   {"who", "item", "mode"},
 	KeyStaffFinanceAlert:     {"kind", "who", "detail"},
+	// ⚠️ CE QUE LA SUPERVISION SAIT REMPLIR, et rien de plus. `what` porte la
+	// phrase qui dit QUOI FAIRE — pas seulement ce qui ne va pas : une alerte
+	// qui annonce « taux d'erreur élevé » à trois heures du matin laisse celui
+	// qui la reçoit ouvrir six écrans pour comprendre.
+	KeyPlatformAlert:         {"alert", "severity", "summary", "what", "service"},
+	KeyPlatformAlertResolved: {"alert", "severity", "summary", "what", "service"},
 }
 
 // Provided rend les variables que la plateforme remplit pour une clé.

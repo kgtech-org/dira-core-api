@@ -38,6 +38,11 @@ var declaredSurface = []string{
 	"/internal/accounts/search",
 	// LE JOURNAL D'AUDIT UNIQUE : une verticale y range ses entrées, avec le
 	// service qui les a écrites ; la console les lit toutes au socle.
+	// ⚠️ LE CROCHET DE LA SUPERVISION, et non d'une verticale. Alertmanager
+	// l'appelle pour que les alertes machine arrivent là où le staff regarde
+	// déjà. Elle NE LIT RIEN et n'écrit rien en base : elle relaie un texte,
+	// borné, vers des notifications.
+	"/internal/alerts",
 	"/internal/audit",
 	"/internal/backoffice/payments",
 	"/internal/backoffice/refund-order-payment",

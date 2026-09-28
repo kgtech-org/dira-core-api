@@ -1235,6 +1235,37 @@ paths:
       parameters: [{name: userID, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Standing, content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentStanding"}}}}
+  /internal/alerts:
+    post:
+      tags: [internal]
+      summary: "Le crochet de la supervision — les alertes arrivent au staff (v4.34.0)"
+      security: [{ bearer: [] }]
+      description: >-
+        Appelé par Alertmanager. ⚠️ **Route interne** : la passerelle refuse
+        `/api/v1/internal/` de l'extérieur, et le jeton de service est vérifié.
+
+
+        ⚠️ **Les alertes arrivent là où les gens regardent déjà.** Un canal de
+        plus — un courriel que personne n'ouvre, une interface qu'il faut
+        penser à visiter — est un canal qu'on ignore au bout de trois semaines.
+        Elles empruntent donc la notification du staff, comme « un chauffeur
+        attend sa validation ».
+
+
+        ⚠️ **Le rétablissement se dit aussi** (`status: resolved`) : une alerte
+        qui ne se referme jamais oblige à aller vérifier soi-même que c'est
+        fini, après quoi on n'y croit plus, dans un sens comme dans l'autre.
+
+
+        ⚠️ Le corps vient d'un autre logiciel : tout y est traité comme du
+        **texte**, jamais comme une instruction, et **borné** — une description
+        d'alerte peut contenir la sortie entière d'une requête. Un lot est
+        limité à dix alertes : une panne de base en déclenche trente en trente
+        secondes, et deux cents notifications feraient du téléphone de
+        l'astreinte un réveil inutilisable.
+      responses:
+        "202": {description: "Relayé (le nombre de destinataires est rendu)"}
+
   /admin/faults:
     get:
       tags: [admin]
