@@ -43,7 +43,15 @@ type AccountRow struct {
 	// AvatarURL : la photo du compte. La console la montre sur chaque
 	// ligne et chaque fiche — sans elle ici, une photo posée (PATCH
 	// /admin/users/{id}) restait invisible partout où l'on lit des comptes.
-	AvatarURL string    `bson:"avatar_url,omitempty" json:"avatar_url,omitempty"`
+	AvatarURL string `bson:"avatar_url,omitempty" json:"avatar_url,omitempty"`
+	// AgentApp : l'APPLICATION D'AGENT à laquelle ce compte appartient —
+	// `driver` ou `courier`, vide tant qu'aucune verticale ne l'a réclamée.
+	//
+	// ⚠️ RENDUE À LA CONSOLE PARCE QUE LE SUPPORT NE PEUT PAS LIBÉRER CE
+	// QU'IL NE VOIT PAS. Le geste existe (`DELETE /admin/users/{id}/agent-app`)
+	// ; sans ce champ sur la fiche, l'opérateur devrait le déclencher à
+	// l'aveugle sur un compte dont il ignore s'il appartient à quelque chose.
+	AgentApp  string    `bson:"agent_app,omitempty" json:"agent_app,omitempty"`
 	Status    string    `bson:"status" json:"status"`
 	Country   string    `bson:"country,omitempty" json:"country,omitempty"`
 	CreatedAt time.Time `bson:"created_at" json:"created_at"`

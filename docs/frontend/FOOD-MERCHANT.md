@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 4.36.0** · 28 septembre 2026
+> **Version 4.37.0** · 28 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -796,7 +796,7 @@ Le socle refuse désormais, **`403 wrong_app`**, et le refus DIT OÙ ALLER :
 | champ | ce qu'il porte |
 |---|---|
 | `error.code` | `wrong_app` |
-| `error.reason` | **l'application à ouvrir** : `client` · `driver` · `merchant` · `console` |
+| `error.reason` | **l'application à ouvrir** : `client` · `driver` (courses) · `courier` (livraison, **v4.37.0**) · `merchant` · `console` |
 | `error.message` | la phrase déjà traduite, à afficher telle quelle si vous n'avez pas la vôtre |
 
 ⚠️ **`reason`, et rien d'autre.** L'enveloppe d'erreur du socle ne rend que
@@ -810,12 +810,24 @@ Affichez « Ce compte est un compte client. Ouvrez l'application Dira
 juste, et envoyer la personne changer un mot de passe correct ne mène nulle
 part.
 
-**Ce que la règle NE sépare PAS.** Elle sépare des FAMILLES de comptes, pas
-des applications. `driver` vaut pour le chauffeur VTC **et** le livreur —
-même rôle au socle ; `client` vaut pour la course **et** la livraison. Deux
-applications de la même famille ne se distinguent donc pas l'une de l'autre
-à la connexion. La famille `merchant`, elle, est bien tenue à l'écart des
-autres.
+**Ce que la règle sépare, et ce qu'elle ne sépare pas — v4.37.0.**
+`client` vaut pour la course **et** la livraison : deux applications de
+client, un seul compte, et elles ne se distinguent pas l'une de l'autre à la
+connexion. En revanche, les deux applications d'**agent** sont désormais
+DEUX mots : `driver` pour le chauffeur des courses, **`courier` pour le
+livreur** — elles envoyaient toutes les deux `driver` jusqu'à cette version.
+Un compte d'agent appartient à l'une ou à l'autre, et le socle lui refuse
+l'entrée dans celle qui n'est pas la sienne.
+
+⚠️ **Pourquoi cela vous concerne, même ici.** Les valeurs de `error.reason`
+ne sont plus quatre mais cinq, et `courier` en fait partie : un `switch` qui
+ne connaît que `client`, `driver`, `merchant` et `console` retombera sur son
+cas par défaut — c'est-à-dire, presque toujours, sur « erreur de connexion »,
+exactement le message que cette règle existe pour éviter. **Prévoyez un
+libellé pour `courier`** (« ouvrez l'application Dira Livreur »), et une
+phrase générique de repli pour une valeur que vous ne connaîtriez pas.
+
+La famille `merchant`, elle, reste tenue à l'écart des autres, comme avant.
 
 **Un compte de DIRECTION entre partout.** C'est voulu, pas un trou :
 l'exploitation ouvre votre application pour reproduire ce qu'un utilisateur

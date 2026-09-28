@@ -200,6 +200,25 @@ func (r *Repository) SetDevice(ctx context.Context, userID primitive.ObjectID, d
 	return nil
 }
 
+// SetAgentApp écrit — ou efface, avec `app` vide — l'APPARTENANCE MÉTIER du
+// compte. Voir `agentapp.go`.
+//
+// ⚠️ UN `$set` CIBLÉ, comme pour l'appareil, et jamais un `UpdateUser`
+// complet : la réclamation part d'un document lu quelques millisecondes plus
+// tôt, et réécrire quinze champs à cette occasion ferait perdre ce qu'une
+// requête concurrente vient de poser — un nom corrigé par la console, une
+// photo, un pays réaligné.
+func (r *Repository) SetAgentApp(ctx context.Context, userID primitive.ObjectID, app string) error {
+	update := bson.M{"$set": bson.M{"agent_app": app}}
+	if app == "" {
+		update = bson.M{"$unset": bson.M{"agent_app": ""}}
+	}
+	if _, err := r.users.UpdateOne(ctx, bson.M{"_id": userID}, update); err != nil {
+		return fmt.Errorf("user: set agent app: %w", err)
+	}
+	return nil
+}
+
 // FindNamesByIDs resolves several display names in ONE query. Un commentaire
 // signé d'un identifiant hexadécimal ne se lit pas, et résoudre chaque auteur
 // séparément ferait une requête par ligne.

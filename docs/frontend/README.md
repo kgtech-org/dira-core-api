@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.36.0** · 28 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.37.0** · 28 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,62 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.37.0 — 28 septembre 2026
+
+🚕🛵 **UN CHAUFFEUR N'EST JAMAIS LIVREUR — deux mots pour les deux applications
+d'agent.** L'application de **livraison envoie désormais `app: "courier"`** à la
+connexion et à l'inscription, là où elle envoyait `driver` comme celle des
+courses. Le socle **refuse** l'entrée à un compte qui frappe à la porte de
+l'autre : `403 wrong_app`, avec `error.reason` nommant l'application à ouvrir.
+
+**Ce que les applications ont à faire :**
+
+| Application | Ce qui change |
+|---|---|
+| **Dira Livreur** (`FOOD-DELIVERY.md`) | ⚠️ **`app: "courier"`** sur `POST /auth/login` **et** `POST /auth/register`, au lieu de `"driver"`. `role: "driver"` à l'inscription **ne change pas**. |
+| **Dira Chauffeur** (`VTC-DRIVER.md`) | rien à la connexion — mais **afficher** le refus `wrong_app` avec `reason: "courier"` : « ce compte est un compte livreur ; ouvrez l'application Dira Livreur ». |
+| **Les trois autres** | ⚠️ `error.reason` a **cinq** valeurs et non plus quatre : `courier` s'ajoute. Un `switch` à quatre branches retombe sur son défaut — c'est-à-dire sur « erreur de connexion », le message que cette règle existe pour éviter. |
+
+⚠️ **JAMAIS « erreur de connexion », JAMAIS « identifiants invalides ».** Le mot
+de passe était juste. Le refus DIT où aller : affichez-le.
+
+⚠️ **POURQUOI — et il faut le dire aux équipes, sinon elles contournent.** Une
+personne qui ouvrait les deux applications sur un seul téléphone **se
+déconnectait elle-même, en boucle**. Un agent ne tient qu'une session et le
+registre d'appareils est clé par **compte** ; deux applications sur le même
+téléphone sont deux installations, donc deux `device_id`, et chacune chassait
+l'autre — avec un écran qui annonçait « vous vous êtes connecté sur un autre
+appareil » **en nommant son propre téléphone**. S'y ajoutaient deux flux de
+positions pour un seul véhicule, et deux viviers d'appel pour une seule
+personne. **Qui veut faire les deux métiers ouvre deux comptes**, avec deux
+numéros — c'est la seule configuration que la plateforme sait tenir.
+
+**La bascule ne ferme la porte à personne.** Un compte qui n'appartient encore à
+aucune application n'est **rien refusé** : les comptes déjà en place se rangent
+tout seuls à leur première ouverture, du côté de l'application qui porte déjà
+leur profil. ⚠️ Mais **n'invitez personne à « essayer l'autre application pour
+voir »** pendant cette période : un livreur en place qui ouvrirait celle des
+chauffeurs avant d'avoir rouvert la sienne réserverait `driver`, et se verrait
+ensuite refuser l'entrée chez lui. C'est réparable — le support peut **libérer**
+l'appartenance d'un compte, pour de vrais changements de métier — mais c'est une
+journée de travail perdue pour quelqu'un.
+
+**Ce qui NE change pas : le RÔLE.** Un livreur a toujours le rôle `driver` au
+socle — même portefeuille de jetons, même règle d'appareil unique, mêmes pièces
+de conformité. La frontière nouvelle est le **métier**, pas le rôle : il n'y a
+pas de rôle `courier`, et `POST /auth/register` avec `role: "courier"` répond
+`422`.
+
+⚠️ **Ceci corrige ce que la 4.26.0 annonçait.** Elle écrivait que `driver`
+couvrait « le chauffeur VTC **et** le livreur, même rôle au socle », et que deux
+applications d'une même famille ne se distinguaient pas entre elles. C'était
+vrai, et c'est précisément ce qui produisait la boucle de déconnexion. Les deux
+applications d'agent se distinguent désormais ; les deux applications de
+**client**, elles, continuent de partager `client`.
+
+Écrit au long dans `VTC-DRIVER.md` §7 et `FOOD-DELIVERY.md` §2, chacun pour son
+public.
 
 ### 4.36.0 — 28 septembre 2026
 

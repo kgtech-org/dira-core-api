@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.36.0** · 28 septembre 2026
+> **Version 4.37.0** · 28 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -311,8 +311,8 @@ session** : la résolution du démarrage suivant peut le changer.
 > Le **compte** (`/me`, `/auth/*`) est au **socle**, base `…/api/v1/` sans `/food`. Les **véhicules**, eux, sont à la livraison : `…/api/v1/food/agent/vehicles`.
 
 ```
-POST   /auth/register       { phone (E.164, avec le +), name, password, role: "driver", first_name?, last_name? }
-POST   /auth/login          { phone | email, password, app: "driver" }   ⚠️ v4.26.0
+POST   /auth/register       { phone (E.164, avec le +), name, password, role: "driver", app: "courier", first_name?, last_name? }   ⚠️ `role` reste `driver`, `app` devient `courier` — v4.37.0
+POST   /auth/login          { phone | email, password, app: "courier" }  ⚠️ v4.37.0 — `courier`, plus `driver`
 GET    /me · PATCH /me · PATCH /me/preferences
 POST   /agent/vehicles      { type, brand?, model?, license_plate?, color?, photo_url?, images?, capacity? }
 GET    /agent/vehicles
@@ -327,12 +327,17 @@ PATCH  /agent/availability     { available }
 
 ### 🚪 DIRE QUELLE APPLICATION SE CONNECTE — `app` (v4.26.0)
 
-`POST /auth/login` accepte un champ `app`. **Envoyez `app: "driver"` à chaque
+`POST /auth/login` accepte un champ `app`. **Envoyez `app: "courier"` à chaque
 connexion**, à côté du téléphone et du mot de passe :
 
 ```
-POST /auth/login   { phone | email, password, app: "driver" }
+POST /auth/login   { phone | email, password, app: "courier" }
 ```
+
+⚠️ **`"courier"`, ET NON PLUS `"driver"` — v4.37.0.** Cette application
+envoyait `driver`, comme celle des chauffeurs VTC, et le socle ne pouvait pas
+les distinguer. Voir juste en dessous, « VOUS ENVOYEZ DÉSORMAIS
+`app: "courier"` » : c'est le seul changement de code de cette version.
 
 ⚠️ **Ce qui se passait sans lui** : un client se connectait ici, et rien ne
 l'arrêtait. Le mot de passe est bon, le jeton est émis, l'accueil s'ouvre —
@@ -345,7 +350,7 @@ Le socle refuse désormais, **`403 wrong_app`**, et le refus DIT OÙ ALLER :
 | champ | ce qu'il porte |
 |---|---|
 | `error.code` | `wrong_app` |
-| `error.reason` | **l'application à ouvrir** : `client` · `driver` · `merchant` · `console` |
+| `error.reason` | **l'application à ouvrir** : `client` · `driver` (courses) · `courier` (livraison, **v4.37.0**) · `merchant` · `console` |
 | `error.message` | la phrase déjà traduite, à afficher telle quelle si vous n'avez pas la vôtre |
 
 ⚠️ **`reason`, et rien d'autre.** L'enveloppe d'erreur du socle ne rend que
@@ -359,13 +364,6 @@ Affichez « Ce compte est un compte client. Ouvrez l'application Dira
 juste, et envoyer la personne changer un mot de passe correct ne mène nulle
 part.
 
-**Ce que la règle NE sépare PAS.** Elle sépare des FAMILLES de comptes, pas
-des applications. `driver` vaut pour le chauffeur VTC **et** le livreur —
-même rôle au socle ; `client` vaut pour la course **et** la livraison. Deux
-applications de la même famille ne se distinguent donc pas l'une de l'autre
-à la connexion. La famille `driver`, elle, est bien tenue à l'écart des
-autres.
-
 **Un compte de DIRECTION entre partout.** C'est voulu, pas un trou :
 l'exploitation ouvre votre application pour reproduire ce qu'un utilisateur
 décrit au support.
@@ -374,6 +372,136 @@ décrit au support.
 jour continue donc de fonctionner exactement comme avant — mais le mauvais
 compte y entre aussi comme avant. C'est la raison d'envoyer le champ dès
 cette version.
+
+### 🛵 VOUS ENVOYEZ DÉSORMAIS `app: "courier"` — ET NON PLUS `"driver"` (v4.37.0)
+
+> ## ⚠️ C'EST LE SEUL CHANGEMENT DE CODE DE CETTE VERSION, ET IL EST À FAIRE
+>
+> ```diff
+> - POST /auth/login   { phone, password, app: "driver",  device_id, device_name }
+> + POST /auth/login   { phone, password, app: "courier", device_id, device_name }
+> ```
+>
+> Le même mot dans `POST /auth/register`. Rien d'autre ne bouge : ni le rôle
+> (`role: "driver"` à l'inscription — voir plus bas), ni les routes, ni les
+> jetons, ni le `device_id`.
+
+Jusqu'ici, **votre application et celle des chauffeurs VTC disaient le même
+mot** : `app: "driver"`. Le socle ne pouvait donc pas les distinguer, et c'est
+de là que venait tout ce qui suit.
+
+Un **compte d'agent appartient désormais à UNE application** : la livraison
+(`courier`) ou les courses (`driver`). Celle à laquelle il appartient est
+décidée par la première des deux qui le voit ; ensuite, l'autre lui est
+**fermée**, à la connexion.
+
+#### Ce que vous recevez, et ce que l'écran doit DIRE
+
+Un compte de **chauffeur VTC** qui ouvre VOTRE application est refusé, au lieu
+d'entrer et de tout casser :
+
+| champ | ce qu'il porte |
+|---|---|
+| `error.code` | `wrong_app` |
+| `error.reason` | `driver` — **l'application à ouvrir** |
+| `error.message` | la phrase déjà traduite, affichable telle quelle |
+
+> **Ce compte est un compte chauffeur.**
+>
+> Ouvrez l'application **Dira Chauffeur** pour vous connecter. Votre mot de
+> passe est correct.
+>
+> `[ Ouvrir Dira Chauffeur ]`   `[ J'ai compris ]`
+
+Et symétriquement, chez les chauffeurs, un compte livreur lit « Ce compte est
+un compte livreur ; ouvrez l'application Dira Livreur ». C'est la phrase que
+`error.reason: "courier"` demande d'afficher.
+
+⚠️ **JAMAIS « erreur de connexion », JAMAIS « identifiants invalides ».** Le
+mot de passe était juste. Envoyer quelqu'un changer un mot de passe qui
+fonctionne ne mène nulle part, et c'est un appel au support dont la réponse
+tient en une phrase que l'écran aurait pu dire tout seul.
+
+⚠️ **`reason`, et rien d'autre** — l'enveloppe d'erreur du socle ne rend que
+`code`, `message`, `fields` et `reason` ; il n'y a pas de `meta` sur le fil.
+Et `reason` a **cinq** valeurs possibles depuis cette version : `client`,
+`driver`, `courier`, `merchant`, `console`. Un `switch` qui n'en connaît que
+quatre retombera sur son cas par défaut — c'est-à-dire, presque toujours, sur
+« erreur de connexion ».
+
+#### Le même refus peut venir des routes de la livraison
+
+`PATCH /food/agent/availability` et `POST /food/agent/vehicles` sont ce qui
+**crée** votre profil de livreur à leur première utilisation. La livraison
+réclame donc l'appartenance du compte au socle avant de le créer, et si ce
+compte est déjà un compte chauffeur, ces routes répondent elles aussi
+**`403 wrong_app`** — même code, même message, aucun profil créé.
+
+⚠️ **Traitez-le au même endroit que le refus de connexion.** C'est le cas
+d'une session ouverte avant cette version, ou d'une application installée sur
+un téléphone dont le compte a changé de main : le jeton est valide, et c'est
+la première route métier qui dit non. Les **lectures** (`GET
+/food/agent/vehicles`, `GET /food/deliveries`) ne refusent jamais : on
+n'enferme pas dehors quelqu'un dont le profil existe déjà.
+
+#### ⚠️ POURQUOI — et il faut le savoir, sinon on contourne
+
+La raison n'est ni administrative ni théorique. **Une personne qui ouvrait les
+deux applications sur un seul téléphone se déconnectait elle-même, en boucle,
+sans fin.**
+
+Un livreur ne tient qu'**une** session, et le registre d'appareils est clé par
+**compte**. Deux applications sur le même téléphone sont deux installations,
+donc deux `device_id`. Chacune chassait l'autre : vous ouvrez les courses, vous
+êtes déconnecté de la livraison ; vous rouvrez la livraison, vous êtes
+déconnecté des courses — et l'écran annonce « vous vous êtes connecté sur un
+autre appareil » **en nommant votre propre téléphone**. Exact, et parfaitement
+incompréhensible. ⚠️ Et avec la déconnexion vient tout ce que la §
+« UN SEUL APPAREIL À LA FOIS » décrit : la file hors ligne qui ne part plus, la
+tournée dont plus personne ne voit la position.
+
+S'y ajoutait un désordre plus lourd : le même compte poussait deux flux de
+positions, apparaissait dans deux viviers d'appel, et recevait une commande
+d'un côté pendant qu'une course l'attendait de l'autre — pour une seule moto.
+
+**Qui veut faire les deux métiers ouvre DEUX COMPTES**, avec deux numéros de
+téléphone. C'est la seule configuration que la plateforme sait tenir : deux
+portefeuilles, deux historiques, deux sessions, deux véhicules. Dites-le
+clairement à qui le demande plutôt que de chercher un contournement — il n'y
+en a pas, et celui qu'on croit avoir trouvé est la boucle décrite ci-dessus.
+
+**Et si quelqu'un change vraiment de métier** — la moto vendue, la voiture
+louée — le support peut **libérer** l'appartenance de son compte. C'est un
+geste d'administration, tracé ; l'application n'a rien à faire, la personne se
+reconnecte simplement chez le voisin. Renvoyez vers le support plutôt que de
+laisser ouvrir un second compte.
+
+#### Ce qui NE change pas
+
+- **Le rôle reste `driver` à l'inscription.** `POST /auth/register` porte
+  toujours `role: "driver"` — un livreur a le même rôle qu'un chauffeur au
+  socle : même portefeuille de jetons, même règle d'appareil unique, mêmes
+  pièces de conformité. La frontière nouvelle est le **métier**, pas le rôle.
+  ⚠️ **Ne remplacez pas `role: "driver"` par `role: "courier"`** : ce rôle
+  n'existe pas, et la requête serait refusée en `422`. Le mot `courier` va dans
+  `app`, jamais dans `role`.
+- **Envoyez quand même `app: "courier"` à l'inscription.** C'est ce qui pose le
+  métier du compte dès sa naissance, du bon côté, sans attendre. ⚠️ Sans lui,
+  un livreur tout neuf qui ouvrirait l'application des chauffeurs avant de
+  travailler chez vous deviendrait chauffeur.
+- **Un compte de DIRECTION entre partout**, dans les deux applications
+  d'agent. L'exploitation ouvre la vôtre pour reproduire ce qu'on lui décrit ;
+  la lui fermer rendrait le support aveugle.
+- **Tant qu'un compte n'appartient à rien, rien n'est refusé.** Les comptes
+  déjà en place n'ont pas encore d'appartenance : ils se rangent tout seuls à
+  leur première ouverture, du côté de l'application qui porte déjà leur profil.
+  C'est aussi pourquoi **envoyer `"driver"` encore quelque temps ne casse
+  rien** — mais ne protège de rien non plus.
+- ⚠️ **N'INVITEZ PERSONNE À « ESSAYER L'AUTRE APPLICATION POUR VOIR ».**
+  Pendant la bascule, un livreur en place qui ouvrirait celle des chauffeurs
+  par curiosité avant d'avoir rouvert la vôtre réserverait `driver` — et se
+  verrait ensuite refuser l'entrée chez lui. C'est réparable (le support
+  libère), mais c'est une journée de travail perdue pour quelqu'un.
 
 ### 📱 UN SEUL APPAREIL À LA FOIS — `device_id` (v4.35.0)
 
@@ -390,7 +518,7 @@ quartier à l'autre.
 #### Ce que l'application envoie
 
 ```
-POST /auth/login   { phone | email, password, app: "driver",
+POST /auth/login   { phone | email, password, app: "courier",
                      device_id: "9f3c1b7e-…",
                      device_name: "Tecno Spark 10 · Android 13" }
 ```

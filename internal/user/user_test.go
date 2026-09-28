@@ -170,6 +170,21 @@ func (f *fakeUserRepo) SetDevice(_ context.Context, userID primitive.ObjectID, d
 	return nil
 }
 
+// SetAgentApp écrit l'APPARTENANCE MÉTIER — un `$set` ciblé dans le vrai
+// dépôt, et le faux doit le reproduire pour la même raison que `SetDevice` :
+// un `UpdateUser` complet réécrirait quinze champs sur une réclamation qui
+// n'en touche qu'un.
+func (f *fakeUserRepo) SetAgentApp(_ context.Context, userID primitive.ObjectID, app string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[userID]
+	if !ok {
+		return errors.New("user not found")
+	}
+	u.AgentApp = app
+	return nil
+}
+
 func (f *fakeUserRepo) userCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()

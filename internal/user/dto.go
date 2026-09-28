@@ -20,7 +20,7 @@ type RegisterRequest struct {
 	// livreur qui vient de créer son compte est déjà connecté sur ce
 	// téléphone. Sans eux, sa toute première session serait la seule à
 	// n'être bornée à aucun appareil — et elle peut durer trente jours.
-	App        string `json:"app,omitempty" validate:"omitempty,oneof=client driver merchant console"`
+	App        string `json:"app,omitempty" validate:"omitempty,oneof=client driver courier merchant console"`
 	DeviceID   string `json:"device_id,omitempty" validate:"omitempty,max=128"`
 	DeviceName string `json:"device_name,omitempty" validate:"omitempty,max=120"`
 	// Platform dit SUR QUOI l'application tourne — `web`, `android`, `ios`.
@@ -47,6 +47,14 @@ type LoginRequest struct {
 	// App dit QUELLE APPLICATION demande, et c'est elle qui décide si ce
 	// compte a le droit d'entrer ici.
 	//
+	// ⚠️ DEUX MOTS POUR LES DEUX MÉTIERS D'AGENT : `driver` est
+	// l'application des COURSES, `courier` celle de la LIVRAISON. Les deux
+	// envoyaient `driver`, et tant qu'elles le faisaient le socle ne pouvait
+	// pas les distinguer : un chauffeur qui ouvrait la livraison recevait un
+	// jeton parfaitement valide, se faisait poser un profil de livreur au
+	// passage, et chassait sa propre session de courses de son propre
+	// téléphone — voir `agentapp.go`.
+	//
 	// ⚠️ LE SERVEUR NE PEUT PAS LE DEVINER. Sans ce mot, un client se
 	// connectait dans l'application chauffeur : le mot de passe est bon, le
 	// jeton est émis — puis chaque écran répond 403, et la personne croit
@@ -55,7 +63,7 @@ type LoginRequest struct {
 	//
 	// ABSENT = aucune vérification, le comportement d'avant : une
 	// application pas encore mise à jour continue de fonctionner.
-	App string `json:"app,omitempty" validate:"omitempty,oneof=client driver merchant console"`
+	App string `json:"app,omitempty" validate:"omitempty,oneof=client driver courier merchant console"`
 	// DeviceID est l'IDENTIFIANT D'INSTALLATION de l'application : un chauffeur
 	// ou un livreur ne tient qu'UNE session, et c'est ce champ qui dit laquelle.
 	//

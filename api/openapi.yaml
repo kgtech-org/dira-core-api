@@ -108,6 +108,27 @@ paths:
                 email: {type: string, format: email}
                 first_name: {type: string, maxLength: 80}
                 last_name: {type: string, maxLength: 80}
+                app:
+                  type: string
+                  enum: [client, driver, courier, merchant, console]
+                  description: >-
+                    L'application qui inscrit. ⚠️ **Pour un `role: driver`,
+                    elle décide du MÉTIER du compte** : `driver` en fait un
+                    chauffeur de courses, `courier` un livreur, et ce compte
+                    n'entrera plus jamais dans l'autre application (403
+                    `wrong_app`).
+
+
+                    ⚠️ **Ici, « le premier qui déclare » est légitime, et c'est
+                    le seul endroit où ça l'est** : un compte qui vient d'être
+                    créé n'a aucun profil, donc aucune réalité à contredire.
+                    L'application qui l'inscrit EST son métier.
+
+
+                    Omise = aucun métier posé ; la première verticale qui
+                    garantira le profil le réclamera.
+                device_id: {type: string, maxLength: 128}
+                device_name: {type: string, maxLength: 120}
                 platform:
                   type: string
                   enum: [web, android, ios]
@@ -141,9 +162,29 @@ paths:
         qu'elle s'était trompée d'application.
 
 
-        Correspondance : `client` → compte client, `driver` → chauffeur ET
-        livreur (une seule application de course), `merchant` → marchand,
-        `console` → direction.
+        Correspondance : `client` → compte client, `driver` → **chauffeur des
+        courses**, `courier` → **livreur**, `merchant` → marchand, `console` →
+        direction.
+
+
+        ⚠️ **`courier` EST NOUVEAU, ET LES DEUX APPLICATIONS D'AGENT DOIVENT
+        ENFIN SE DISTINGUER.** Elles envoyaient toutes les deux `driver`, et
+        tant qu'elles le faisaient le socle ne pouvait pas les séparer : un
+        chauffeur qui ouvrait la livraison recevait un jeton parfaitement
+        valide, se faisait poser un profil de livreur au passage — un compte,
+        deux métiers, ce que la plateforme n'admet pas — et **chassait sa
+        propre session de courses de son propre téléphone**, puisque le
+        registre d'appareils est clé par compte et que deux applications sur
+        un même téléphone sont deux installations. Les deux applications se
+        déconnectaient l'une l'autre, en boucle, en nommant SON téléphone.
+
+
+        Un compte d'agent appartient donc à UNE application, `driver` ou
+        `courier` — `courier` a le rôle `driver` au socle, la frontière
+        nouvelle est le métier, pas le rôle. L'appartenance est posée à
+        l'inscription, ou réclamée par la verticale au moment où elle garantit
+        le profil ; **tant qu'elle est absente, rien n'est refusé** (les
+        applications déjà publiées continuent de fonctionner).
 
 
         **Deux portes restent ouvertes, volontairement.** Un `app` ABSENT ne
@@ -170,9 +211,10 @@ paths:
                 password: {type: string}
                 app:
                   type: string
-                  enum: [client, driver, merchant, console]
+                  enum: [client, driver, courier, merchant, console]
                   description: >-
-                    L'application qui demande. Omis = aucune vérification
+                    L'application qui demande. `driver` = les COURSES,
+                    `courier` = la LIVRAISON. Omis = aucune vérification
                     (compatibilité).
                 device_id:
                   type: string
@@ -261,7 +303,15 @@ paths:
           description: >-
             `wrong_app` — le compte existe, le mot de passe est bon, mais il
             n'appartient pas à cette application ; `error.reason` nomme
-            la bonne. Ou `account_suspended`.
+            la bonne (`client` · `driver` · `courier` · `merchant` ·
+            `console`). Ou `account_suspended`.
+
+
+            ⚠️ **L'écran doit dire OÙ ALLER, jamais « erreur de connexion ».**
+            Pour un compte d'agent : « Ce compte est un compte livreur ; ouvrez
+            l'application Dira Livreur. » Le mot de passe était juste — envoyer
+            la personne en changer un qui fonctionne ne mène nulle part, et
+            c'est un appel au support pour rien.
   /auth/refresh:
     post:
       tags: [auth]
@@ -1445,6 +1495,68 @@ paths:
       parameters: [{name: userID, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Standing, content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentStanding"}}}}
+  /internal/accounts/agent-app:
+    post:
+      tags: [internal]
+      summary: "Une verticale RÉCLAME l'appartenance métier d'un compte (v4.37.0)"
+      security: [{ bearer: [] }]
+      description: >-
+        Appelée par les courses et par la livraison au moment où elles
+        garantissent le profil d'un agent. ⚠️ **Route interne** : la passerelle
+        refuse `/api/v1/internal/` de l'extérieur, et le jeton de service est
+        vérifié.
+
+
+        **UN CHAUFFEUR VTC N'EST JAMAIS LIVREUR.** La doctrine n'était
+        appliquée par rien : les deux profils naissaient d'une simple LECTURE,
+        et un compte qui ouvrait les deux applications obtenait les deux
+        métiers en silence. Cette route est l'endroit où l'autre verticale peut
+        dire non.
+
+
+        **IDEMPOTENTE** — elle est appelée à chaque ouverture d'application.
+        Réclamer ce qui est acquis n'écrit rien et répond `200`.
+
+
+        ⚠️ **C'est cette moitié qui rend la migration sûre.** On ne peut pas
+        laisser « le premier qui se connecte » décider : aucun compte existant
+        ne porte d'appartenance, et un livreur en place qui ouvrirait par
+        curiosité l'application des courses réserverait `driver` puis se
+        verrait refuser l'entrée dans SA propre application. L'appartenance
+        vient donc de la RÉALITÉ — le profil qui existe déjà —, et ce sont les
+        verticales qui la déclarent.
+
+
+        ⚠️ **Un compte de DIRECTION ne reçoit jamais d'appartenance** : il
+        répond `200` avec `agent_app` vide. Lui en poser une le rendrait
+        aveugle à l'autre application, alors qu'il l'ouvre pour reproduire ce
+        qu'on lui décrit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, app]
+              properties:
+                user_id: {type: string}
+                app: {type: string, enum: [driver, courier]}
+                from_profile:
+                  type: boolean
+                  description: >-
+                    La verticale voit-elle DÉJÀ un profil pour ce compte ?
+                    N'change rien à ce qui est écrit — journalisée, pour qu'on
+                    puisse relire la migration et distinguer une appartenance
+                    venue d'un profil existant (un fait) de celle venue d'une
+                    application qui a frappé la première.
+      responses:
+        "200": {description: "`{agent_app}` — l'appartenance EN VIGUEUR après l'appel"}
+        "403":
+          description: >-
+            `wrong_app` — le compte appartient à l'autre application ;
+            `error.reason` la nomme. ⚠️ **Rien n'est écrasé** : la première
+            réclamation gagne, et aucun profil n'est supprimé nulle part.
+        "404": {description: user_not_found}
   /internal/alerts:
     post:
       tags: [internal]
@@ -1596,6 +1708,13 @@ paths:
         celle des courses cherchent la même personne. La fiche complète d'un
         livreur — solde, véhicules, courses — se compose dans la verticale, à
         partir de ces lignes.
+
+
+        Chaque ligne porte **`agent_app`** (v4.37.0) : l'application d'agent à
+        laquelle ce compte appartient — `driver` (les courses), `courier` (la
+        livraison), ou **absent** tant qu'aucune verticale ne l'a réclamée.
+        ⚠️ Montrez-le sur la fiche : le support ne peut pas libérer
+        (`DELETE /admin/users/{id}/agent-app`) ce qu'il ne voit pas.
       parameters:
         - {name: role, in: query, schema: {type: string, enum: [client, driver, merchant, admin]}}
         - {name: status, in: query, schema: {type: string, enum: [active, suspended]}}
@@ -1685,6 +1804,40 @@ paths:
         "200": {description: Previous state and new status}
         "404": {description: user_not_found}
         "422": {description: status must be active or suspended}
+  /admin/users/{id}/agent-app:
+    delete:
+      tags: [admin]
+      summary: "LIBÉRER l'appartenance métier d'un compte d'agent (v4.37.0)"
+      description: >-
+        Un compte d'agent appartient à UNE application — `driver` (les courses)
+        ou `courier` (la livraison) — et la connexion à l'autre lui est refusée
+        (403 `wrong_app`). **Ce geste rend cette appartenance.**
+
+
+        ⚠️ **C'EST LA SORTIE DU SUPPORT, ET ELLE EST INDISPENSABLE.** Une
+        personne change de métier — livreuse hier, chauffeuse aujourd'hui, la
+        moto vendue et la voiture louée. Sans ce geste, le support n'a aucune
+        issue : il ouvrira un second compte à la même personne, avec un second
+        téléphone, un second portefeuille et un second historique, c'est-à-dire
+        exactement le désordre que la règle existe pour éviter.
+
+
+        ⚠️ **Aucun profil n'est supprimé.** La personne garde son profil de
+        livreuse et tout ce qu'il porte ; elle pourra réclamer `driver` en
+        ouvrant l'application des courses. Ce qui n'est surtout PAS décidé
+        ici : c'est l'application qu'elle ouvre qui le dira.
+
+
+        **IDEMPOTENT** — libérer ce qui est déjà libre répond `200` avec
+        `released_agent_app` vide, sans rien écrire ni tracer. Un geste
+        d'administration qui échoue parce qu'il a déjà été fait pousse à
+        s'acharner. Le geste est inscrit au **journal d'audit**
+        (`user.agent_app.release`) : « qui a laissé ce compte changer de
+        métier, et quand ? » sera demandé.
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: "`{released_agent_app}` — ce qui vient d'être rendu (vide s'il n'y avait rien)"}
+        "404": {description: user_not_found}
 components:
   schemas:
     MapMarker:

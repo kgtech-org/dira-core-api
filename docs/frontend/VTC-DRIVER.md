@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.36.0** · 28 septembre 2026
+> **Version 4.37.0** · 28 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -1874,7 +1874,7 @@ Le socle refuse désormais, **`403 wrong_app`**, et le refus DIT OÙ ALLER :
 | champ | ce qu'il porte |
 |---|---|
 | `error.code` | `wrong_app` |
-| `error.reason` | **l'application à ouvrir** : `client` · `driver` · `merchant` · `console` |
+| `error.reason` | **l'application à ouvrir** : `client` · `driver` (courses) · `courier` (livraison, **v4.37.0**) · `merchant` · `console` |
 | `error.message` | la phrase déjà traduite, à afficher telle quelle si vous n'avez pas la vôtre |
 
 ⚠️ **`reason`, et rien d'autre.** L'enveloppe d'erreur du socle ne rend que
@@ -1888,13 +1888,6 @@ Affichez « Ce compte est un compte client. Ouvrez l'application Dira
 juste, et envoyer la personne changer un mot de passe correct ne mène nulle
 part.
 
-**Ce que la règle NE sépare PAS.** Elle sépare des FAMILLES de comptes, pas
-des applications. `driver` vaut pour le chauffeur VTC **et** le livreur —
-même rôle au socle ; `client` vaut pour la course **et** la livraison. Deux
-applications de la même famille ne se distinguent donc pas l'une de l'autre
-à la connexion. La famille `driver`, elle, est bien tenue à l'écart des
-autres.
-
 **Un compte de DIRECTION entre partout.** C'est voulu, pas un trou :
 l'exploitation ouvre votre application pour reproduire ce qu'un utilisateur
 décrit au support.
@@ -1903,6 +1896,113 @@ décrit au support.
 jour continue donc de fonctionner exactement comme avant — mais le mauvais
 compte y entre aussi comme avant. C'est la raison d'envoyer le champ dès
 cette version.
+
+### 🚕 UN CHAUFFEUR N'EST JAMAIS LIVREUR — `driver` ≠ `courier` (v4.37.0)
+
+**Vous continuez d'envoyer `app: "driver"`. Rien ne change dans votre code de
+connexion.** Ce qui change est en face : l'application de LIVRAISON envoie
+désormais `app: "courier"`, et le socle sait enfin distinguer les deux.
+
+```
+POST /auth/login   { phone | email, password, app: "driver", device_id, device_name }
+```
+
+Jusqu'ici, les deux applications d'agent disaient le même mot — `driver` — et
+le socle ne pouvait pas les séparer. Un **compte appartient désormais à UNE
+application d'agent** : les courses, ou la livraison. Celle à laquelle il
+appartient est décidée par la première des deux qui le voit ; ensuite, l'autre
+lui est **fermée**.
+
+#### Ce que vous recevez, et ce que l'écran doit DIRE
+
+Un compte de **livreur** qui ouvre VOTRE application est refusé, au lieu
+d'entrer et de tout casser :
+
+| champ | ce qu'il porte |
+|---|---|
+| `error.code` | `wrong_app` |
+| `error.reason` | `courier` — **l'application à ouvrir** |
+| `error.message` | la phrase déjà traduite, affichable telle quelle |
+
+> **Ce compte est un compte livreur.**
+>
+> Ouvrez l'application **Dira Livreur** pour vous connecter. Votre mot de passe
+> est correct.
+>
+> `[ Ouvrir Dira Livreur ]`   `[ J'ai compris ]`
+
+⚠️ **JAMAIS « erreur de connexion », JAMAIS « identifiants invalides ».** Le
+mot de passe était juste. Envoyer quelqu'un changer un mot de passe qui
+fonctionne ne mène nulle part, et c'est un appel au support dont la réponse
+tient en une phrase que l'écran aurait pu dire tout seul.
+
+⚠️ **`reason`, et rien d'autre** — l'enveloppe d'erreur du socle ne rend que
+`code`, `message`, `fields` et `reason` ; il n'y a pas de `meta` sur le fil.
+Et `reason` a **cinq** valeurs possibles depuis cette version : `client`,
+`driver`, `courier`, `merchant`, `console`. Un `switch` qui n'en connaît que
+quatre retombera sur son cas par défaut — c'est-à-dire, presque toujours, sur
+« erreur de connexion ».
+
+#### Le même refus peut venir de la route des courses
+
+`GET /vtc/drivers/me` est ce qui **crée** votre profil de chauffeur à sa
+première lecture. Les courses réclament donc l'appartenance du compte au socle
+avant de le créer, et si ce compte est déjà un compte livreur, cette route
+répond elle aussi **`403 wrong_app`** — même code, même message, aucun profil
+créé.
+
+⚠️ **Traitez-le au même endroit que le refus de connexion.** C'est le cas
+d'une application déjà installée sur un téléphone dont le compte a changé de
+main, ou d'une session ouverte avant cette version : le jeton est valide, et
+c'est la première route métier qui dit non.
+
+#### ⚠️ POURQUOI — et il faut le savoir, sinon on contourne
+
+La raison n'est ni administrative ni théorique. **Une personne qui ouvrait les
+deux applications sur un seul téléphone se déconnectait elle-même, en boucle,
+sans fin.**
+
+Un chauffeur ne tient qu'**une** session, et le registre d'appareils est clé
+par **compte**. Deux applications sur le même téléphone sont deux
+installations, donc deux `device_id`. Chacune chassait l'autre : vous ouvrez
+la livraison, vous êtes déconnecté des courses ; vous rouvrez les courses,
+vous êtes déconnecté de la livraison — et l'écran annonce « vous vous êtes
+connecté sur un autre appareil » **en nommant votre propre téléphone**. Exact,
+et parfaitement incompréhensible.
+
+S'y ajoutait un désordre plus lourd : le même compte poussait deux flux de
+positions, apparaissait dans deux viviers d'appel, et recevait une course de
+chaque côté pour un seul véhicule.
+
+**Qui veut faire les deux métiers ouvre DEUX COMPTES**, avec deux numéros de
+téléphone. C'est la seule configuration que la plateforme sait tenir : deux
+portefeuilles, deux historiques, deux sessions, deux véhicules. Dites-le
+clairement à qui le demande plutôt que de chercher un contournement — il n'y
+en a pas, et celui qu'on croit avoir trouvé est la boucle décrite ci-dessus.
+
+**Et si quelqu'un change vraiment de métier** — la moto vendue, la voiture
+louée — le support peut **libérer** l'appartenance de son compte. C'est un
+geste d'administration, tracé ; l'application n'a rien à faire, la personne se
+reconnecte simplement chez vous. Renvoyez vers le support plutôt que de laisser
+ouvrir un second compte.
+
+#### Ce qui NE change pas
+
+- **Le rôle reste `driver` des deux côtés.** Un livreur a le même rôle qu'un
+  chauffeur au socle : même portefeuille de jetons, même règle d'appareil
+  unique, mêmes pièces de conformité. La frontière nouvelle est le **métier**,
+  pas le rôle — ne cherchez pas un rôle `courier`, il n'existe pas.
+- **Un compte de DIRECTION entre partout**, dans les deux applications
+  d'agent. L'exploitation ouvre la vôtre pour reproduire ce qu'on lui décrit ;
+  la lui fermer rendrait le support aveugle.
+- **Tant qu'un compte n'appartient à rien, rien n'est refusé.** Les comptes
+  déjà en place n'ont pas encore d'appartenance : ils se rangent tout seuls à
+  leur première ouverture, du côté de l'application qui porte déjà leur profil.
+- ⚠️ **N'INVITEZ PERSONNE À « ESSAYER L'AUTRE APPLICATION POUR VOIR ».**
+  Pendant la bascule, un livreur en place qui ouvrirait la vôtre par curiosité
+  avant d'avoir rouvert la sienne réserverait `driver` — et se verrait ensuite
+  refuser l'entrée chez lui. C'est réparable (le support libère), mais c'est
+  une journée de travail perdue pour quelqu'un.
 
 ### 📱 UN SEUL APPAREIL À LA FOIS — `device_id` (v4.35.0)
 
