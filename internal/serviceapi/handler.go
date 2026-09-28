@@ -212,6 +212,10 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/notifications/send", h.notify)
 		g.Post("/internal/notifications/staff", h.notifyStaff)
 		g.Post("/internal/audit", h.recordAudit)
+		// LE CROCHET DE LA SUPERVISION : les alertes machine arrivent là où
+		// les gens regardent déjà — la notification du staff. Un canal de
+		// plus est un canal qu'on ignore.
+		g.Post("/internal/alerts", h.alerts)
 		g.Post("/internal/equipment/collect", h.equipmentCollect)
 		g.Post("/internal/equipment/standing", h.equipmentStanding)
 		g.Post("/internal/push/data", h.signal)
