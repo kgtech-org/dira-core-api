@@ -138,6 +138,22 @@ var applicationIndexes = []db.Index{
 	{Collection: "audit_logs", Keys: db.K("country", 1, "resource.id", 1, "_id", -1)},
 	{Collection: "audit_logs", Keys: db.K("created_at", -1)},
 
+	// --- LES PANNES (internal/faults) ---
+	//
+	// ⚠️ UNE LIGNE PAR EMPREINTE, et l'unicité le garantit. Sans elle, deux
+	// occurrences simultanées de la même panne — ce qui est exactement ce qui
+	// arrive quand une route casse — créeraient deux lignes, et le
+	// groupement, qui fait tout l'intérêt de ce registre, s'effondrerait au
+	// pire moment.
+	{Collection: "platform_faults", Keys: db.K("fingerprint", 1), Unique: true},
+	{Collection: "platform_faults", Keys: db.K("last_seen", -1)},
+	{Collection: "platform_faults", Keys: db.K("service", 1, "last_seen", -1)},
+	{Collection: "platform_faults", Keys: db.K("resolved_at", 1, "last_seen", -1)},
+	// TRENTE JOURS : garder pour toujours remplit la base de pannes corrigées
+	// il y a un an ; garder deux jours fait disparaître celle qui n'arrive
+	// qu'au moment de la paie.
+	{Collection: "platform_faults", Keys: db.K("last_seen", 1), TTLSeconds: db.TTL(30 * 24 * 3600)},
+
 	// --- le matériel (internal/equipment) ---
 	{Collection: "equipment_items", Keys: db.K("country", 1, "active", 1, "_id", -1)},
 	{Collection: "equipment_contracts", Keys: db.K("user_id", 1, "status", 1, "_id", 1)},

@@ -217,3 +217,22 @@ func scrape(t *testing.T, m *Metrics) string {
 	require.Equal(t, 200, rec.Code)
 	return strings.Join(strings.Split(rec.Body.String(), "\n"), "\n")
 }
+
+// ⚠️ DEUX ROUTEURS SUR LA PLATEFORME. Les APIs métier utilisent chi ; le
+// service de SUIVI — le plus sollicité de tous — utilise le multiplexeur de la
+// bibliothèque standard. Sans cette seconde lecture, il compterait TOUTES ses
+// requêtes sous `unmatched`, et la supervision ne dirait rien de ce qui
+// ralentit.
+func TestTheStandardMuxPatternIsReadToo(t *testing.T) {
+	m := NewMetrics("tracking", "test")
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /track/missions/{id}", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
+	h := m.Middleware(mux)
+
+	for _, id := range []string{"m1", "m2"} {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/track/missions/"+id, nil))
+	}
+
+	has(t, m, `route="GET /track/missions/{id}"`)
+	hasNot(t, m, "m1")
+}

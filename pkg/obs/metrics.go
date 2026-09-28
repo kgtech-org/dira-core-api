@@ -125,12 +125,21 @@ func (m *Metrics) Middleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(ww, r)
 
-		// ⚠️ LE GABARIT SE LIT DANS LE CONTEXTE DU ROUTEUR, et il n'y est
-		// qu'APRÈS le routage — d'où la position de ce relevé, après l'appel
-		// au suivant.
+		// ⚠️ LE GABARIT SE LIT APRÈS LE ROUTAGE, jamais avant — d'où la
+		// position de ce relevé, après l'appel au suivant.
+		//
+		// Deux routeurs sur la plateforme, donc deux lectures : chi pour les
+		// APIs métier, le multiplexeur de la bibliothèque standard pour le
+		// suivi. ⚠️ La seconde n'est pas une commodité : sans elle, le
+		// service de suivi compterait TOUTES ses requêtes sous `unmatched`,
+		// et la supervision du composant le plus sollicité de la plateforme
+		// ne dirait rien de ce qui ralentit.
 		route := ""
 		if rc := chi.RouteContext(r.Context()); rc != nil {
 			route = rc.RoutePattern()
+		}
+		if route == "" {
+			route = r.Pattern
 		}
 		if route == "" {
 			// Une requête qui n'a trouvé aucune route : on la compte sous un
