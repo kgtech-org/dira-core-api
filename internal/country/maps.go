@@ -108,6 +108,18 @@ func (s *Service) UpdateMaps(ctx context.Context, code string, req MapsUpdateReq
 	if err != nil {
 		return nil, apperr.Internal(err)
 	}
+	// ⚠️ RETIRER LA DERNIÈRE CLÉ RAMÈNE LE PAYS À NOTRE FOND. Sans cela, l'écran
+	// de réglage affiche « GOOGLE » alors que PERSONNE ne l'obtient : la garde de
+	// lecture protège bien les cartes du rectangle gris, mais le réglage, lui,
+	// ment — et on cherche pendant une heure pourquoi le fond ne change pas.
+	// Un écran d'administration qui affirme une chose fausse est pire qu'un
+	// écran qui n'affiche rien.
+	if inst.Maps.Basemap == BasemapGoogle && !hasAnyKey(inst.Maps) {
+		if err := s.repo.SetBasemap(ctx, info.Code, BasemapDira); err != nil {
+			return nil, apperr.Internal(err)
+		}
+		inst.Maps.Basemap = BasemapDira
+	}
 	out := mapsResponse(inst.Maps)
 	if s.audit != nil {
 		// ⚠️ LE JOURNAL D'AUDIT NE VOIT PAS LES CLÉS. On y inscrit qu'une clé a
@@ -207,7 +219,10 @@ func mapsResponse(m Maps) MapsResponse {
 		status := GoogleKeyStatus{Configured: g.Key != "", MapType: g.MapType}
 		if status.Configured {
 			status.Hint = hint(g.Key)
-			status.UpdatedAt = g.UpdatedAt.UTC()
+			if !g.UpdatedAt.IsZero() {
+				at := g.UpdatedAt.UTC()
+				status.UpdatedAt = &at
+			}
 			if status.MapType == "" {
 				status.MapType = MapTypeRoadmap
 			}

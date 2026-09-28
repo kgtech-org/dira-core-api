@@ -84,7 +84,8 @@ func TestTheConsoleNeverSeesTheKey(t *testing.T) {
 	web := out.Google[PlatformWeb]
 	assert.True(t, web.Configured)
 	assert.Equal(t, MapTypeTerrain, web.MapType)
-	assert.False(t, web.UpdatedAt.IsZero(), "« depuis quand » se lit sans la clé")
+	require.NotNil(t, web.UpdatedAt, "« depuis quand » se lit sans la clé")
+	assert.False(t, web.UpdatedAt.IsZero())
 
 	// La fin suffit à reconnaître laquelle est en place, pas à s'en servir.
 	assert.Equal(t, "…ABCD", web.Hint)
@@ -101,6 +102,9 @@ func TestTheConsoleAlwaysSeesTheThreePlatforms(t *testing.T) {
 		require.Contains(t, out.Google, platform)
 		assert.False(t, out.Google[platform].Configured)
 		assert.Empty(t, out.Google[platform].Hint)
+		// ⚠️ PAS DE DATE POUR UNE PLATEFORME SANS CLÉ. Une date de l'an 1 se
+		// lit comme une vraie date, et la console l'afficherait.
+		assert.Nil(t, out.Google[platform].UpdatedAt)
 	}
 }
 
@@ -127,4 +131,31 @@ func TestRefusingGoogleWithoutAKeyIsNamed(t *testing.T) {
 	assert.Equal(t, "maps_google_without_key", errGoogleWithoutKey.Code)
 	assert.NotEmpty(t, errGoogleWithoutKey.Message)
 	assert.True(t, strings.Contains(strings.ToLower(errGoogleWithoutKey.Message), "key"))
+}
+
+// ⚠️ RETIRER LA DERNIÈRE CLÉ DOIT RAMENER LE PAYS À NOTRE FOND. La garde de
+// lecture empêche déjà le rectangle gris ; ce qu'elle n'empêche pas, c'est que
+// l'écran de réglage affiche « GOOGLE » alors que personne ne l'obtient — et on
+// cherche alors pendant une heure pourquoi le fond ne change pas. Un écran
+// d'administration qui affirme une chose fausse est pire qu'un écran vide.
+//
+// Trouvé en éprouvant le réglage en direct : le pays est resté sur `google`
+// après le retrait, et seule la lecture rattrapait.
+func TestRemovingTheLastKeyMustBringTheCountryBack(t *testing.T) {
+	// L'état qu'on ne veut plus voir : réglé sur Google, sans aucune clé.
+	orphan := Maps{Basemap: BasemapGoogle, Google: map[string]GoogleMaps{}}
+	assert.False(t, hasAnyKey(orphan), "c'est la condition du rattrapage")
+
+	// Ce que la lecture en fait de toute façon — la carte, elle, est sauve.
+	base, k, _ := resolveGrant(orphan, PlatformWeb)
+	assert.Equal(t, BasemapDira, base)
+	assert.Empty(t, k)
+
+	// Et tant qu'une clé reste, on ne touche à rien : retirer celle du web ne
+	// doit pas éteindre Google pour Android.
+	kept := Maps{Basemap: BasemapGoogle, Google: map[string]GoogleMaps{PlatformAndroid: {Key: key}}}
+	assert.True(t, hasAnyKey(kept))
+	base, k, _ = resolveGrant(kept, PlatformAndroid)
+	assert.Equal(t, BasemapGoogle, base)
+	assert.Equal(t, key, k)
 }

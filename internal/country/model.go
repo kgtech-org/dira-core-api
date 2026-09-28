@@ -118,9 +118,13 @@ type GoogleKeyStatus struct {
 	Configured bool `json:"configured"`
 	// Hint est la fin de la clé (quatre caractères). Assez pour dire « c'est
 	// bien celle du 12 mars », pas assez pour s'en servir.
-	Hint      string    `json:"hint,omitempty"`
-	MapType   string    `json:"map_type,omitempty"`
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	Hint    string `json:"hint,omitempty"`
+	MapType string `json:"map_type,omitempty"`
+	// ⚠️ UN POINTEUR, PAS UNE DATE. `omitempty` ne sait pas taire un `time.Time`
+	// vide : une plateforme sans clé rendait `"0001-01-01T00:00:00Z"`, une date
+	// que la console afficherait telle quelle. Un champ absent se lit ; une date
+	// de l'an 1 se lit aussi, et elle ment.
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
 // MapsResponse est le réglage du pays tel que la console le lit.
