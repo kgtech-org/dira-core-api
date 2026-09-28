@@ -1235,6 +1235,73 @@ paths:
       parameters: [{name: userID, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Standing, content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentStanding"}}}}
+  /admin/faults:
+    get:
+      tags: [admin]
+      summary: "Les pannes de la plateforme — groupées, datées, comptées (v4.34.0)"
+      security: [{ bearer: [] }]
+      description: >-
+        **Les paniques et les refus serveur de TOUS les services**, rangés
+        ici. ⚠️ Une pile d'exécution perdue dans un flux de texte n'a jamais
+        réparé personne : elle disparaît à la rotation, personne ne la voit
+        passer, et la même panique mille fois ressemble à mille problèmes.
+
+
+        ⚠️ **UNE LIGNE PAR EMPREINTE, pas par occurrence.** L'empreinte est
+        calculée sur ce qui NE VARIE PAS — service, nature, route, message
+        dont les identifiants sont retirés. « Course 6ab8… introuvable » et
+        « course 6ac1… introuvable » sont le **même** défaut ; les séparer
+        rendrait la liste illisible au bout d'une heure. `count`,
+        `first_seen` et `last_seen` font toute la valeur de la liste : « trois
+        fois en un mois » et « trois mille fois depuis ce matin » ne se
+        traitent pas de la même façon.
+
+
+        ⚠️ **Seulement les `5xx` et les paniques.** Un `404` n'est pas une
+        panne, un `422` non plus : ce sont des refus attendus, déjà comptés
+        par les mesures.
+
+
+        Rendues **par dernière occurrence** : une panne qui arrive trois mille
+        fois par jour depuis six mois est connue ; celle qui vient
+        d'apparaître est celle qu'on cherche.
+
+
+        Filtres : `service`, `kind` (`panic` · `http_5xx`), `state`
+        (`open` · `resolved`), `days`, `limit`.
+      responses:
+        "200": {description: Les pannes}
+
+  /admin/faults/{fingerprint}:
+    get:
+      tags: [admin]
+      summary: "Une panne, avec la pile de sa dernière occurrence (v4.34.0)"
+      security: [{ bearer: [] }]
+      parameters: [{ name: fingerprint, in: path, required: true, schema: { type: string } }]
+      description: >-
+        ⚠️ La pile n'est gardée que de la **dernière** occurrence : les garder
+        toutes pèserait des mégaoctets pour cent fois la même chose. Le
+        contexte qui l'accompagne — `request_id`, `country`, `user_id` — est
+        celui de cette occurrence-là, et c'est ce qui permet de la rejouer.
+      responses:
+        "200": {description: La panne}
+        "404": {description: fault_not_found}
+
+  /admin/faults/{fingerprint}/resolve:
+    post:
+      tags: [admin]
+      summary: "Dire qu'une panne est corrigée (v4.34.0)"
+      security: [{ bearer: [] }]
+      parameters: [{ name: fingerprint, in: path, required: true, schema: { type: string } }]
+      description: >-
+        ⚠️ **Elle se rouvre toute seule si la panne revient.** Une résolution
+        qui tient malgré les faits est un mensonge qu'on relit chaque semaine :
+        c'est ainsi qu'une liste de pannes devient un mur d'avertissements
+        polis que plus personne ne lit.
+      responses:
+        "200": {description: resolved}
+        "404": {description: fault_not_found}
+
   /admin/audit:
     get:
       tags: [admin]

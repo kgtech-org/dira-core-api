@@ -33,6 +33,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/internal/config"
 	"github.com/kgtech-org/dira-core-api/internal/country"
 	"github.com/kgtech-org/dira-core-api/internal/equipment"
+	"github.com/kgtech-org/dira-core-api/internal/faults"
 	"github.com/kgtech-org/dira-core-api/internal/finance"
 	"github.com/kgtech-org/dira-core-api/internal/fleet"
 	"github.com/kgtech-org/dira-core-api/internal/indexes"
@@ -328,6 +329,31 @@ func run(logger *slog.Logger) error {
 	router.Use(countryMW)
 	router.Use(middleware.RateLimit(rdb, cfg.RateLimitRPM))
 
+	// LES PANNES : capturées ici, rangées groupées, servies à la console.
+	// ⚠️ La capture est ASYNCHRONE — une supervision qui ralentit ce qu'elle
+	// observe finit par être coupée, et on devient aveugle pour de bon.
+	faultRepo := faults.NewRepository(mongo)
+	faultSvc := faults.NewService(ctx, faultRepo, version)
+	metrics.SetSink(faultSvc)
+	// Et TOUS les refus serveur passent par `httpx.Error` : posé là, un `5xx`
+	// ne peut pas passer inaperçu.
+	httpx.SetFaultSink(faultSvc)
+	// Le nombre de pannes OUVERTES est une mesure : c'est elle qu'une alerte
+	// surveille, et elle se lit au moment où on la regarde.
+	metrics.Gauge("dira_faults_open", "Pannes ouvertes, par service concerné.", nil, func() float64 {
+		read, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		counts, err := faultRepo.Counts(read)
+		if err != nil {
+			return 0
+		}
+		total := 0
+		for _, n := range counts {
+			total += n
+		}
+		return float64(total)
+	})
+
 	// ⚠️ `/metrics` N'EST PAS DERRIÈRE LA PASSERELLE. Celle-ci ne route que
 	// `/api/v1/…` : cette adresse n'existe donc que sur le réseau interne,
 	// là où le collecteur la lit. C'est voulu — l'exposition dit le nom des
@@ -418,6 +444,7 @@ func run(logger *slog.Logger) error {
 		// LE JOURNAL D'AUDIT de toute la plateforme, lu ici et nulle part
 		// ailleurs : les verticales y écrivent par la surface de service.
 		auditlog.NewHandler(auditRec).Mount(r, authMW)
+		faults.NewHandler(faultRepo).Mount(r, authMW)
 		equipment.NewHandler(equipmentSvc).Mount(r, authMW)
 		financeH := finance.NewHandler(financeSvc)
 		financeH.Mount(r, authMW)
