@@ -19,7 +19,12 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/api ./cmd/api && \
+# ⚠️ LA VERSION EST GRAVÉE DANS LE BINAIRE. Elle part ensuite dans chaque
+# ligne de journal et dans `dira_build_info` : sans elle, devant une panne, on
+# ne sait pas si l'on regarde le code qui tourne ou celui d'avant-hier — et
+# c'est la première question qu'on se pose après un déploiement.
+ARG DIRA_VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w -X main.version=${DIRA_VERSION}" -o /out/api ./cmd/api && \
     CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-s -w" -o /out/seed ./cmd/seed
 
 FROM alpine:3.20

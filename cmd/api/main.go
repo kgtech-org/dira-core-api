@@ -54,11 +54,18 @@ import (
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
 	"github.com/kgtech-org/dira-core-api/pkg/i18n"
 	"github.com/kgtech-org/dira-core-api/pkg/middleware"
+	"github.com/kgtech-org/dira-core-api/pkg/obs"
 	"github.com/kgtech-org/dira-core-api/pkg/storage"
 )
 
+// version est gravée à la compilation (`-X main.version=…`). ⚠️ Elle part
+// dans chaque ligne de journal et dans `dira_build_info` : sans elle, devant
+// une panne, on ne sait pas si l'on regarde le code qui tourne ou celui
+// d'avant-hier.
+var version = "dev"
+
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := obs.Logger("core", version)
 	if err := run(logger); err != nil {
 		logger.Error("core: fatal", "error", err)
 		os.Exit(1)
@@ -307,12 +314,25 @@ func run(logger *slog.Logger) error {
 	router.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, apperr.NotFound("not_found", "resource not found"))
 	})
+	// LA SUPERVISION. ⚠️ Le compteur de requêtes s'installe APRÈS
+	// `RequestID` (pour que la ligne de journal et la mesure parlent de la
+	// même requête) et AVANT tout le reste, pour que ce qu'un refus de
+	// cadence ou d'authentification rejette soit compté lui aussi : une
+	// attaque qui se fait refuser mille fois par minute doit se VOIR.
+	metrics := obs.NewMetrics("core", version)
 	router.Use(middleware.RequestID)
+	router.Use(metrics.Middleware)
 	router.Use(middleware.Logger(logger))
-	router.Use(middleware.Recoverer)
+	router.Use(middleware.Recoverer(metrics))
 	router.Use(middleware.Language)
 	router.Use(countryMW)
 	router.Use(middleware.RateLimit(rdb, cfg.RateLimitRPM))
+
+	// ⚠️ `/metrics` N'EST PAS DERRIÈRE LA PASSERELLE. Celle-ci ne route que
+	// `/api/v1/…` : cette adresse n'existe donc que sur le réseau interne,
+	// là où le collecteur la lit. C'est voulu — l'exposition dit le nom des
+	// routes, le nombre de comptes et la version qui tourne.
+	router.Handle("/metrics", metrics.Handler())
 
 	docs.Mount(router, "Dira Core API — Documentation", api.OpenAPISpec)
 

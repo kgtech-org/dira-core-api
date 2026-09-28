@@ -93,10 +93,10 @@ func (f *fakeStore) PendingOrExpiredDocuments(_ context.Context, now time.Time, 
 // fakeFleet tient lieu de VERTICALE : elle seule sait qui est chauffeur et à
 // qui appartient un véhicule.
 type fakeFleet struct {
-	byUser   map[string]string   // compte -> chauffeur
+	byUser   map[string]string       // compte -> chauffeur
 	vehicles map[string][]VehicleRef // chauffeur -> véhicules
-	owner    map[string]string   // véhicule -> chauffeur
-	accounts map[string]string   // chauffeur -> compte
+	owner    map[string]string       // véhicule -> chauffeur
+	accounts map[string]string       // chauffeur -> compte
 	// accountErr simule un annuaire injoignable, pour vérifier que la file
 	// s'affiche quand même.
 	accountErr error
