@@ -203,3 +203,6 @@ other = "Win not found"
 
 [errors.win_not_pending]
 other = "This win has already been redeemed"
+
+[errors.maps_google_without_key]
+other = "Configure a Google Maps key for at least one platform first"

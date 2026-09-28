@@ -204,3 +204,6 @@ other = "Gain introuvable"
 
 [errors.win_not_pending]
 other = "Ce gain a déjà été utilisé"
+
+[errors.maps_google_without_key]
+other = "Configurez d'abord une clé Google Maps pour au moins une plateforme"

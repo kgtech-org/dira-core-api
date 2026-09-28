@@ -137,7 +137,7 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, err)
 		return
 	}
-	resp, err := h.svc.Refresh(r.Context(), req.RefreshToken)
+	resp, err := h.svc.Refresh(r.Context(), req.RefreshToken, req.Platform)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

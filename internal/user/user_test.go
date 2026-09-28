@@ -452,17 +452,17 @@ func TestRefreshRotation(t *testing.T) {
 	reg, err := svc.Register(context.Background(), registerReq())
 	require.NoError(t, err)
 
-	pair, err := svc.Refresh(context.Background(), reg.RefreshToken)
+	pair, err := svc.Refresh(context.Background(), reg.RefreshToken, "")
 	require.NoError(t, err)
 	assert.NotEmpty(t, pair.AccessToken)
 	assert.NotEmpty(t, pair.RefreshToken)
 
 	// The old refresh token was rotated out: reuse must fail.
-	_, err = svc.Refresh(context.Background(), reg.RefreshToken)
+	_, err = svc.Refresh(context.Background(), reg.RefreshToken, "")
 	assertUserCode(t, err, "invalid_token")
 
 	// The new one still works.
-	_, err = svc.Refresh(context.Background(), pair.RefreshToken)
+	_, err = svc.Refresh(context.Background(), pair.RefreshToken, "")
 	require.NoError(t, err)
 }
 
@@ -471,10 +471,10 @@ func TestRefreshRejectsAccessTokenAndGarbage(t *testing.T) {
 	reg, err := svc.Register(context.Background(), registerReq())
 	require.NoError(t, err)
 
-	_, err = svc.Refresh(context.Background(), reg.AccessToken)
+	_, err = svc.Refresh(context.Background(), reg.AccessToken, "")
 	assertUserCode(t, err, "invalid_token")
 
-	_, err = svc.Refresh(context.Background(), "not-a-jwt")
+	_, err = svc.Refresh(context.Background(), "not-a-jwt", "")
 	assertUserCode(t, err, "invalid_token")
 }
 
@@ -484,7 +484,7 @@ func TestRefreshSuspendedAccount(t *testing.T) {
 	require.NoError(t, err)
 	repo.setStatus(t, "+22890000000", StatusSuspended)
 
-	_, err = svc.Refresh(context.Background(), reg.RefreshToken)
+	_, err = svc.Refresh(context.Background(), reg.RefreshToken, "")
 	assertUserCode(t, err, "account_suspended")
 }
 
@@ -495,7 +495,7 @@ func TestLogoutInvalidatesRefreshToken(t *testing.T) {
 
 	require.NoError(t, svc.Logout(context.Background(), reg.RefreshToken))
 
-	_, err = svc.Refresh(context.Background(), reg.RefreshToken)
+	_, err = svc.Refresh(context.Background(), reg.RefreshToken, "")
 	assertUserCode(t, err, "invalid_token")
 
 	// Logout is idempotent.

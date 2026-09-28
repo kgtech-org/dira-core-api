@@ -219,6 +219,12 @@ func run(logger *slog.Logger) error {
 	userRepo := user.NewRepository(mongo)
 	userSvc := user.NewService(userRepo, tokens, tokenSvc)
 	userSvc.SetDefaultCountry(cfg.CountryDefault)
+	// LE FOND DE CARTE voyage avec le jeton : réglé par pays dans la console,
+	// servi à la connexion ET à chaque rafraîchissement. ⚠️ Sans la seconde, une
+	// clé changée n'atteindrait un chauffeur resté connecté que trente jours
+	// plus tard, et la rotation — seule raison de servir la clé depuis le
+	// serveur — ne servirait à rien.
+	userSvc.SetBasemaps(countrySvc)
 	// La résolution « dans quel pays suis-je ? » aligne le compte ; le repli
 	// par adresse IP passe par un fournisseur HTTP réglable, mis en cache.
 	countrySvc.SetAccounts(userSvc)

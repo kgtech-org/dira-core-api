@@ -97,6 +97,8 @@ type Service struct {
 	// jamais empêcher quelqu'un de se connecter.
 	sessions SessionRegistry
 	notifier Notifier
+	// basemaps rend le FOND DE CARTE du pays — voir `basemap.go`. FACULTATIF.
+	basemaps Basemaps
 	auditor  *audit.Recorder
 }
 
@@ -228,6 +230,7 @@ func (s *Service) register(ctx context.Context, req RegisterRequest, role string
 		AccessToken:  pair.AccessToken,
 		RefreshToken: pair.RefreshToken,
 		Session:      sessionResponse(u, deviceID, false),
+		Maps:         s.basemap(ctx, u, req.Platform),
 	}, nil
 }
 
@@ -291,6 +294,7 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 		AccessToken:  pair.AccessToken,
 		RefreshToken: pair.RefreshToken,
 		Session:      sessionResponse(u, deviceID, chased),
+		Maps:         s.basemap(ctx, u, req.Platform),
 	}, nil
 }
 
@@ -355,7 +359,7 @@ func allowedIn(app, role string) error {
 // appareils se renvoyaient la balle indéfiniment sans que rien n'explique
 // pourquoi. En lisant le compte d'abord, l'ancien téléphone reçoit un refus
 // NOMMÉ, stable, tant qu'il n'a pas compris.
-func (s *Service) Refresh(ctx context.Context, refreshToken string) (TokenPairResponse, error) {
+func (s *Service) Refresh(ctx context.Context, refreshToken, platform string) (TokenPairResponse, error) {
 	jwtPart, ok := splitRefreshToken(refreshToken)
 	if !ok {
 		return TokenPairResponse{}, auth.ErrInvalidToken
@@ -394,7 +398,14 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (TokenPairRe
 		return TokenPairResponse{}, auth.ErrInvalidToken
 	}
 
-	return s.issueTokens(ctx, u, deviceID)
+	pair, err := s.issueTokens(ctx, u, deviceID)
+	if err != nil {
+		return pair, err
+	}
+	// Le fond de carte À JOUR : c'est ici que la rotation d'une clé atteint une
+	// application déjà connectée depuis des semaines.
+	pair.Maps = s.basemap(ctx, u, platform)
+	return pair, nil
 }
 
 // Logout invalidates the presented refresh token. Idempotent: logging out an
