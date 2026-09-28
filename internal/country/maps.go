@@ -214,6 +214,14 @@ func mapsResponse(m Maps) MapsResponse {
 	if out.Basemap == "" {
 		out.Basemap = BasemapDira
 	}
+	// ⚠️ ON MONTRE CE QUI EST EN VIGUEUR, PAS CE QUI EST ÉCRIT. Une ligne restée
+	// sur `google` sans aucune clé — parce qu'elle date d'avant la correction,
+	// ou qu'une main l'a posée en base — afficherait « GOOGLE » alors que
+	// personne ne l'obtient. L'écriture corrige la ligne ; la lecture, elle, ne
+	// doit jamais affirmer une chose que `resolveGrant` contredit.
+	if out.Basemap == BasemapGoogle && !hasAnyKey(m) {
+		out.Basemap = BasemapDira
+	}
 	for _, platform := range platforms {
 		g := m.Google[platform]
 		status := GoogleKeyStatus{Configured: g.Key != "", MapType: g.MapType}

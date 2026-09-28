@@ -159,3 +159,17 @@ func TestRemovingTheLastKeyMustBringTheCountryBack(t *testing.T) {
 	assert.Equal(t, BasemapGoogle, base)
 	assert.Equal(t, key, k)
 }
+
+// ⚠️ L'ÉCRAN MONTRE CE QUI EST EN VIGUEUR, PAS CE QUI EST ÉCRIT. Une ligne restée
+// sur `google` sans clé — d'avant la correction, ou posée à la main en base —
+// afficherait « GOOGLE » alors que personne ne l'obtient. Vu en direct sur la
+// recette : la correction à l'écriture ne rattrape pas les lignes déjà là.
+func TestTheScreenShowsWhatIsInForce(t *testing.T) {
+	out := mapsResponse(Maps{Basemap: BasemapGoogle})
+	assert.Equal(t, BasemapDira, out.Basemap)
+
+	// Et la lecture dit la MÊME chose que ce que les applications reçoivent :
+	// deux réponses qui divergent enverraient chercher la panne du mauvais côté.
+	base, _, _ := resolveGrant(Maps{Basemap: BasemapGoogle}, PlatformWeb)
+	assert.Equal(t, out.Basemap, base)
+}
