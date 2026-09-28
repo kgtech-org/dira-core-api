@@ -54,6 +54,15 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
+      - name: La VERSION qui sera gravée dans l'image
+        # ⚠️ `dira_build_info` ne vaut que par son ÉTIQUETTE, et sans cet
+        # argument chaque image se déclarait `dev` : la première question posée
+        # après un déploiement — « quelle version tournait au moment du pic ? »
+        # — restait sans réponse, et la mesure existait pour rien.
+        # `main-a569da6` se recoupe directement avec `git log --oneline`.
+        id: version
+        run: echo "value=${GITHUB_REF_NAME}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
       - name: Build & push
         uses: docker/build-push-action@v6
         with:
@@ -62,6 +71,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            DIRA_VERSION=${{ steps.version.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
