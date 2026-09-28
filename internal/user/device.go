@@ -113,8 +113,12 @@ const (
 // jour au lendemain — c'est la même convention que le champ `app`, et elle vaut
 // pour la même raison : le déploiement du serveur précède toujours celui des
 // applications, de plusieurs semaines quand un magasin est lent à valider.
-func deviceFrom(app, id, name string) (deviceID, deviceName string) {
+func deviceFrom(id, name string) (deviceID, deviceName string) {
 	id = strings.TrimSpace(id)
+	// ⚠️ TROP LONG = IGNORÉ, PAS TRONQUÉ. Tronqué, deux installations
+	// différentes finiraient par se confondre au moment précis où l'une doit
+	// chasser l'autre — et ce moment-là est celui où un chauffeur essaie de
+	// travailler.
 	if id == "" || len(id) > maxDeviceID {
 		return "", ""
 	}
@@ -122,7 +126,6 @@ func deviceFrom(app, id, name string) (deviceID, deviceName string) {
 	if len(name) > maxDeviceName {
 		name = name[:maxDeviceName]
 	}
-	_ = app
 	return id, name
 }
 
@@ -147,7 +150,7 @@ func (s *Service) claimDevice(ctx context.Context, u *User, app, rawID, rawName 
 	if !singleDevice(u) {
 		return "", false
 	}
-	id, name := deviceFrom(app, rawID, rawName)
+	id, name := deviceFrom(rawID, rawName)
 	if id == "" {
 		// ⚠️ ON NE TOUCHE À RIEN. L'appareil déjà enregistré reste en place et
 		// le jeton émis ne nomme aucun appareil : cette session-ci n'est ni

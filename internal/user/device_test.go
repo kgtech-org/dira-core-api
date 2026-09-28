@@ -352,7 +352,7 @@ func TestAnOversizedDeviceNameIsTruncatedNotRefused(t *testing.T) {
 	for range 400 {
 		long += "x"
 	}
-	id, name := deviceFrom("driver", "install-A", long)
+	id, name := deviceFrom("install-A", long)
 	assert.Equal(t, "install-A", id)
 	assert.Len(t, name, maxDeviceName)
 
@@ -360,7 +360,7 @@ func TestAnOversizedDeviceNameIsTruncatedNotRefused(t *testing.T) {
 	// différentes finiraient par se confondre au moment précis où l'une
 	// devrait chasser l'autre.
 	longID := long
-	id, _ = deviceFrom("driver", longID, "Tecno")
+	id, _ = deviceFrom(longID, "Tecno")
 	assert.Empty(t, id, "un identifiant démesuré est ignoré, pas raccourci")
 }
 
