@@ -112,6 +112,30 @@ func TestOnlyTheTwoAgentAppsCanBeClaimed(t *testing.T) {
 	assert.Equal(t, "validation_failed", apperr.From(err).Code)
 }
 
+// ⚠️ UN COMPTE CLIENT NE PEUT PAS ÊTRE RÉCLAMÉ, et le garde-fou n'est pas
+// théorique : poser une appartenance d'agent sur un client lui refuserait
+// ensuite l'entrée de sa PROPRE application, à la connexion, définitivement.
+func TestAClientAccountCanNeverBeClaimedByAVertical(t *testing.T) {
+	svc, repo, _ := newUserTestService()
+	resp, err := svc.Register(context.Background(), RegisterRequest{
+		Phone: "+22890000019", Name: "Ama", Password: "s3cret-password",
+	})
+	require.NoError(t, err)
+
+	_, err = svc.ClaimAgentApp(context.Background(), resp.User.ID, AgentAppCourier, false)
+	require.Error(t, err)
+	assert.Equal(t, "wrong_app", apperr.From(err).Code)
+	assert.Equal(t, "client", apperr.From(err).Meta["reason"])
+	assert.Equal(t, "", repo.byPhoneForTest(t, "+22890000019").AgentApp,
+		"rien n'est écrit : ce client doit pouvoir se reconnecter chez lui")
+
+	// Et il entre toujours dans son application.
+	_, err = svc.Login(context.Background(), LoginRequest{
+		Phone: "+22890000019", Password: "s3cret-password", App: "client",
+	})
+	require.NoError(t, err)
+}
+
 func TestClaimingForAnUnknownAccountIsNotFound(t *testing.T) {
 	svc, _, _ := newUserTestService()
 	_, err := svc.ClaimAgentApp(context.Background(), "68d1a0a0a0a0a0a0a0a0a0a0", AgentAppDriver, false)

@@ -124,6 +124,16 @@ func (s *Service) ClaimAgentApp(ctx context.Context, userID, app string, fromPro
 	if u.Role == auth.RoleAdmin {
 		return "", nil
 	}
+	// ⚠️ SEUL LE RÔLE `driver` PEUT APPARTENIR À UNE APPLICATION D'AGENT, et
+	// ce garde-fou n'est pas théorique : poser `agent_app` sur un compte
+	// CLIENT lui refuserait ensuite l'entrée de sa propre application de
+	// client, à la connexion, définitivement. Les routes des verticales sont
+	// déjà bornées au rôle `driver` ; ce refus-ci existe pour le jour où l'une
+	// d'elles cessera de l'être, parce que la conséquence serait un client
+	// enfermé dehors et personne pour comprendre pourquoi.
+	if u.Role != auth.RoleDriver {
+		return "", refuseApp(app, appOfRole[u.Role], u.Role)
+	}
 	if u.AgentApp == app {
 		return app, nil
 	}
