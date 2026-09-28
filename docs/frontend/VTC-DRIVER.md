@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.35.0** · 28 septembre 2026
+> **Version 4.36.0** · 28 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -110,6 +110,86 @@ l'appareil.
 `client_ref` sert à ne pas créer deux fois la même course, le fil sert à
 comprendre ce qui s'est passé cette fois-là. Les confondre — réutiliser le fil
 comme clé d'idempotence — ferait refuser des courses bien réelles.
+
+---
+
+## 🗺️ LE FOND DE CARTE — `platform` et `maps` (v4.36.0)
+
+La plateforme sert **deux fonds de carte** : le nôtre, et Google. Le pays règle
+celui qu'on voit **d'abord** ; la personne choisit ensuite celui qui lui va, et
+son choix reste chez elle.
+
+**Ce que l'application envoie** : un champ `platform` — `android`, `ios` ou
+`web` — sur `POST /auth/login`, `POST /auth/register` **et**
+`POST /auth/refresh`.
+
+⚠️ **LES TROIS, ET SURTOUT LE RAFRAÎCHISSEMENT.** Une clé change le jour où elle
+fuit ou où la facture s'envole. Envoyée seulement à la connexion, la nouvelle
+n'atteindrait un chauffeur resté connecté que trente jours plus tard —
+c'est-à-dire que la rotation, seule raison de servir la clé depuis le serveur, ne
+servirait à rien.
+
+⚠️ **CHAQUE PLATEFORME A SA CLÉ**, et ce n'est pas une complication gratuite :
+une clé Google se restreint par ce qui l'utilise — nom de paquet + empreinte
+SHA-1 sur Android, identifiant de bundle sur iOS, référent HTTP sur le web. Une
+clé servie à la mauvaise plateforme est refusée par Google : carte grise, et une
+facture pour rien.
+
+**Ce que le serveur rend**, dans la réponse de connexion, d'inscription et de
+rafraîchissement :
+
+```json
+"maps": {
+  "basemap": "dira",
+  "google_key": "AIza…",
+  "google_map_type": "roadmap"
+}
+```
+
+| | |
+|---|---|
+| `basemap` | `dira` ou `google` — le fond par **défaut** du pays, la case cochée d'avance |
+| `google_key` | la clé de **votre** plateforme. **Absente** = ce pays n'en a pas |
+| `google_map_type` | `roadmap`, `satellite` ou `terrain` |
+
+⚠️ **`google_key` ABSENTE : NE PROPOSEZ PAS LE CHOIX.** Pas de bouton grisé, pas
+d'option qui échoue — rien. Une bascule vers un fond qu'aucune clé ne sert donne
+un rectangle gris, et la personne croit l'application cassée. Et si `basemap`
+valait `google` sans clé, le serveur a déjà remis `dira` : il ne vous demandera
+jamais l'impossible.
+
+⚠️ **`maps` ABSENT** (plateforme non envoyée, socle plus ancien) **= notre fond,
+et rien d'autre à faire.** Une application pas encore à jour garde une carte qui
+marche.
+
+**Le choix de la personne se garde en local** et prime sur le défaut du pays.
+⚠️ **Gardez-le même quand il devient impossible** : quelqu'un qui passe dans un
+pays sans clé a changé de pays, pas d'avis — son choix doit reprendre effet en
+revenant.
+
+**Comment l'afficher** : sur Android et iOS, utilisez le **SDK Google Maps
+natif** avec cette clé — il gère lui-même les tuiles, le cache et le logo. Ne
+tentez pas de charger les tuiles Google dans un autre moteur de rendu : c'est une
+autre API (*Map Tiles*), avec sa propre facturation et son propre jeton de
+session.
+
+⚠️ **LE LOGO GOOGLE EST OBLIGATOIRE** dès que ses tuiles s'affichent : **16 dp de
+haut au minimum**, **10 dp de dégagement**, **jamais recouvert** par un autre
+logo — le vôtre compris. Ce n'est pas une politesse, c'est une clause du contrat
+d'utilisation de l'API. Les SDK natifs le dessinent eux-mêmes ; ne le masquez pas
+sous une barre ou un bouton flottant.
+
+⚠️ **N'ÉCRIVEZ JAMAIS LA CLÉ DANS UN JOURNAL NI DANS UN RAPPORT DE PLANTAGE.**
+Elle voyage en clair — Google l'exige sur chaque requête —, mais un journal
+d'application part chez un tiers, se garde des mois et se relit par des gens qui
+n'ont rien à voir avec votre pays. Ce qui la protège est sa **restriction** côté
+Google, et une clé recopiée dans mille rapports finit par être utilisée ailleurs
+malgré tout.
+
+⚠️ **NE LA COMPILEZ PAS DANS L'APPLICATION**, même « en secours ». Une clé dans
+le binaire ne se change pas : le jour où il faut la révoquer, il faudrait
+republier sur les magasins et attendre que tout le monde mette à jour. C'est
+exactement ce qu'on vient d'éviter.
 
 ---
 

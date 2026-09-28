@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.35.0** · 28 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.36.0** · 28 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,44 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.36.0 — 28 septembre 2026
+
+🗺️ **LE FOND DE CARTE SE RÈGLE PAR PAYS — Dira ou Google.** Le pays décide de
+celui qu'on voit **d'abord** ; la personne choisit ensuite celui qui lui va, et
+son choix reste chez elle. Écrit au long dans les cinq documents, section *Le
+fond de carte*.
+
+Ce que les applications ont à faire :
+
+- **Envoyer `platform`** (`android` / `ios` / `web`) sur `POST /auth/login`,
+  `POST /auth/register` **et** `POST /auth/refresh`. ⚠️ Les trois, et surtout le
+  rafraîchissement : envoyée seulement à la connexion, une clé changée
+  n'atteindrait un chauffeur resté connecté que trente jours plus tard — la
+  rotation, seule raison de servir la clé depuis le serveur, ne servirait à rien.
+- **Lire `maps`** dans la réponse : `{basemap, google_key?, google_map_type?}`.
+  ⚠️ **`google_key` absente = ne proposez pas le choix** — ni bouton grisé, ni
+  option qui échoue. Une bascule vers un fond qu'aucune clé ne sert donne un
+  rectangle gris, et la personne croit l'application cassée.
+- ⚠️ **`maps` absent = notre fond, rien d'autre à faire.** Une application pas
+  encore à jour garde une carte qui marche.
+- **Garder le choix de la personne en local**, ⚠️ **même quand il devient
+  impossible** : quelqu'un qui passe dans un pays sans clé a changé de pays, pas
+  d'avis.
+- ⚠️ **Le logo Google est obligatoire** dès que ses tuiles s'affichent — 16 dp,
+  10 dp de dégagement, jamais recouvert, le vôtre compris. C'est une clause du
+  contrat d'utilisation, pas une politesse.
+- ⚠️ **Jamais la clé dans un journal ni dans un rapport de plantage**, et
+  ⚠️ **jamais compilée dans l'application** : une clé dans le binaire ne se
+  révoque pas sans republier sur les magasins.
+
+**Pourquoi la clé voyage en clair, puisqu'on la protège.** Google l'exige sur
+**chaque** requête de tuile, en plus du jeton de session : aucun montage
+n'affiche un fond Google en la gardant sur le serveur. Ce qui la protège est sa
+**restriction** côté Google — nom de paquet + empreinte SHA-1 sur Android,
+identifiant de bundle sur iOS, référent HTTP sur le web — et son plafond de
+quota. Une clé volée devient alors inutilisable ailleurs. Ce qu'on gagne à la
+servir depuis le serveur, c'est de pouvoir la **changer sans republier**.
 
 ### 4.35.0 — 28 septembre 2026
 
