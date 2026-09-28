@@ -130,6 +130,38 @@ redis.call('PEXPIRE', KEYS[1], ARGV[4])
 return { prev[1] or '', prev[2] or '' }
 `)
 
+// assertScript pose l'appareil courant et sa péremption d'un seul geste.
+//
+// ⚠️ UN SCRIPT PLUTÔT QUE DEUX APPELS : un `HSET` suivi d'un `PEXPIRE` laisse,
+// si le processus meurt entre les deux, une clé SANS péremption — donc un
+// appareil inscrit pour toujours, y compris après que son jeton de
+// rafraîchissement a expiré. Une clé par compte, cela ne remplit pas Redis,
+// mais cela désigne un téléphone dont plus rien ne prouve qu'il existe.
+//
+//	KEYS[1] la clé du compte
+//	ARGV[1] identifiant   ARGV[2] libellé   ARGV[3] horodatage (ms)   ARGV[4] TTL (ms)
+var assertScript = redis.NewScript(`
+redis.call('HSET', KEYS[1], 'id', ARGV[1], 'name', ARGV[2], 'at', ARGV[3])
+redis.call('PEXPIRE', KEYS[1], ARGV[4])
+return 1
+`)
+
+// releaseScript n'efface QUE si l'appareil nommé est bien le courant.
+//
+// ⚠️ LA COMPARAISON EST DANS LE SCRIPT, PAS DANS LE CODE APPELANT. Lue puis
+// comparée en Go, une nouvelle connexion pouvait se glisser entre la lecture et
+// l'effacement : la déconnexion du téléphone chassé emportait alors la session
+// de son remplaçant, qui se retrouvait sans appareil inscrit — donc plus
+// protégé du tout, et de nouveau chassable par n'importe quoi.
+//
+//	KEYS[1] la clé du compte   ARGV[1] l'appareil qui se déconnecte
+var releaseScript = redis.NewScript(`
+if redis.call('HGET', KEYS[1], 'id') == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`)
+
 // Bind fait de `d` l'appareil courant du compte et rend celui qu'il chasse.
 //
 // L'annonce sur le canal n'est faite QUE s'il y avait quelqu'un à chasser, et
@@ -176,12 +208,11 @@ func (r *Registry) Assert(ctx context.Context, userID string, d Device) {
 	if r == nil || userID == "" || d.ID == "" {
 		return
 	}
-	if err := r.rdb.HSet(ctx, key(userID),
-		"id", d.ID, "name", d.Name, "at", time.Now().UTC().UnixMilli()).Err(); err != nil {
+	err := assertScript.Run(ctx, r.rdb, []string{key(userID)},
+		d.ID, d.Name, time.Now().UTC().UnixMilli(), r.ttl.Milliseconds()).Err()
+	if err != nil {
 		slog.WarnContext(ctx, "session: registre non réaffirmé", "user_id", userID, "error", err)
-		return
 	}
-	_ = r.rdb.PExpire(ctx, key(userID), r.ttl).Err()
 }
 
 // Release efface l'entrée — une déconnexion volontaire.
@@ -195,11 +226,10 @@ func (r *Registry) Release(ctx context.Context, userID, deviceID string) {
 	if r == nil || userID == "" || deviceID == "" {
 		return
 	}
-	cur, known := r.Current(ctx, userID)
-	if !known || cur.ID != deviceID {
-		return
+	if err := releaseScript.Run(ctx, r.rdb, []string{key(userID)}, deviceID).Err(); err != nil {
+		slog.WarnContext(ctx, "session: appareil non libéré à la déconnexion",
+			"user_id", userID, "error", err)
 	}
-	_ = r.rdb.Del(ctx, key(userID)).Err()
 }
 
 // Current rend l'appareil courant. `known` est faux quand on ne sait pas —
