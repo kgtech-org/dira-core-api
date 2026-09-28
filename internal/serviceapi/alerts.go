@@ -15,10 +15,12 @@ package serviceapi
 // instruction, et sa longueur est bornée.
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
 
+	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
 )
 
@@ -41,10 +43,41 @@ type alertPayload struct {
 // suivant.
 const maxAlertsPerBatch = 10
 
+// maxAlertBodyBytes borne le corps, puisqu'on cesse ici d'exiger sa forme.
+const maxAlertBodyBytes = 1 << 20 // 1 Mo
+
+// decodeAlert lit le corps SANS exiger de connaître toutes ses clés.
+//
+// ⚠️ C'EST L'INVERSE DE LA RÈGLE DE LA PLATEFORME, ET C'EST VOULU. Partout
+// ailleurs une clé inconnue est REFUSÉE : une application qui envoie
+// `first_name` à une route qui ne le lit pas croirait l'avoir enregistré, et le
+// refus est ce qui le lui apprend. Mais ce corps-ci n'est pas écrit par nous.
+// Alertmanager envoie `receiver`, `groupKey`, `externalURL`, `truncatedAlerts`
+// et quelques autres ; la version suivante en ajoutera. Exiger la forme d'un
+// logiciel qu'on ne versionne pas, c'est se condamner à ne plus recevoir
+// d'alertes le jour de sa mise à jour — et à ne l'apprendre qu'en lisant le
+// journal d'Alertmanager, le dernier endroit où on regarde quand on attend
+// justement une alerte.
+//
+// ⚠️ Découvert en vrai, pas en test : `422 unknown_field: receiver`, et
+// dix-sept tentatives de remise avant l'abandon.
+//
+// On ne relâche que la TOLÉRANCE aux clés en trop. Tout ce qu'on lit reste du
+// TEXTE borné (`clip`), le lot reste plafonné, et le corps lui-même est borné.
+func decodeAlert(r *http.Request) (alertPayload, error) {
+	var out alertPayload
+	body := http.MaxBytesReader(nil, r.Body, maxAlertBodyBytes)
+	if err := json.NewDecoder(body).Decode(&out); err != nil {
+		return out, apperr.Validation("invalid alert body").
+			WithMeta(map[string]any{"reason": "invalid_json"}).WithCause(err)
+	}
+	return out, nil
+}
+
 // POST /internal/alerts — le crochet d'Alertmanager.
 func (h *Handler) alerts(w http.ResponseWriter, r *http.Request) {
-	var req alertPayload
-	if err := httpx.Decode(r, &req); err != nil {
+	req, err := decodeAlert(r)
+	if err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
