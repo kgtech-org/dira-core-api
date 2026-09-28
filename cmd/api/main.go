@@ -56,6 +56,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/pkg/i18n"
 	"github.com/kgtech-org/dira-core-api/pkg/middleware"
 	"github.com/kgtech-org/dira-core-api/pkg/obs"
+	"github.com/kgtech-org/dira-core-api/pkg/session"
 	"github.com/kgtech-org/dira-core-api/pkg/storage"
 )
 
@@ -99,6 +100,27 @@ func run(logger *slog.Logger) error {
 	}
 	rdb := redis.NewClient(redisOpts)
 	defer func() { _ = rdb.Close() }()
+
+	// LE REGISTRE DES APPAREILS — quel téléphone détient la session d'un
+	// chauffeur ou d'un livreur. Voir `pkg/session`.
+	//
+	// ⚠️ LES MÊMES OPTIONS, UN AUTRE INDEX, ET C'EST TOUT L'INTÉRÊT. Le suivi
+	// doit lire ce registre : c'est le seul moyen de faire cesser un flux de
+	// positions venu d'un téléphone chassé sans que `dira-tracking` appelle le
+	// socle à chaque poignée de main — ce qui aurait fait du socle le point de
+	// panne unique de la mise en ligne. En copiant les options déjà analysées,
+	// l'hôte, le mot de passe et le TLS restent ceux de ce déploiement : il n'y
+	// a pas une seconde variable d'environnement à tenir en accord dans deux
+	// dépôts, donc pas de jour où elles désignent deux serveurs différents et
+	// où la chasse cesse silencieusement de valoir.
+	sessionOpts := *redisOpts
+	sessionOpts.DB = cfg.SessionsRedisDB
+	sessionsRdb := redis.NewClient(&sessionOpts)
+	defer func() { _ = sessionsRdb.Close() }()
+	sessions := session.New(sessionsRdb, cfg.JWTRefreshTTL)
+	logger.Info("core: registre des appareils (un seul appareil par chauffeur)",
+		"redis_db", cfg.SessionsRedisDB, "ttl", cfg.JWTRefreshTTL,
+		"note", "dira-tracking doit lire la MÊME base, sinon un téléphone chassé continue de pousser des positions")
 
 	// LA FILE. Une seule tâche y passe — l'annonce d'un paiement abouti à sa
 	// verticale — et c'est la seule qui la mérite : les vingt-trois autres
@@ -158,7 +180,12 @@ func run(logger *slog.Logger) error {
 	countrySvc.Start(ctx)
 	countryMW := middleware.Country(countrySvc, tokens)
 
-	authMW := chain(middleware.Auth(tokens),
+	// UN SEUL APPAREIL PAR CHAUFFEUR : `WithSessions` refuse le jeton d'un
+	// téléphone chassé, avec un code NOMMÉ — `session_superseded` — pour que
+	// l'écran puisse dire ce qui s'est passé au lieu d'afficher « erreur de
+	// connexion ». Ne voit que les chauffeurs et les livreurs : les autres
+	// comptes n'ont pas d'appareil dans leur jeton.
+	authMW := chain(middleware.Auth(tokens, middleware.WithSessions(sessions)),
 		onlyUnder("/api/v1/admin/", middleware.RequireScope(auth.ScopeCore)))
 
 	// Le portefeuille de jetons est créé À L'INSCRIPTION d'un livreur — c'est
@@ -275,6 +302,12 @@ func run(logger *slog.Logger) error {
 	// POPULATIONS des campagnes (tous les clients, tous les chauffeurs…).
 	notifySvc.SetAccounts(userSvc)
 	notifySvc.SetAudiences(userRepo)
+	// ⚠️ ET DANS L'AUTRE SENS : la connexion PRÉVIENT quand elle chasse une
+	// session. C'est la seule alerte que reçoit un chauffeur dont quelqu'un
+	// d'autre utilise le compte — l'appareil chassé, lui, est peut-être éteint.
+	// Réglé ici, après construction, pour la même raison que le staff : les
+	// notifications ont besoin des comptes, et les comptes des notifications.
+	userSvc.SetNotifier(notifySvc)
 	// Les campagnes programmées partent à l'heure dite : un tic par
 	// demi-minute, sûr sur plusieurs instances (la réservation est un
 	// compare-and-set en base).
@@ -422,6 +455,11 @@ func run(logger *slog.Logger) error {
 	// ⚠️ Réglé APRÈS construction, pour casser le cycle : le staff a besoin
 	// des comptes, et les comptes ont besoin des portées.
 	userSvc.SetStaffEntitlements(staffEntitlements{svc: staffSvc})
+	// UN SEUL APPAREIL PAR CHAUFFEUR : le registre partagé, et le journal.
+	// ⚠️ Sans l'entrée d'audit, « pourquoi ai-je été déconnecté ? » reste sans
+	// réponse : le compte porte l'appareil COURANT, jamais l'histoire.
+	userSvc.SetSessions(sessions)
+	userSvc.SetAuditor(auditRec)
 	countrySvc.SetAuditor(auditRec)
 
 	router.Route("/api/v1", func(r chi.Router) {

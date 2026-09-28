@@ -35,6 +35,12 @@ other = "This account is suspended"
 [errors.wrong_app]
 other = "This account does not belong to this app. Open the one it belongs to — your password is fine."
 
+# ONE DEVICE PER DRIVER. ⚠️ The sentence does NOT name the device: the label
+# travels in `error.reason`, and a template inserting it here would print
+# "<no value>" whenever the app did not send one.
+[errors.session_superseded]
+other = "You have been signed out: your account was just opened on another device."
+
 [errors.user_not_found]
 other = "User not found"
 

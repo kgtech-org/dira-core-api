@@ -16,6 +16,13 @@ type RegisterRequest struct {
 	// obligeait à un second appel — ou, pire, à les taire.
 	FirstName string `json:"first_name,omitempty" validate:"omitempty,max=80"`
 	LastName  string `json:"last_name,omitempty" validate:"omitempty,max=80"`
+	// App, DeviceID et DeviceName : l'inscription OUVRE une session, et un
+	// livreur qui vient de créer son compte est déjà connecté sur ce
+	// téléphone. Sans eux, sa toute première session serait la seule à
+	// n'être bornée à aucun appareil — et elle peut durer trente jours.
+	App        string `json:"app,omitempty" validate:"omitempty,oneof=client driver merchant console"`
+	DeviceID   string `json:"device_id,omitempty" validate:"omitempty,max=128"`
+	DeviceName string `json:"device_name,omitempty" validate:"omitempty,max=120"`
 }
 
 // LoginRequest authenticates by phone (clients/drivers — the primary
@@ -37,6 +44,32 @@ type LoginRequest struct {
 	// ABSENT = aucune vérification, le comportement d'avant : une
 	// application pas encore mise à jour continue de fonctionner.
 	App string `json:"app,omitempty" validate:"omitempty,oneof=client driver merchant console"`
+	// DeviceID est l'IDENTIFIANT D'INSTALLATION de l'application : un chauffeur
+	// ou un livreur ne tient qu'UNE session, et c'est ce champ qui dit laquelle.
+	//
+	// ⚠️ LE SERVEUR NE PEUT PAS LE DEVINER. Ni l'adresse IP (un chauffeur en
+	// change dix fois par jour), ni le modèle du téléphone (toute une ville
+	// roule sur le même Tecno), ni le jeton de notification (il change à
+	// chaque réinstallation du service Google) ne désignent une installation.
+	// Sans ce champ, deux téléphones du même compte sont indiscernables — et
+	// c'est exactement la situation qu'on veut faire cesser : deux flux de
+	// positions pour une seule voiture.
+	//
+	// ⚠️ IL DOIT SURVIVRE AUX REDÉMARRAGES ET VIVRE AUSSI LONGTEMPS QUE LE
+	// JETON DE RAFRAÎCHISSEMENT, à côté de lui. Tiré à chaque lancement, ou
+	// rangé dans un cache que le système nettoie, l'application se chasse
+	// ELLE-MÊME à chaque ouverture : « vous avez été déconnecté » en boucle,
+	// sur un seul téléphone.
+	//
+	// ABSENT = aucune règle d'appareil, le comportement d'avant : une
+	// application pas encore mise à jour continue de fonctionner.
+	DeviceID string `json:"device_id,omitempty" validate:"omitempty,max=128"`
+	// DeviceName est le libellé LISIBLE de l'appareil — « Tecno Spark 10 ·
+	// Android 13 ». Il ne sert qu'à une chose, et elle compte : que l'écran
+	// puisse dire « vous vous êtes connecté sur Tecno Spark 10 » au lieu de
+	// « erreur de connexion ». Un refus qui ne nomme pas l'appareil laisse
+	// croire à une panne, et le support reçoit l'appel.
+	DeviceName string `json:"device_name,omitempty" validate:"omitempty,max=120"`
 }
 
 // RefreshRequest rotates a refresh token.
@@ -171,6 +204,31 @@ type AuthResponse struct {
 	User         UserResponse `json:"user"`
 	AccessToken  string       `json:"access_token"`
 	RefreshToken string       `json:"refresh_token"`
+	// Session décrit l'appareil qui vient de prendre la session, et celui
+	// qu'il a chassé. ABSENT pour tout compte qui a le droit d'être sur
+	// plusieurs appareils — un client, un marchand, un membre du staff — et
+	// absent aussi quand l'application n'a pas déclaré son appareil.
+	Session *SessionResponse `json:"session,omitempty"`
+}
+
+// SessionResponse dit à l'application où sa session est ouverte.
+//
+// ⚠️ ELLE EXISTE POUR QUE LE NOUVEAU TÉLÉPHONE PUISSE PRÉVENIR. Celui qui a été
+// chassé est peut-être éteint, ou sans réseau, et n'apprendra la nouvelle que
+// dans trois jours ; l'instant de la connexion est donc la seule occasion de
+// dire à quelqu'un que son compte servait ailleurs. Un chauffeur dont le compte
+// est utilisé par un tiers le découvre ici.
+type SessionResponse struct {
+	DeviceID   string `json:"device_id"`
+	DeviceName string `json:"device_name,omitempty"`
+	// SingleDevice annonce la RÈGLE : ce compte ne tient qu'une session.
+	// L'application s'en sert pour afficher l'avertissement au bon public
+	// sans coder en dur « si je suis l'application chauffeur ».
+	SingleDevice bool `json:"single_device"`
+	// SupersededDeviceID / Name : l'appareil que CETTE connexion vient de
+	// chasser. Absents quand il n'y avait personne à chasser — le cas normal.
+	SupersededDeviceID   string `json:"superseded_device_id,omitempty"`
+	SupersededDeviceName string `json:"superseded_device_name,omitempty"`
 }
 
 // TokenPairResponse returns a rotated token pair.

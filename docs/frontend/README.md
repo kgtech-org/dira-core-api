@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.34.0** · 28 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.35.0** · 28 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,78 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.35.0 — 28 septembre 2026
+
+📱 **UN SEUL APPAREIL À LA FOIS — pour les chauffeurs et les livreurs, et pour
+eux seuls.** Un compte de chauffeur ouvert sur deux téléphones poussait **deux
+flux de positions pour une seule voiture** : le vivier d'appel la voyait à deux
+endroits, l'appel partait vers le téléphone resté à la maison, et la course
+mourait d'un « personne n'a répondu » que rien n'expliquait. Le passager, lui,
+regardait une carte où sa voiture sautait d'un quartier à l'autre. **La dernière
+connexion gagne désormais ; la précédente est fermée, immédiatement, et
+partout** — y compris son socket de positions.
+
+Écrit au long dans `VTC-DRIVER.md` §7 et `FOOD-DELIVERY.md` §2, chacun pour son
+public.
+
+- **`device_id` et `device_name` à `POST /auth/login` et `POST /auth/register`.**
+  ⚠️ **Le serveur ne peut pas deviner l'appareil** : ni l'adresse IP, ni le
+  modèle du téléphone, ni le jeton FCM ne désignent une **installation**.
+  `device_id` est une chaîne opaque tirée **une fois** ; `device_name` est le
+  libellé lisible, et il ne sert qu'à une chose — que l'écran puisse dire « vous
+  vous êtes connecté sur **Itel A70** » au lieu de « erreur de connexion ».
+- ⚠️ **RANGEZ `device_id` À CÔTÉ DU JETON DE RAFRAÎCHISSEMENT, MÊME DURÉE DE
+  VIE.** Tiré à chaque lancement, ou rangé dans un cache que le système a le
+  droit de vider, **l'application se chasse elle-même à chaque ouverture** :
+  « vous avez été déconnecté » en boucle, sur un seul téléphone. Et si la lecture
+  échoue, **n'en tirez pas un neuf — n'envoyez pas le champ** : sans lui le
+  serveur ne touche à rien.
+- **Un refus NOMMÉ, partout : `401 session_superseded`**, sur
+  `POST /auth/refresh` comme sur n'importe quel appel authentifié, avec
+  **`error.reason` = le libellé de l'appareil qui a pris la place**. Le socket du
+  suivi, lui, se ferme en **4409 `session_superseded`**.
+- ⚠️ **NE RAFRAÎCHISSEZ PAS, NE VOUS RECONNECTEZ PAS AUTOMATIQUEMENT.** Un `401`
+  déclenche d'ordinaire un rafraîchissement puis un rejeu ; ici le
+  rafraîchissement répond le **même** code. Et une reconnexion automatique
+  chasserait à son tour l'autre téléphone, qui chasserait celui-ci : les deux
+  appareils se renvoient la balle indéfiniment et aucun ne travaille. **Testez
+  `error.code` avant de rafraîchir**, et ne traitez pas `4409` comme `4401`.
+- ⚠️ **NE VIDEZ JAMAIS LA FILE HORS LIGNE sur ce refus.** Ce sont des courses
+  réellement conduites, que le serveur n'a jamais vues. Tant que l'ancien jeton
+  d'accès vit, `POST /rides/sync` et `POST /deliveries/sync` **répondent
+  encore** — ce sont les seules routes qu'un appareil chassé atteint, parce que
+  raconter le passé ne crée aucun second flux de positions. Au-delà, il faut se
+  reconnecter **sur ce téléphone** pour la rendre, et les deux routes sont
+  idempotentes : rien n'est compté deux fois.
+- ⚠️ **CHASSÉ EN PLEINE COURSE : rien n'est annulé.** La course appartient au
+  COMPTE, pas à l'appareil, et se reprend sur le nouveau téléphone à l'état exact
+  où elle en était. Mais plus personne n'émet de position : « course hors radar »
+  côté exploitation après **2 min**, mise hors ligne par le serveur après
+  **5 min**. En revenant, poussez le trou avec `backfill: true` — c'est
+  `actual_distance_m` qui en dépend. **La plateforme ne refuse jamais la
+  connexion parce qu'une course est en cours** : un chauffeur dont le téléphone
+  meurt en pleine course doit pouvoir reprendre ailleurs à l'instant même.
+- ⚠️ **UNE RÉINSTALLATION N'EST PAS UN SECOND TÉLÉPHONE.** L'identifiant part
+  avec le jeton, un neuf est tiré, il chasse un appareil qui n'existe plus :
+  aucune conséquence. Envoyez le **même `device_name`** — c'est ce qui permet au
+  support de distinguer « nouvelle installation » de « quelqu'un d'autre a mon
+  compte ». Et ne tirez pas d'identifiant neuf à une mise à jour, à une rotation
+  de jeton FCM ou à un redémarrage.
+- **Une notification prévient le compte** (catégorie `security`, non coupable) :
+  « Votre compte vient d'être ouvert sur *X*. L'appareil précédent a été
+  déconnecté. » ⚠️ Elle est adressée au **compte**, donc elle arrive **aussi sur
+  le nouveau téléphone** — d'où une rédaction en forme d'annonce, pas de
+  reproche. Ne la transformez pas en écran d'erreur sur l'appareil qui vient de
+  se connecter.
+- ⚠️ **CLIENTS, PASSAGERS ET MARCHANDS NE SONT PAS CONCERNÉS**, et c'est écrit
+  dans leurs trois documents : un client garde sa tablette **et** son téléphone,
+  une enseigne garde sa caisse, sa cuisine et le téléphone du gérant. N'envoyez
+  pas `device_id` pour eux ; ils ne recevront jamais `session_superseded`.
+- ⚠️ **`device_id` omis ne vérifie rien**, comme `app` avant lui : une version
+  pas encore mise à jour continue de fonctionner — mais le second téléphone y
+  entre aussi. **La règle ne mord que lorsque TOUTES les versions en circulation
+  envoient le champ.** C'est la raison de l'envoyer dès celle-ci.
 
 ### 4.34.0 — 28 septembre 2026
 

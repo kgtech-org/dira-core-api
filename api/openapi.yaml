@@ -158,9 +158,56 @@ paths:
                   description: >-
                     L'application qui demande. Omis = aucune vérification
                     (compatibilité).
+                device_id:
+                  type: string
+                  maxLength: 128
+                  description: >-
+                    **L'IDENTIFIANT D'INSTALLATION de l'application.** Un
+                    chauffeur ou un livreur ne tient qu'**UNE** session : cette
+                    connexion-ci chasse la précédente, dont les jetons de
+                    rafraîchissement sont jetés et dont le jeton d'accès cesse
+                    d'être accepté — y compris par le suivi, qui ferme son
+                    socket de positions.
+
+
+                    ⚠️ Le serveur ne peut pas le deviner : ni l'adresse IP (un
+                    chauffeur en change dix fois par jour), ni le modèle du
+                    téléphone (toute une ville roule sur le même), ni le jeton
+                    de notification (il change à chaque réinstallation du
+                    service Google) ne désignent une installation.
+
+
+                    ⚠️ Il doit vivre **aussi longtemps que le jeton de
+                    rafraîchissement, à côté de lui**. Tiré à chaque lancement,
+                    ou rangé dans un cache que le système nettoie, l'application
+                    se chasse **elle-même** à chaque ouverture.
+
+
+                    Omis = aucune règle d'appareil, le comportement d'avant :
+                    une application pas encore mise à jour fonctionne telle
+                    quelle. N'a aucun effet pour un client, un marchand ou la
+                    direction — eux ont le droit d'être sur plusieurs appareils.
+                device_name:
+                  type: string
+                  maxLength: 120
+                  description: >-
+                    Le libellé LISIBLE de l'appareil — « Tecno Spark 10 ·
+                    Android 13 ». Il sert à ce que l'écran de l'appareil chassé
+                    puisse dire « vous vous êtes connecté sur Tecno Spark 10 »
+                    au lieu d'« erreur de connexion ». Tronqué, jamais refusé.
       responses:
-        "200": {description: Token pair}
-        "401": {description: invalid_credentials}
+        "200":
+          description: >-
+            Token pair. Pour un chauffeur ou un livreur qui a déclaré son
+            appareil, la réponse porte en plus **`session`** :
+            `{device_id, device_name, single_device, superseded_device_id,
+            superseded_device_name}`. Les deux derniers ne sont présents que si
+            cette connexion vient de **chasser** un autre appareil — c'est la
+            seule occasion de prévenir quelqu'un dont le compte servait
+            ailleurs, l'appareil chassé étant peut-être éteint.
+        "401":
+          description: >-
+            `invalid_credentials`.
         "403":
           description: >-
             `wrong_app` — le compte existe, le mot de passe est bon, mais il
@@ -183,7 +230,19 @@ paths:
         nouveau. Un court chevauchement est donc normal.
       responses:
         "200": {description: New token pair}
-        "401": {description: refresh token consumed, expired or revoked — sign in again}
+        "401":
+          description: >-
+            `invalid_token` — consommé, expiré ou révoqué : se reconnecter.
+
+
+            **`session_superseded`** — ce jeton appartient à un appareil qui
+            n'est plus celui du compte : un autre téléphone s'est connecté
+            depuis. ⚠️ **NE PAS ENCHAÎNER UNE RECONNEXION AUTOMATIQUE** : elle
+            chasserait à son tour l'autre appareil, et les deux se renverraient
+            la balle indéfiniment. L'application doit **garder sa file hors
+            ligne**, se déconnecter, et afficher « vous avez été déconnecté
+            parce que vous vous êtes connecté sur <appareil> » —
+            `error.reason` porte le libellé de l'appareil qui a pris la place.
   /auth/logout:
     post:
       tags: [auth]

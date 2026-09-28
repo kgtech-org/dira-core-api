@@ -71,6 +71,23 @@ type Claims struct {
 	// s'impose : un client ne se téléporte pas à Cotonou en changeant un
 	// en-tête.
 	CountryAny bool
+	// Device est L'APPAREIL qui a obtenu ce jeton — l'identifiant
+	// d'installation envoyé à la connexion.
+	//
+	// ⚠️ IL EST DANS LE JETON PARCE QUE LA RÉVOCATION SE FAIT SANS LE SOCLE.
+	// Un chauffeur ne doit tenir qu'UNE session ; pour refuser celle qui a été
+	// chassée, il faut savoir de quel téléphone vient le jeton — et le savoir
+	// partout où le jeton est vérifié, y compris dans `dira-tracking`, qui ne
+	// dépend volontairement d'aucun autre service. Sans ce champ, la seule
+	// façon de le savoir aurait été de demander au socle à chaque poignée de
+	// main WebSocket : socle en maintenance, plus un chauffeur en ligne.
+	//
+	// VIDE pour tout le monde sauf les chauffeurs et les livreurs, et vide
+	// aussi sur un jeton émis avant ce mécanisme ou par une application qui
+	// n'envoie pas encore son appareil. Vide = aucun contrôle, le comportement
+	// d'avant : une application pas encore mise à jour ne doit pas voir ses
+	// utilisateurs enfermés dehors du jour au lendemain.
+	Device string
 }
 
 // Grant est ce qu'un jeton accorde : l'identité, et ses bornes.
@@ -83,6 +100,11 @@ type Grant struct {
 	Scopes     []string
 	Country    string
 	CountryAny bool
+	// Device est l'appareil qui détient la session — voir `Claims.Device`.
+	// Vide pour tout compte qui a le droit d'être sur plusieurs appareils :
+	// un client sur sa tablette et son téléphone, un membre du staff sur
+	// trois onglets de console.
+	Device string
 }
 
 // Portées connues. Une portée est une VERTICALE, pas une permission fine :
@@ -167,6 +189,14 @@ func (m *Manager) generate(g Grant, typ string, ttl time.Duration) (string, erro
 	if g.CountryAny {
 		claims["cty_any"] = true
 	}
+	// ⚠️ Omis quand le compte n'est pas borné à un appareil, pour la même
+	// raison que la portée : un champ présent et vide se lirait « appareil
+	// inconnu », et un futur lecteur hésiterait entre refuser et laisser
+	// passer. Absent, il n'y a rien à interpréter — il n'y a pas de règle
+	// d'appareil pour ce compte.
+	if g.Device != "" {
+		claims["did"] = g.Device
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString(m.secret)
 	if err != nil {
@@ -206,6 +236,7 @@ func (m *Manager) Verify(tokenStr string) (Claims, error) {
 	}
 	out.Country, _ = mapClaims["cty"].(string)
 	out.CountryAny, _ = mapClaims["cty_any"].(bool)
+	out.Device, _ = mapClaims["did"].(string)
 	return out, nil
 }
 

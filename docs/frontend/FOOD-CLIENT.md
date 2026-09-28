@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.34.0** · 28 septembre 2026
+> **Version 4.35.0** · 28 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -259,6 +259,29 @@ décrit au support.
 jour continue donc de fonctionner exactement comme avant — mais le mauvais
 compte y entre aussi comme avant. C'est la raison d'envoyer le champ dès
 cette version.
+
+#### 📱 VOUS N'ÊTES PAS BORNÉ À UN SEUL APPAREIL (v4.35.0)
+
+La v4.35.0 introduit un champ `device_id` à la connexion, et une règle **« un
+seul appareil à la fois »** — **elle ne concerne QUE les chauffeurs et les
+livreurs**, jamais un client.
+
+⚠️ **N'ENVOYEZ PAS `device_id`, ET NE CODEZ RIEN POUR CETTE RÈGLE.** Un client a le droit d'être connecté sur sa tablette **et** son téléphone, et de suivre sa commande depuis les deux.
+Le champ est ignoré pour votre public, le jeton émis ne nomme aucun appareil, et
+**aucune** de vos sessions ne peut être fermée par une connexion ailleurs.
+
+Concrètement :
+
+- Vous **ne recevrez jamais** `401 session_superseded`, ni sur
+  `POST /auth/refresh`, ni sur un appel authentifié : inutile de le traiter.
+- Se connecter sur un second appareil **n'invalide pas** le premier : les deux jetons de rafraîchissement continuent de vivre côte à côte, chacun avec sa propre rotation.
+- La réponse de `POST /auth/login` ne porte **pas** d'objet `session` pour vous.
+
+**Pourquoi c'est écrit ici alors que ça ne vous concerne pas.** La règle existe parce que deux
+téléphones connectés sur un compte de chauffeur poussent **deux flux de
+positions pour un seul véhicule**, et que le vivier d'appel le lit comme deux
+véhicules. Rien de tel chez un client, qui ne pousse aucune position — et l'appliquer « par prudence » à un public qui
+n'a pas ce problème coûterait des déconnexions quotidiennes pour rien.
 
 
 ### Préférences

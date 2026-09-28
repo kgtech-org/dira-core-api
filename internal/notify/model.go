@@ -215,6 +215,20 @@ const (
 	// n'y croit plus, dans un sens comme dans l'autre.
 	KeyPlatformAlert         = "staff_platform_alert"
 	KeyPlatformAlertResolved = "staff_platform_alert_resolved"
+
+	// UN SEUL APPAREIL PAR CHAUFFEUR (v4.35.0) : le compte vient d'être ouvert
+	// ailleurs, et l'appareil précédent a perdu la session.
+	//
+	// ⚠️ ELLE EST ÉCRITE COMME UNE ANNONCE, PAS COMME UN REPROCHE. Ce module
+	// adresse un COMPTE, jamais un appareil : le message part sur TOUS les
+	// téléphones du compte, y compris celui qui vient de se connecter.
+	// « Vous avez été déconnecté » y serait incompréhensible. « Votre compte
+	// vient d'être ouvert sur X » se lit juste des deux côtés — et pour qui
+	// n'a rien fait, c'est la seule alerte qu'il reçoive.
+	//
+	// La clé est déclarée dans `internal/user` (`user.KeySessionSuperseded`),
+	// qui l'émet ; recopiée ici avec son gabarit, comme celles du support.
+	KeySessionSuperseded = "session_superseded"
 )
 
 // defaults sont les gabarits COMPILÉS, servis tant que la base n'en porte pas.
@@ -632,6 +646,15 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "[severity] — [summary]", Body: "[what]"},
 		},
 	},
+	KeySessionSuperseded: {
+		Key:         KeySessionSuperseded,
+		Description: "COMPTE — le compte vient d'être ouvert sur un autre appareil ; le précédent a perdu la session. ⚠️ Adressée au compte, elle arrive AUSSI sur le nouvel appareil : le texte doit se lire des deux côtés.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Nouvelle connexion", Body: "Votre compte vient d'être ouvert sur [device]. L'appareil précédent a été déconnecté. Si ce n'est pas vous, changez votre mot de passe."},
+			LocaleEN: {Title: "New sign-in", Body: "Your account has just been opened on [device]. The previous device was signed out. If this wasn't you, change your password."},
+		},
+	},
 	KeyPlatformAlertResolved: {
 		Key:         KeyPlatformAlertResolved,
 		Description: "STAFF — c'est rentré dans l'ordre. ⚠️ Sans ce message, une alerte ne se referme jamais et on finit par n'y plus croire.",
@@ -753,6 +776,7 @@ var provided = map[string][]string{
 	// qui la reçoit ouvrir six écrans pour comprendre.
 	KeyPlatformAlert:         {"alert", "severity", "summary", "what", "service"},
 	KeyPlatformAlertResolved: {"alert", "severity", "summary", "what", "service"},
+	KeySessionSuperseded:     {"device"},
 }
 
 // Provided rend les variables que la plateforme remplit pour une clé.

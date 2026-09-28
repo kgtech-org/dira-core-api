@@ -35,6 +35,13 @@ other = "Ce compte est suspendu"
 [errors.wrong_app]
 other = "Ce compte n'est pas un compte de cette application. Ouvrez celle qui lui correspond — votre mot de passe est correct."
 
+# UN SEUL APPAREIL PAR CHAUFFEUR. ⚠️ La phrase ne nomme PAS l'appareil : le
+# libellé voyage dans `error.reason`, et un gabarit qui l'insérerait ici
+# afficherait « <no value> » les fois où l'application ne l'a pas envoyé.
+# C'est à l'écran de composer « … sur Tecno Spark 10 » quand il l'a.
+[errors.session_superseded]
+other = "Vous avez été déconnecté : votre compte vient d'être ouvert sur un autre appareil."
+
 [errors.user_not_found]
 other = "Utilisateur introuvable"
 

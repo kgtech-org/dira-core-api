@@ -138,6 +138,38 @@ func (f *fakeUserRepo) DeleteRefreshTokenByHash(_ context.Context, tokenHash str
 	return true, nil
 }
 
+func (f *fakeUserRepo) DeleteRefreshTokensOfUser(_ context.Context, userID primitive.ObjectID) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for hash, t := range f.refreshTokens {
+		if t.UserID == userID {
+			delete(f.refreshTokens, hash)
+			n++
+		}
+	}
+	return n, nil
+}
+
+// SetDevice écrit l'appareil courant — un `$set` CIBLÉ dans le vrai dépôt, et
+// il faut que le faux le reproduise : un `UpdateUser` complet à la connexion
+// aurait réécrit quinze champs, et c'est exactement ce que le vrai code évite.
+func (f *fakeUserRepo) SetDevice(_ context.Context, userID primitive.ObjectID, d *Device) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[userID]
+	if !ok {
+		return errors.New("user not found")
+	}
+	if d == nil {
+		u.Device = nil
+		return nil
+	}
+	clone := *d
+	u.Device = &clone
+	return nil
+}
+
 func (f *fakeUserRepo) userCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
