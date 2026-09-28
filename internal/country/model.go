@@ -32,7 +32,22 @@ type Installation struct {
 	// changer de monnaie — l'« eco » annoncée pour l'UEMOA — sans qu'on
 	// redéploie ; et parce que c'est un réglage d'exploitation, pas une
 	// vérité géographique.
-	Currency  string    `bson:"currency,omitempty"`
+	Currency string `bson:"currency,omitempty"`
+	// Testing marque un pays RÉSERVÉ AUX ESSAIS.
+	//
+	// ⚠️ SANS CETTE MARQUE, UN PAYS D'ESSAI EMPOISONNE TOUT CE QUI COMPTE. Les
+	// jauges de la supervision comptent TOUS les pays — délibérément, parce
+	// qu'une panne n'appartient à aucun —, et les rapports périodiques aussi.
+	// Un test de charge qui crée cinq cents courses ferait donc monter le
+	// tableau « est-ce que ça va ? » et partir un rapport annonçant une
+	// journée record. On ne s'en apercevrait qu'en cherchant pourquoi les
+	// chiffres ne collent pas avec la caisse.
+	//
+	// ⚠️ UNE MARQUE, PAS UN CODE EN DUR. « Si le pays vaut GA » écrit à six
+	// endroits pourrit : le septième est oublié, et le jour où l'essai change
+	// de pays il faut les retrouver tous. La marque se lit, se règle depuis la
+	// console, et voyage jusqu'aux verticales par `/internal/countries`.
+	Testing   bool      `bson:"testing,omitempty"`
 	EnabledAt time.Time `bson:"enabled_at,omitempty"`
 	UpdatedAt time.Time `bson:"updated_at"`
 	// Maps est le FOND DE CARTE du pays : celui qu'on sert par défaut, et la
@@ -148,6 +163,10 @@ type Response struct {
 	// Default marque le pays par défaut du déploiement — celui qu'une
 	// requête sans jeton ni en-tête reçoit.
 	Default bool `json:"default,omitempty"`
+	// Testing dit que ce pays est réservé aux ESSAIS : ses chiffres ne comptent
+	// ni dans la supervision, ni dans les rapports. La console doit le montrer,
+	// sans quoi on prendra ses courses pour de vraies.
+	Testing bool `json:"testing,omitempty"`
 }
 
 // UpdateRequest règle un pays : ouvert ou fermé, et sa monnaie. Les deux
@@ -155,6 +174,8 @@ type Response struct {
 type UpdateRequest struct {
 	Enabled  *bool   `json:"enabled"`
 	Currency *string `json:"currency" validate:"omitempty,len=3"`
+	// Testing réserve ce pays aux essais, ou l'en sort.
+	Testing *bool `json:"testing"`
 }
 
 // ResolveRequest est ce qu'une application envoie pour connaître son pays.
@@ -200,7 +221,13 @@ type ResolveResponse struct {
 var (
 	errUnknownCountry  = apperr.NotFound("country_unknown", "this country is not in the catalog")
 	errUnknownCurrency = apperr.Validation("unknown currency: expected an ISO 4217 code such as XOF or GNF")
-	errNothingToUpdate = apperr.Validation("nothing to update: send enabled and/or currency")
+	errNothingToUpdate = apperr.Validation("nothing to update: send enabled, currency and/or testing")
+	// ⚠️ Le pays PAR DÉFAUT ne peut pas être un pays d'essai : c'est celui
+	// qu'une requête sans en-tête reçoit, donc celui où atterrit le trafic
+	// réel. L'y marquer ferait disparaître la moitié de la plateforme des
+	// tableaux de bord, en silence.
+	errDefaultTesting = apperr.Conflict("country_default_testing",
+		"the default country cannot be reserved for testing")
 	errDefaultCountry  = apperr.Conflict("country_default", "the default country cannot be disabled")
 	errNoCoordinates   = apperr.Validation("lng and lat go together: send both or neither")
 	errNoMapsUpdate    = apperr.Validation("nothing to update: send basemap and/or google")

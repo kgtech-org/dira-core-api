@@ -207,3 +207,6 @@ other = "Ce gain a déjà été utilisé"
 
 [errors.maps_google_without_key]
 other = "Configurez d'abord une clé Google Maps pour au moins une plateforme"
+
+[errors.country_default_testing]
+other = "Le pays par défaut ne peut pas être réservé aux essais"

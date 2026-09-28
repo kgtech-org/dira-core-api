@@ -478,6 +478,17 @@ paths:
               properties:
                 enabled: {type: boolean}
                 currency: {type: string, example: GNF}
+                testing:
+                  type: boolean
+                  description: >-
+                    Réserve ce pays aux ESSAIS. ⚠️ Ses chiffres ne comptent alors
+                    ni dans la supervision, ni dans les rapports périodiques —
+                    sans quoi un test de charge qui crée cinq cents courses
+                    ferait monter le tableau « est-ce que ça va ? » et partir un
+                    rapport annonçant une journée record. ⚠️ Refusé sur le pays
+                    par DÉFAUT (`409 country_default_testing`) : c'est celui où
+                    atterrit le trafic réel, et l'y marquer ferait disparaître la
+                    moitié de la plateforme des tableaux, en silence.
       responses:
         "200": {description: Country}
         "404": {description: country_unknown — not in the catalog}

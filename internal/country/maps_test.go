@@ -173,3 +173,23 @@ func TestTheScreenShowsWhatIsInForce(t *testing.T) {
 	base, _, _ := resolveGrant(Maps{Basemap: BasemapGoogle}, PlatformWeb)
 	assert.Equal(t, out.Basemap, base)
 }
+
+// ⚠️ LE PAYS PAR DÉFAUT NE PEUT PAS ÊTRE UN PAYS D'ESSAI. C'est celui qu'une
+// requête sans en-tête reçoit, donc celui où atterrit le trafic réel : l'y
+// marquer ferait disparaître la moitié de la plateforme des tableaux de bord et
+// des rapports, en silence. Le refus a un code nommé et ses deux traductions.
+func TestTheDefaultCountryCannotBeReservedForTesting(t *testing.T) {
+	assert.Equal(t, "country_default_testing", errDefaultTesting.Code)
+	assert.NotEmpty(t, errDefaultTesting.Message)
+}
+
+// ⚠️ AU MIEUX DANS LE SENS QUI PROTÈGE LES CHIFFRES. Un cache vide répond
+// « ce pays n'est pas un pays d'essai », donc il COMPTE. Se tromper ainsi fait
+// apparaître des courses d'essai dans un tableau, ce qui se voit ; se tromper
+// dans l'autre sens ferait DISPARAÎTRE de vraies courses des rapports, et
+// personne ne cherche ce qu'il ne voit pas manquer.
+func TestAnEmptyCacheMakesACountryCountRatherThanVanish(t *testing.T) {
+	var s Service
+	assert.False(t, s.Testing("GA"))
+	assert.Empty(t, s.TestingCodes())
+}

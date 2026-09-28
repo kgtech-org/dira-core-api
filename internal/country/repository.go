@@ -143,3 +143,20 @@ func (r *Repository) SetGoogleMapType(ctx context.Context, code, platform, mapTy
 	}
 	return nil
 }
+
+// SetTesting réserve un pays aux essais, ou l'en sort.
+func (r *Repository) SetTesting(ctx context.Context, code string, testing bool) error {
+	update := bson.M{"$set": bson.M{"updated_at": time.Now().UTC()}}
+	if testing {
+		update["$set"].(bson.M)["testing"] = true
+	} else {
+		// Sorti des essais, le champ DISPARAÎT plutôt que de valoir `false` :
+		// un pays ordinaire n'a pas à porter la trace d'avoir servi aux essais.
+		update["$unset"] = bson.M{"testing": ""}
+	}
+	if _, err := r.countries.UpdateOne(ctx, bson.M{"_id": code}, update,
+		options.Update().SetUpsert(true)); err != nil {
+		return fmt.Errorf("country: set testing: %w", err)
+	}
+	return nil
+}
