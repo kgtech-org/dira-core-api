@@ -3,6 +3,7 @@ package country
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
@@ -42,6 +43,10 @@ type Service struct {
 	mu       sync.RWMutex
 	enabled  map[string]bool
 	currency map[string]string // réglages de monnaie, par pays
+	// testing : les pays RÉSERVÉS AUX ESSAIS. Lu par tout ce qui compte —
+	// supervision, rapports, classements — pour ne pas mêler des courses
+	// fabriquées à de vraies.
+	testing  map[string]bool
 	loadedAt time.Time
 	cacheTTL time.Duration
 }
@@ -86,14 +91,18 @@ func (s *Service) refresh(ctx context.Context) {
 	}
 	m := make(map[string]bool, len(rows))
 	cur := make(map[string]string, len(rows))
+	test := make(map[string]bool, len(rows))
 	for _, r := range rows {
 		m[r.Code] = r.Enabled
 		if r.Currency != "" {
 			cur[r.Code] = r.Currency
 		}
+		if r.Testing {
+			test[r.Code] = true
+		}
 	}
 	s.mu.Lock()
-	s.enabled, s.currency, s.loadedAt = m, cur, time.Now()
+	s.enabled, s.currency, s.testing, s.loadedAt = m, cur, test, time.Now()
 	s.mu.Unlock()
 }
 
@@ -122,6 +131,7 @@ func (s *Service) respond(info country.Info, enabled bool) Response {
 	info.Currency = cur.Code
 	return Response{
 		Info: info, Enabled: enabled, Default: info.Code == s.defaultCode,
+		Testing:      s.Testing(info.Code),
 		CurrencyName: cur.Name, CurrencySymbol: cur.Symbol, CurrencyDecimals: cur.Decimals,
 	}
 }
@@ -178,8 +188,11 @@ func (s *Service) Update(ctx context.Context, code string, req UpdateRequest) (*
 	if !ok {
 		return nil, errUnknownCountry
 	}
-	if req.Enabled == nil && req.Currency == nil {
+	if req.Enabled == nil && req.Currency == nil && req.Testing == nil {
 		return nil, errNothingToUpdate
+	}
+	if req.Testing != nil && *req.Testing && info.Code == s.defaultCode {
+		return nil, errDefaultTesting
 	}
 	before := map[string]any{"code": info.Code, "enabled": s.Enabled(info.Code), "currency": s.CurrencyOf(info.Code).Code}
 	if req.Enabled != nil {
@@ -199,6 +212,11 @@ func (s *Service) Update(ctx context.Context, code string, req UpdateRequest) (*
 			}
 		}
 		if err := s.repo.SetCurrency(ctx, info.Code, cur); err != nil {
+			return nil, apperr.Internal(err)
+		}
+	}
+	if req.Testing != nil {
+		if err := s.repo.SetTesting(ctx, info.Code, *req.Testing); err != nil {
 			return nil, apperr.Internal(err)
 		}
 	}
@@ -274,4 +292,31 @@ func (s *Service) Resolve(ctx context.Context, userID, ip string, req ResolveReq
 		out.Updated = true
 	}
 	return out, nil
+}
+
+// Testing dit si ce pays est réservé aux ESSAIS.
+//
+// ⚠️ AU MIEUX DANS LE SENS QUI PROTÈGE LES CHIFFRES : cache vide ou base
+// injoignable répond `false`, donc le pays compte. Se tromper dans ce sens fait
+// apparaître des courses d'essai dans un tableau ; se tromper dans l'autre
+// ferait DISPARAÎTRE de vraies courses des rapports, et personne ne cherche ce
+// qu'il ne voit pas manquer.
+func (s *Service) Testing(code string) bool {
+	code = country.Normalize(code)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.testing[code]
+}
+
+// TestingCodes rend les pays d'essai, triés — ce qu'une verticale exclut de ses
+// mesures et de ses rapports.
+func (s *Service) TestingCodes() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]string, 0, len(s.testing))
+	for code := range s.testing {
+		out = append(out, code)
+	}
+	sort.Strings(out)
+	return out
 }
