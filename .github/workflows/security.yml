@@ -61,3 +61,32 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
             detect --source=/repo --no-banner --redact --verbose
+
+  image:
+    name: Ce que l'image expédie
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ⚠️ TRIVY VOIT CE QUE `govulncheck` NE PEUT PAS VOIR, et la différence est
+      # le propos. `govulncheck` ne signale que ce que le code APPELLE — c'est ce
+      # qui le rend utilisable. Trivy signale ce que l'image EXPÉDIE, appelé ou
+      # non : les paquets du système de base, et les dépendances transitives
+      # qu'on embarque sans jamais s'en servir.
+      #
+      # Exemple réel, trouvé le 28 septembre 2026 : `golang.org/x/crypto v0.54.0`
+      # (CVE-2026-56854, contournement d'authentification SSH). `govulncheck` se
+      # taisait à raison — nous n'appelons pas `crypto/ssh`. Mais il est dans le
+      # binaire, et « injoignable aujourd'hui » devient « joignable » le jour où
+      # quelqu'un ajoute un import.
+      #
+      # ⚠️ IL NE BLOQUE PAS, ET C'EST LA DIFFÉRENCE DE TRAITEMENT QUI COMPTE. Ce
+      # qu'on appelle se corrige tout de suite (`govulncheck` arrête la fusion) ;
+      # ce qu'on embarque se corrige au rythme des montées de version. Faire
+      # rougir toutes les PR pour une faille qu'aucun chemin n'atteint, c'est
+      # obtenir qu'on cesse de lire les deux.
+      - name: trivy (système de fichiers)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/repo" aquasec/trivy:latest fs \
+            --quiet --scanners vuln,misconfig --severity HIGH,CRITICAL \
+            --exit-code 0 /repo
