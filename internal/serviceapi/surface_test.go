@@ -25,6 +25,11 @@ import (
 // route bien commentée là où elle se comprend moins bien, ce test rend la
 // promesse VÉRIFIABLE où que la route soit déclarée.
 var declaredSurface = []string{
+	// UN CHAUFFEUR VTC N'EST JAMAIS LIVREUR : la verticale RÉCLAME
+	// l'appartenance métier d'un compte au moment où elle garantit son
+	// profil. La première gagne, l'autre est refusée — et c'est ce qui
+	// empêche une personne d'être chauffeur et livreuse à la fois.
+	"/internal/accounts/agent-app",
 	"/internal/accounts/by-phone",
 	"/internal/accounts/contact",
 	"/internal/accounts/ensure",

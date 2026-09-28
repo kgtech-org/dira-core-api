@@ -62,6 +62,16 @@ type Accounts interface {
 	// « 90 20 » dans une liste de courses qui ne porte que des identifiants.
 	// Des IDENTIFIANTS seulement : la verticale filtre ses documents avec.
 	SearchAccounts(ctx context.Context, q string, roles []string, limit int) ([]string, error)
+
+	// ClaimAgentApp réserve l'APPARTENANCE MÉTIER d'un compte d'agent —
+	// `driver` (les courses) ou `courier` (la livraison).
+	//
+	// ⚠️ ELLE N'ÉLARGIT PAS LA SURFACE, ELLE LA RESTREINT. Une verticale ne
+	// pouvait jusqu'ici que poser un profil d'agent sur n'importe quel compte
+	// de rôle `driver`, sans rien demander à personne : c'est ainsi que deux
+	// comptes de la recette ont fini par être chauffeur ET livreur. Cette
+	// route est l'endroit où l'autre verticale peut dire non.
+	ClaimAgentApp(ctx context.Context, userID, app string, fromProfile bool) (string, error)
 }
 
 // Wallets is the money a vertical moves on a person's behalf.
@@ -195,6 +205,9 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/accounts/ensure-merchant", h.ensureMerchant)
 		g.Post("/internal/accounts/ensure", h.ensureAccount)
 		g.Post("/internal/accounts/by-phone", h.byPhone)
+		// UN CHAUFFEUR VTC N'EST JAMAIS LIVREUR : la verticale réclame
+		// l'appartenance du compte au moment où elle garantit son profil.
+		g.Post("/internal/accounts/agent-app", h.claimAgentApp)
 
 		g.Post("/internal/wallets/create", h.createWallet)
 		g.Post("/internal/wallets/consume", h.consume)
@@ -306,6 +319,38 @@ func (h *Handler) ensureAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]string{"user_id": id})
+}
+
+// claimAgentApp : la verticale dit « ce compte est à moi », le socle accorde
+// ou refuse.
+//
+// ⚠️ LE REFUS EST `403 wrong_app`, LE MÊME QU'À LA CONNEXION, et il traverse
+// le pont jusqu'à l'application : le code et le message du socle sont rendus
+// tels quels par `corebridge`. Un livreur qui ouvre l'application des courses
+// lit donc la même phrase des deux côtés de la porte, au lieu d'un « erreur
+// serveur » sur l'une et d'une explication sur l'autre.
+func (h *Handler) claimAgentApp(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID string `json:"user_id" validate:"required,len=24,hexadecimal"`
+		App    string `json:"app" validate:"required,oneof=driver courier"`
+		// FromProfile : la verticale voit-elle DÉJÀ un profil pour ce compte ?
+		//
+		// ⚠️ Elle ne change rien à ce qui est écrit — elle est journalisée.
+		// C'est ce qui permettra de relire la migration et de distinguer une
+		// appartenance venue d'un profil qui existait (un fait) de celle
+		// venue d'une application qui a frappé la première.
+		FromProfile bool `json:"from_profile"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	app, err := h.accounts.ClaimAgentApp(r.Context(), req.UserID, req.App, req.FromProfile)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]string{"agent_app": app})
 }
 
 func (h *Handler) byPhone(w http.ResponseWriter, r *http.Request) {

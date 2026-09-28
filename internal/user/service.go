@@ -37,6 +37,9 @@ type Repo interface {
 	// quoi jeter les jetons de l'appareil chassé.
 	DeleteRefreshTokensOfUser(ctx context.Context, userID primitive.ObjectID) (int64, error)
 	SetDevice(ctx context.Context, userID primitive.ObjectID, d *Device) error
+	// UN CHAUFFEUR VTC N'EST JAMAIS LIVREUR : l'appartenance métier du
+	// compte, réclamée par les verticales — voir `agentapp.go`.
+	SetAgentApp(ctx context.Context, userID primitive.ObjectID, app string) error
 
 	// Carnet d'adresses. Le client répétait jusqu'ici son adresse à chaque
 	// commande, avec ses indications de porte.
@@ -186,6 +189,15 @@ func (s *Service) register(ctx context.Context, req RegisterRequest, role string
 		Country:      s.countryForNew(ctx, phoneNumber),
 		CreatedAt:    now,
 		UpdatedAt:    now,
+		// L'APPARTENANCE MÉTIER, dès la naissance du compte — voir
+		// `agentapp.go`.
+		//
+		// ⚠️ ICI, « LE PREMIER QUI DÉCLARE » EST LÉGITIME, et c'est le seul
+		// endroit où ça l'est : un compte qui vient d'être créé n'a aucun
+		// profil, donc aucune réalité à contredire. L'application qui
+		// l'inscrit EST son métier. Le piège de la migration ne concerne que
+		// les comptes déjà en place, dont le profil existe avant la règle.
+		AgentApp: newAgentApp(role, req.App),
 	}
 	if err := s.repo.CreateUser(ctx, u); err != nil {
 		if errors.Is(err, ErrDuplicatePhone) {
@@ -276,7 +288,14 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 	// entrer lui donne un jeton qu'aucun de ses écrans n'accepte. Il croit
 	// alors l'application cassée, appelle le support, et personne ne
 	// comprend que c'est la mauvaise application qu'il a installée.
-	if err := allowedIn(req.App, u.Role); err != nil {
+	//
+	// ⚠️ ET CE REFUS TOMBE AVANT QU'AUCUN PROFIL NE PUISSE NAÎTRE. C'est toute
+	// la raison de le placer ici plutôt que dans les verticales seules : un
+	// livreur qui ouvre l'application des courses n'obtient pas de jeton, donc
+	// pas de `GET /vtc/drivers/me`, donc pas de profil de chauffeur — et pas
+	// non plus de `device_id` des courses qui viendrait chasser celui de la
+	// livraison sur son propre téléphone.
+	if err := allowedInApp(req.App, u); err != nil {
 		return AuthResponse{}, err
 	}
 
@@ -299,27 +318,83 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 }
 
 // appRole dit quel RÔLE une application attend. `console` sert
-// l'administration ; les deux applications de chauffeurs (VTC et livraison)
-// partagent le rôle `driver`, comme les deux applications de clients
-// partagent `client` — la frontière qui compte ici est le rôle, pas le
-// métier.
+// l'administration ; les deux applications de clients partagent `client`, et
+// les deux applications d'AGENT — `driver` pour les courses, `courier` pour la
+// livraison — partagent le rôle `driver`.
+//
+// ⚠️ `courier` EST ACCEPTÉ PARTOUT OÙ `driver` L'EST, et ce n'est pas une
+// nuance : un livreur a le rôle `driver`, le même portefeuille de jetons, le
+// même appareil unique, les mêmes pièces de conformité. La frontière que la
+// livraison ajoute n'est pas le rôle, c'est le MÉTIER — voir `agentapp.go`.
 var appRole = map[string]string{
-	"client":   auth.RoleClient,
-	"driver":   auth.RoleDriver,
-	"merchant": auth.RoleMerchant,
-	"console":  auth.RoleAdmin,
+	"client":        auth.RoleClient,
+	AgentAppDriver:  auth.RoleDriver,
+	AgentAppCourier: auth.RoleDriver,
+	"merchant":      auth.RoleMerchant,
+	"console":       auth.RoleAdmin,
 }
 
 // appOfRole nomme l'application où ce compte doit aller — pour le DIRE à la
 // personne plutôt que de la laisser chercher.
+//
+// ⚠️ POUR LE RÔLE `driver`, C'EST UNE SUPPOSITION, la seule disponible tant
+// que le compte ne porte pas d'appartenance : deux métiers se partagent ce
+// rôle, et le socle ne peut pas deviner lequel. Dès que l'appartenance est
+// connue, `allowedInApp` s'en sert à la place — elle est exacte.
 var appOfRole = map[string]string{
 	auth.RoleClient:   "client",
-	auth.RoleDriver:   "driver",
+	auth.RoleDriver:   AgentAppDriver,
 	auth.RoleMerchant: "merchant",
 	auth.RoleAdmin:    "console",
 }
 
-// allowedIn refuse un compte qui frappe à la porte d'une autre application.
+// refuseApp compose le refus « ce n'est pas votre application », en NOMMANT
+// celle qu'il faut ouvrir.
+//
+// ⚠️ `reason` EST LA SEULE CLÉ QUI SORT. L'enveloppe d'erreur ne rend que
+// `fields` et `reason` ; le reste de `Meta` ne sert qu'à composer la phrase
+// traduite et à remplir les journaux. C'est donc `reason` qui porte
+// l'application à ouvrir — et une spec qui promettrait un autre champ
+// promettrait du vide.
+func refuseApp(app, openInstead, role string) error {
+	return errWrongApp.WithMeta(map[string]any{
+		"reason":       openInstead,
+		"account_role": role,
+		"app":          app,
+	})
+}
+
+// allowedInApp est la porte de la connexion, et elle tient DEUX frontières :
+// celle du RÔLE (un client n'entre pas dans une application d'agent) et celle
+// du MÉTIER (un livreur n'entre pas dans l'application des courses).
+//
+// L'appartenance passe d'ABORD quand elle est connue, parce qu'elle est plus
+// PRÉCISE que le rôle : les deux métiers partagent `driver`, et le rôle seul
+// enverrait un livreur qui s'est trompé vers l'application des chauffeurs —
+// la mauvaise des deux, et un aller-retour de plus avant qu'il comprenne.
+//
+// ⚠️ PERMISSIF TANT QU'IL N'Y A PAS D'APPARTENANCE. Un compte qui n'en porte
+// pas encore retombe exactement sur le contrôle d'avant. C'est ce qui laisse
+// les 24 livreurs et les 33 chauffeurs déjà en place se ranger tout seuls à
+// leur première ouverture, au lieu d'être enfermés dehors par une règle qu'ils
+// n'ont pas eu l'occasion de satisfaire.
+func allowedInApp(app string, u *User) error {
+	if u == nil {
+		return nil
+	}
+	// ⚠️ L'ADMINISTRATION PASSE PARTOUT, et cette porte-ci est aussi
+	// importante que celle du rôle : un opérateur ouvre l'application d'un
+	// chauffeur pour reproduire ce qu'il décrit. Un compte de direction ne
+	// porte jamais d'appartenance — la réclamation la lui refuse — mais
+	// l'écrire ici rend la règle lisible sans avoir à le savoir.
+	if u.Role != auth.RoleAdmin && app != "" && u.AgentApp != "" && app != u.AgentApp {
+		return refuseApp(app, u.AgentApp, u.Role)
+	}
+	return allowedIn(app, u.Role)
+}
+
+// allowedIn refuse un compte qui frappe à la porte d'une application d'un
+// autre RÔLE.
 //
 // ⚠️ Application VIDE = aucune vérification. C'est le comportement d'avant,
 // et il doit le rester : une application pas encore mise à jour ne doit pas
@@ -336,15 +411,7 @@ func allowedIn(app, role string) error {
 	if !known || want == role {
 		return nil
 	}
-	// ⚠️ `reason` EST LA SEULE CLÉ QUI SORT. L'enveloppe d'erreur ne rend que
-	// `fields` et `reason` ; le reste de `Meta` ne sert qu'à composer la phrase
-	// traduite. C'est donc `reason` qui porte l'application à ouvrir — et une
-	// spec qui promettrait un autre champ promettrait du vide.
-	return errWrongApp.WithMeta(map[string]any{
-		"reason":       appOfRole[role],
-		"account_role": role,
-		"app":          app,
-	})
+	return refuseApp(app, appOfRole[role], role)
 }
 
 // Refresh rotates a refresh token: the presented token is verified, its

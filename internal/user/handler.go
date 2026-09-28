@@ -50,6 +50,12 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		g.With(admin).Get("/admin/users", h.listAccounts)
 		g.With(admin).Get("/admin/users/{id}", h.getAccount)
 		g.With(admin).Patch("/admin/users/{id}/status", h.setAccountStatus)
+		// LA SORTIE DU SUPPORT — voir `agentapp.go`. Une personne change de
+		// métier : livreuse hier, chauffeuse aujourd'hui. Sans ce geste, le
+		// support n'a aucune issue et ouvrira un second compte à la même
+		// personne — second téléphone, second portefeuille, second historique
+		// —, c'est-à-dire exactement le désordre que la règle évite.
+		g.With(admin).Delete("/admin/users/{id}/agent-app", h.releaseAgentApp)
 	})
 }
 
@@ -96,6 +102,21 @@ func (h *Handler) setAccountStatus(w http.ResponseWriter, r *http.Request) {
 	// bougé : suspendre un compte déjà suspendu n'est pas la même chose que
 	// suspendre un compte actif, et seule la trace d'audit le distingue.
 	httpx.JSON(w, http.StatusOK, map[string]any{"before": before, "status": req.Status})
+}
+
+// DELETE /admin/users/{id}/agent-app — LA SORTIE DU SUPPORT.
+//
+// Rend l'appartenance LIBÉRÉE, pour que l'écran puisse dire laquelle — « ce
+// compte n'est plus rattaché à Dira Livreur » — plutôt qu'un « c'est fait »
+// dont l'opérateur ne peut rien conclure. Vide : il n'y en avait pas, et
+// c'est un succès aussi.
+func (h *Handler) releaseAgentApp(w http.ResponseWriter, r *http.Request) {
+	released, err := h.svc.ReleaseAgentApp(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]string{"released_agent_app": released})
 }
 
 func (h *Handler) register(w http.ResponseWriter, r *http.Request) {

@@ -72,6 +72,22 @@ type User struct {
 	// nommée dans le test de frontière — pour trois champs qui n'existent
 	// jamais sans leur compte.
 	Device *Device `bson:"device,omitempty"`
+	// AgentApp est L'APPLICATION D'AGENT à laquelle ce compte appartient —
+	// `driver` (les courses) ou `courier` (la livraison). Voir `agentapp.go`
+	// pour la doctrine et pour ce qui l'écrit.
+	//
+	// ⚠️ SUR LE COMPTE, comme `Device`, et pour les mêmes raisons : le
+	// document est déjà lu à la connexion, y ranger un mot ne coûte aucune
+	// requête de plus, et une collection dédiée aurait demandé un index
+	// unique, une borne de pays et une exemption nommée dans le test de
+	// frontière — pour UN champ qui n'existe jamais sans son compte.
+	//
+	// ⚠️ VIDE = APPARTENANCE INCONNUE, et rien n'est refusé. C'est la même
+	// convention que `app` et `device_id` avant elle : le déploiement du
+	// serveur précède toujours celui des applications, de plusieurs semaines
+	// quand un magasin est lent à valider, et une application pas encore mise
+	// à jour ne doit pas voir ses utilisateurs enfermés dehors.
+	AgentApp string `bson:"agent_app,omitempty"`
 }
 
 // Device est l'appareil qui détient la session d'un chauffeur ou d'un livreur.
@@ -90,9 +106,10 @@ type Device struct {
 	// à dire à la personne OÙ sa session est ouverte, et au support à
 	// distinguer « un second téléphone » d'« une réinstallation ».
 	Name string `bson:"name,omitempty"`
-	// App est l'application qui s'est connectée (`driver`). Conservée pour le
-	// support : deux métiers partagent ce mot, et la fiche du compte dit
-	// lequel.
+	// App est l'application qui s'est connectée (`driver` pour les courses,
+	// `courier` pour la livraison). Conservée pour le support : elle dit sur
+	// quelle application cette session-ci a été ouverte, là où `AgentApp` dit
+	// à laquelle le COMPTE appartient.
 	App string `bson:"app,omitempty"`
 	// Since est le moment où CET appareil a pris la session.
 	Since time.Time `bson:"since"`
