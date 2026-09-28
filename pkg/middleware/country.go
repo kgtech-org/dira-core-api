@@ -6,6 +6,7 @@ import (
 
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
 	"github.com/kgtech-org/dira-core-api/pkg/country"
+	"github.com/kgtech-org/dira-core-api/pkg/obs"
 )
 
 // Installed dit quels pays ce déploiement SERT, et lequel il sert par
@@ -75,7 +76,12 @@ func Country(installed Installed, tokens *auth.Manager) func(http.Handler) http.
 				code, source = claimed, country.SourceClaims
 			}
 			w.Header().Set(country.Header, code)
-			next.ServeHTTP(w, r.WithContext(country.WithCountry(ctx, code, source)))
+			ctx = country.WithCountry(ctx, code, source)
+			// Le PAYS, publié pour les journaux : toute cette plateforme est
+			// bornée par pays, et un incident qui ne dit pas lequel se
+			// cherche dans cinq jeux de données.
+			ctx = obs.WithField(ctx, obs.KeyCountry, code)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

@@ -263,7 +263,6 @@ func TestQueueSurvivesAnAccountLookupFailure(t *testing.T) {
 	assert.Empty(t, queue[0].UserID, "et le compte manquant est ABSENT, pas inventé")
 }
 
-
 // ⚠️ UN VÉHICULE NON MOTORISÉ N'ATTEND AUCUNE PIÈCE.
 //
 // La plateforme réclamait une carte grise à un livreur À PIED, et une

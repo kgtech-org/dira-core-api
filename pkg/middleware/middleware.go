@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
 	"github.com/kgtech-org/dira-core-api/pkg/i18n"
+	"github.com/kgtech-org/dira-core-api/pkg/obs"
 )
 
 type requestIDKey struct{}
@@ -37,6 +39,12 @@ func RequestID(next http.Handler) http.Handler {
 		}
 		w.Header().Set("X-Request-ID", id)
 		ctx := context.WithValue(r.Context(), requestIDKey{}, id)
+		// ⚠️ QUI POSE UNE VALEUR LA PUBLIE POUR LES JOURNAUX. Sans cette
+		// ligne, il faudrait ajouter « et aussi l'identifiant de requête » à
+		// chaque appel de journalisation du code — des centaines, dont la
+		// moitié serait oubliée. Le contexte le porte déjà ; `pkg/obs` le
+		// recopie dans chaque ligne.
+		ctx = obs.WithField(ctx, obs.KeyRequest, id)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -69,19 +77,42 @@ func Logger(logger *slog.Logger) func(http.Handler) http.Handler {
 }
 
 // Recoverer converts panics into a standard 500 error response.
-func Recoverer(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			if rec := recover(); rec != nil {
-				slog.Error("panic recovered",
-					"request_id", RequestIDFromContext(r.Context()),
-					"panic", fmt.Sprint(rec),
-				)
+// ⚠️ ELLE PREND LES MESURES EN PARAMÈTRE, ET C'EST UN CHANGEMENT VOULU. Une
+// panique écrite dans les journaux d'un conteneur a trois défauts : elle
+// disparaît à la rotation, personne ne la voit passer, et la même panique
+// répétée mille fois ressemble à mille problèmes. Comptée et capturée, elle
+// est groupée, datée, et elle DÉCLENCHE une alerte — `dira_panics_total` doit
+// rester à zéro, et toute valeur non nulle est un défaut à corriger.
+//
+// `m` peut être nul : le service se comporte alors comme avant.
+func Recoverer(m *obs.Metrics) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				rec := recover()
+				if rec == nil {
+					return
+				}
+				// ⚠️ LA PILE D'EXÉCUTION EST PRISE ICI, PAS PLUS LOIN. Une
+				// pile relevée après le retour de `recover` ne montre plus
+				// l'endroit où ça a cassé : elle montre le mécanisme de
+				// rattrapage.
+				stack := string(debug.Stack())
+				ctx := r.Context()
+				slog.ErrorContext(ctx, "panic recovered",
+					"panic", fmt.Sprint(rec), "stack", stack)
+				if m != nil {
+					m.PanicRecorded()
+					m.Capture(ctx, obs.Fault{
+						Kind: "panic", Message: fmt.Sprint(rec), Stack: stack,
+						Method: r.Method, Status: http.StatusInternalServerError,
+					})
+				}
 				httpx.Error(w, r, apperr.Internal(fmt.Errorf("panic: %v", rec)))
-			}
-		}()
-		next.ServeHTTP(w, r)
-	})
+			}()
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // Language detects the request language (Accept-Language) into the context.
@@ -161,6 +192,9 @@ func Auth(m *auth.Manager) func(http.Handler) http.Handler {
 				return
 			}
 			ctx := auth.WithClaims(r.Context(), claims)
+			// Le COMPTE, publié pour les journaux : « qui » est la deuxième
+			// question d'un incident, juste après « quoi ».
+			ctx = obs.WithField(ctx, obs.KeyUser, claims.UserID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

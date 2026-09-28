@@ -18,6 +18,7 @@ import (
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/i18n"
+	"github.com/kgtech-org/dira-core-api/pkg/obs"
 	"github.com/kgtech-org/dira-core-api/pkg/phone"
 )
 
@@ -47,6 +48,18 @@ func newValidator() *validator.Validate {
 }
 
 var translator *i18n.Translator
+
+// faults capture les pannes SERVEUR — voir `pkg/obs`.
+//
+// ⚠️ ICI ET NULLE PART AILLEURS, parce que TOUS les refus passent par
+// `Error`. Le poser à chaque appelant aurait été des centaines d'endroits,
+// dont ceux qu'on n'a pas encore écrits ; posé ici, un `5xx` ne peut pas
+// passer inaperçu.
+var faults obs.Faulter
+
+// SetFaultSink installe la capture des pannes serveur (câblage). Sans elle,
+// un `5xx` est seulement journalisé — le comportement d'avant.
+func SetFaultSink(f obs.Faulter) { faults = f }
 
 // SetTranslator installs the process-wide translator used to localize error
 // messages. Called once at startup; without it English fallbacks are used.
@@ -87,6 +100,17 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 	appErr := apperr.From(err)
 	if appErr.HTTPStatus >= 500 {
 		slog.ErrorContext(r.Context(), "request failed", "code", appErr.Code, "error", appErr.Error())
+		// ⚠️ SEULEMENT LES `5xx`. Un `404` n'est pas une panne, un `422` non
+		// plus : ce sont des refus attendus, déjà comptés par les mesures.
+		// Les capturer noierait la liste des vraies pannes sous le bruit
+		// normal d'une journée — et une liste de pannes qu'on n'ose plus
+		// ouvrir ne sert à rien.
+		if faults != nil {
+			faults.Capture(r.Context(), obs.Fault{
+				Kind: "http_5xx", Message: appErr.Code + ": " + appErr.Error(),
+				Method: r.Method, Status: appErr.HTTPStatus,
+			})
+		}
 	}
 	msg := appErr.Message
 	if translator != nil {
