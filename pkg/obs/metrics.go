@@ -17,6 +17,7 @@ package obs
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -35,6 +36,7 @@ type Metrics struct {
 	duration *prometheus.HistogramVec
 	inFlight prometheus.Gauge
 	panics   prometheus.Counter
+	noEdge   prometheus.Counter
 	// calls compte les appels SORTANTS vers les autres services : c'est ce
 	// qui dit lequel des six est en train de ralentir les autres.
 	calls    *prometheus.CounterVec
@@ -79,6 +81,13 @@ func NewMetrics(service, version string) *Metrics {
 			Help:        "Paniques rattrapées. ⚠️ Toute valeur non nulle est un défaut à corriger.",
 			ConstLabels: prometheus.Labels{"service": service},
 		}),
+		noEdge: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "dira_http_requests_without_edge_total",
+			Help: "Requêtes PUBLIQUES arrivées sans passer par la façade. " +
+				"⚠️ Toute valeur qui monte est du trafic qui contourne Cloudflare, " +
+				"donc du trafic dont on ne connaît pas l'adresse d'origine.",
+			ConstLabels: prometheus.Labels{"service": service},
+		}),
 		calls: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "dira_outbound_calls_total",
 			Help: "Appels sortants vers un autre service de la plateforme.",
@@ -89,7 +98,7 @@ func NewMetrics(service, version string) *Metrics {
 			Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 		}, []string{"service", "target", "operation"}),
 	}
-	reg.MustRegister(m.requests, m.duration, m.inFlight, m.panics, m.calls, m.callTime)
+	reg.MustRegister(m.requests, m.duration, m.inFlight, m.panics, m.noEdge, m.calls, m.callTime)
 	// Le processus lui-même : mémoire, goroutines, descripteurs, GC. C'est ce
 	// qui distingue « le service est lent » de « la machine est à genoux ».
 	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
@@ -119,6 +128,21 @@ func (m *Metrics) Handler() http.Handler {
 func (m *Metrics) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		// ⚠️ DU TRAFIC PUBLIC SANS FAÇADE, C'EST DU TRAFIC SANS ADRESSE. La
+		// cadence et les journaux se fient à `CF-Connecting-IP`, que la façade
+		// écrase ; une requête arrivée en direct sur l'adresse publique du
+		// serveur ne le porte pas, et son origine devient inconnaissable.
+		// Ce compteur mesure donc précisément le chemin qu'il reste à fermer
+		// dans le groupe de sécurité — et il doit tomber à zéro le jour où
+		// c'est fait.
+		//
+		// ⚠️ LES ROUTES INTERNES ET `/metrics` SONT EXCLUES : elles n'ont
+		// AUCUNE raison de passer par la façade, et les compter noierait le
+		// signal sous le trafic de la collecte, qui interroge toutes les
+		// quinze secondes.
+		if publicPath(r.URL.Path) && r.Header.Get("CF-Connecting-IP") == "" {
+			m.noEdge.Inc()
+		}
 		ww := chimw.NewWrapResponseWriter(w, r.ProtoMajor)
 		m.inFlight.Inc()
 		defer m.inFlight.Dec()
@@ -185,4 +209,9 @@ func (m *Metrics) Gauge(name, help string, labels prometheus.Labels, read func()
 	m.Registry.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: name, Help: help, ConstLabels: all,
 	}, read))
+}
+
+// publicPath dit si ce chemin est censé venir du dehors.
+func publicPath(path string) bool {
+	return path != "/metrics" && !strings.Contains(path, "/internal/")
 }

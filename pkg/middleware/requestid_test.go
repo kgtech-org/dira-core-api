@@ -68,3 +68,48 @@ func replay(t *testing.T, sent string) string {
 	// Et les journaux le voient : c'est `obs` qui le recopie dans chaque ligne.
 	return seen
 }
+
+// ⚠️ LE PREMIER ÉLÉMENT DE `X-Forwarded-For` EST ÉCRIT PAR LE CLIENT. C'est lui
+// qu'on lisait : en envoyant `X-Forwarded-For: 203.0.113.77`, la clé de cadence
+// devenait celle de cette adresse inventée, et en faisant tourner l'en-tête,
+// chaque requête obtenait son propre compartiment de 120 par minute — la limite
+// n'existait pas. Mesuré en direct sur la recette, dans Redis.
+func TestAForgedForwardedForNoLongerChoosesTheBucket(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPost, "/auth/login", nil)
+	r.RemoteAddr = "10.0.0.9:5555"
+	// Ce que le client a écrit, puis ce que NOS mandataires ont ajouté à droite.
+	r.Header.Set("X-Forwarded-For", "203.0.113.77, 41.207.10.4, 172.18.0.5")
+
+	got := ClientIP(r)
+	assert.NotEqual(t, "203.0.113.77", got, "l'adresse inventée par le client ne doit plus décider")
+	assert.Equal(t, "172.18.0.5", got, "le dernier élément : celui que nous avons ajouté")
+}
+
+// La façade écrase ce que le client aurait mis : c'est la seule source qu'il ne
+// choisit pas, et elle passe devant tout le reste.
+func TestTheEdgeHeaderWins(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/x", nil)
+	r.Header.Set("X-Forwarded-For", "203.0.113.77, 41.207.10.4")
+	r.Header.Set(HeaderCloudflareIP, "41.207.10.4")
+	assert.Equal(t, "41.207.10.4", ClientIP(r))
+}
+
+// Sans aucun en-tête — un appel direct sur le réseau interne —, l'adresse de la
+// connexion, sans son port.
+func TestWithoutHeadersWeUseTheConnection(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/x", nil)
+	r.RemoteAddr = "172.18.0.24:41022"
+	assert.Equal(t, "172.18.0.24", ClientIP(r))
+}
+
+// Un en-tête vide ou fait d'espaces ne doit pas rendre une chaîne vide : tout le
+// trafic anonyme partagerait alors la clé `ip:`, et un seul assaillant
+// verrouillerait la porte de tout le monde.
+func TestAnEmptyHeaderNeverYieldsAnEmptyKey(t *testing.T) {
+	for _, xff := range []string{"", "   ", ",", " , "} {
+		r := httptest.NewRequest(http.MethodGet, "/x", nil)
+		r.RemoteAddr = "10.1.2.3:7000"
+		r.Header.Set("X-Forwarded-For", xff)
+		assert.Equal(t, "10.1.2.3", ClientIP(r), "xff=%q", xff)
+	}
+}
