@@ -1,0 +1,63 @@
+# CE QUE LE CODE EMBARQUE SANS QU'ON L'AIT CHOISI.
+#
+# ⚠️ `govulncheck` NE COMPARE PAS DES NUMÉROS DE VERSION : il regarde si le code
+# APPELLE réellement la fonction vulnérable. C'est ce qui le rend utilisable —
+# un scanner de versions signale trente alertes dont vingt-huit ne concernent pas
+# le service, et au bout de deux semaines plus personne ne les lit.
+#
+# ⚠️ IL BLOQUE LA FUSION, ET C'EST ASSUMÉ. Le jour où une faille est publiée dans
+# une dépendance qu'on appelle vraiment, toutes les PR rougissent — c'est
+# désagréable, mais le remède est un `go get`, pas une dérogation. Une
+# vérification qui n'arrête rien n'arrête rien.
+#
+# ⚠️ ET IL TOURNE AUSSI LE LUNDI, SANS PR. Une faille n'attend pas qu'on modifie
+# le code : sans ce réveil hebdomadaire, un dépôt calme pendant deux mois reste
+# vulnérable deux mois sans que rien ne le dise. C'est exactement ce qui est
+# arrivé au service de suivi, resté trois versions mineures en arrière jusqu'à ce
+# qu'on pense à mesurer `go_info`.
+name: Sécurité
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Lundi, 6 h UTC — avant que la semaine commence.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  vulnerabilites:
+    name: Vulnérabilités atteignables
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache-dependency-path: ./go.sum
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
+  secrets:
+    name: Secrets dans l'historique
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # ⚠️ TOUT L'HISTORIQUE, PAS SEULEMENT LA POINTE. Un secret retiré au
+          # commit suivant reste dans l'historique pour toujours, et c'est là
+          # qu'on le cherche : le retirer du fichier ne le retire pas du dépôt.
+          fetch-depth: 0
+      # ⚠️ L'IMAGE, PAS L'ACTION OFFICIELLE : `gitleaks-action` exige une licence
+      # payante pour les dépôts d'ORGANISATION, et aurait échoué à chaque
+      # exécution sans que l'échec dise pourquoi. L'outil, lui, est libre.
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --source=/repo --no-banner --redact --verbose

@@ -1,0 +1,30 @@
+# CE QU'ON AUTORISE À RESSEMBLER À UN SECRET SANS EN ÊTRE UN.
+#
+# ⚠️ ON GARDE TOUTES LES RÈGLES PAR DÉFAUT. Une autorisation se donne à un
+# endroit précis, jamais en éteignant la détection : le jour où quelqu'un colle
+# une vraie clé, c'est cette détection-là qui doit crier.
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+Les collections `.rest/` sont des BLOCS-NOTES DE REQUÊTES : elles montrent la
+forme d'un corps d'appel, avec des valeurs d'exemple. Le résultat qui a déclenché
+cette autorisation est `"password": "nouveau-mdp-123"` dans
+`.rest/40-admin.rest` — la démonstration du champ `password` d'un
+`PATCH /admin/users/{id}`, pas un identifiant vers quoi que ce soit.
+
+⚠️ LES VRAIES VALEURS N'Y SONT PAS, et c'est ce qui rend cette autorisation
+acceptable : elles vivent dans `.rest/.env`, ignoré par git depuis le début
+(`.gitignore`, ligne 4). Seul `.rest/.env.example` est versionné, et il ne porte
+que des noms de variables.
+
+⚠️ LE RISQUE QUI RESTE, DIT FRANCHEMENT : un jeton réel collé dans un `.rest`
+pendant une séance de débogage ne serait plus signalé. Si cela devait arriver,
+c'est ici qu'il faudra resserrer — en n'autorisant que la règle
+`generic-api-key` sur ce dossier, et non toutes. On ne l'a pas fait tout de suite
+parce que la forme par règle de gitleaks demande de redéclarer les règles
+entières, ce qui fait perdre les mises à jour de la liste par défaut — un remède
+plus coûteux que le mal.
+"""
+paths = ['''^\.rest/''']
