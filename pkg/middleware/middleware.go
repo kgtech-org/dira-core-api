@@ -198,15 +198,54 @@ func clientKey(r *http.Request) string {
 	if userID, ok := auth.UserFromContext(r.Context()); ok {
 		return "user:" + userID
 	}
-	ip := r.Header.Get("X-Forwarded-For")
-	if ip != "" {
-		ip = strings.TrimSpace(strings.Split(ip, ",")[0])
-	} else if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		ip = host
-	} else {
-		ip = r.RemoteAddr
+	return "ip:" + ClientIP(r)
+}
+
+// HeaderCloudflareIP est l'adresse du client telle que la façade l'a vue.
+const HeaderCloudflareIP = "CF-Connecting-IP"
+
+// ClientIP rend l'adresse du client, en ne lisant QUE ce que le client ne peut
+// pas écrire.
+//
+// ⚠️ LE PREMIER ÉLÉMENT DE `X-Forwarded-For` EST ÉCRIT PAR LE CLIENT, et c'est
+// lui qu'on lisait. Conséquence mesurée sur la recette : en envoyant
+// `X-Forwarded-For: 203.0.113.77`, la clé de cadence devenait
+// `ratelimit:ip:203.0.113.77`. En faisant tourner l'en-tête à chaque requête,
+// chaque requête obtenait son propre compartiment de 120 par minute —
+// c'est-à-dire que la limite n'existait pas. Bourrage d'identifiants, force
+// brute sur les codes à usage unique et inondation des réinitialisations de mot
+// de passe, sans plafond, sur les routes qui sont précisément celles qu'on
+// voulait protéger.
+//
+// Deux sources, dans cet ordre, et aucune autre :
+//
+//  1. `CF-Connecting-IP`, posé par la façade, qui ÉCRASE ce que le client aurait
+//     mis. C'est la seule source qu'un client ne choisit pas.
+//     ⚠️ À CONDITION QUE L'ORIGINE N'ACCEPTE QUE LA FAÇADE. Tant que le serveur
+//     répond aussi sur son adresse publique, on peut la contourner et forger cet
+//     en-tête ; la mesure `dira_requests_without_edge_total` compte ce chemin
+//     précisément pour qu'on sache quand il est refermé.
+//  2. Sinon le DERNIER élément de `X-Forwarded-For`, jamais le premier. Nos
+//     mandataires AJOUTENT à droite (`$proxy_add_x_forwarded_for`) : un client
+//     peut préfixer la liste, il ne peut pas retirer ce que nous avons ajouté.
+//
+// ⚠️ Le repli met tout le trafic direct dans UN SEUL compartiment, et c'est
+// assumé : ce trafic-là n'a aucune raison d'exister une fois l'origine fermée.
+// Les gens qui passent par la façade, eux, gardent chacun le leur.
+func ClientIP(r *http.Request) string {
+	if ip := strings.TrimSpace(r.Header.Get(HeaderCloudflareIP)); ip != "" {
+		return ip
 	}
-	return "ip:" + ip
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		if last := strings.TrimSpace(parts[len(parts)-1]); last != "" {
+			return last
+		}
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
 }
 
 // SessionGuard dit si un appareil détient encore la session de ce compte.

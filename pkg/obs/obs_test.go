@@ -349,3 +349,40 @@ func call(t *testing.T, target, url string) {
 	require.NoError(t, err)
 	_ = resp.Body.Close()
 }
+
+// ⚠️ DU TRAFIC PUBLIC SANS FAÇADE, C'EST DU TRAFIC SANS ADRESSE. La cadence se
+// fie à `CF-Connecting-IP`, que la façade écrase ; une requête arrivée en direct
+// sur l'adresse publique du serveur ne le porte pas, et son origine devient
+// inconnaissable. Ce compteur mesure le chemin qu'il reste à fermer dans le
+// groupe de sécurité, et doit tomber à zéro le jour où c'est fait.
+func TestPublicTrafficWithoutTheEdgeIsCounted(t *testing.T) {
+	m := NewMetrics("core", "test")
+	serve(m, "/api/v1/auth/login", nil)
+	has(t, m, `dira_http_requests_without_edge_total{service="core"} 1`)
+
+	// Passée par la façade, elle n'est pas comptée.
+	serve(m, "/api/v1/auth/login", map[string]string{"CF-Connecting-IP": "41.207.10.4"})
+	has(t, m, `dira_http_requests_without_edge_total{service="core"} 1`)
+}
+
+// ⚠️ ET LA COLLECTE NE DOIT PAS NOYER LE SIGNAL. `/metrics` et les routes
+// internes n'ont aucune raison de passer par la façade ; les compter ferait
+// monter le chiffre de quatre par minute et par service, et plus personne ne
+// verrait le trafic qui contourne vraiment.
+func TestTheScraperAndInternalRoutesAreNotCounted(t *testing.T) {
+	m := NewMetrics("core", "test")
+	serve(m, "/metrics", nil)
+	serve(m, "/api/v1/internal/accounts/rows", nil)
+	hasNot(t, m, "dira_http_requests_without_edge_total{service=\"core\"} 1")
+}
+
+func serve(m *Metrics, path string, headers map[string]string) {
+	r := chi.NewRouter()
+	r.Use(m.Middleware)
+	r.Handle("/*", http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	r.ServeHTTP(httptest.NewRecorder(), req)
+}
