@@ -158,6 +158,13 @@ func Language(next http.Handler) http.Handler {
 
 // RateLimit limits requests per minute per user (when authenticated) or per
 // IP, using a fixed window counter in Redis. Fails open if Redis is down.
+// authenticatedFactor élargit la limite par ADRESSE pour une requête qui
+// présente un jeton — son vrai plafond est celui de son COMPTE.
+//
+// ⚠️ Dix fois, et non « sans limite » : une adresse reste un garde-fou contre
+// l'inondation, même avec des jetons inventés.
+const authenticatedFactor = 10
+
 func RateLimit(rdb *redis.Client, perMinute int) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -175,19 +182,27 @@ func RateLimit(rdb *redis.Client, perMinute int) func(http.Handler) http.Handler
 				next.ServeHTTP(w, r)
 				return
 			}
-			key := clientKey(r)
-			window := time.Now().UTC().Format("200601021504") // minute bucket
-			redisKey := "ratelimit:" + key + ":" + window
-
-			count, err := rdb.Incr(r.Context(), redisKey).Result()
-			if err == nil {
-				if count == 1 {
-					rdb.Expire(r.Context(), redisKey, time.Minute)
-				}
-				if count > int64(perMinute) {
-					httpx.Error(w, r, apperr.TooManyRequests("too many requests"))
-					return
-				}
+			// ⚠️ DEUX LIMITES PAR ADRESSE, ET PAS UNE. Une requête qui PRÉSENTE
+			// un jeton sera comptée une seconde fois par compte, juste après
+			// l'authentification (`RateLimitAccount`) : lui appliquer ici la
+			// limite serrée revenait à étrangler par ADRESSE des gens qui ont
+			// un compte — or chez un opérateur mobile, des milliers d'abonnés
+			// sortent par une poignée d'adresses publiques. 120 requêtes par
+			// minute pour tout un opérateur, c'est de vrais utilisateurs en
+			// 429, et un symptôme que personne ne sait expliquer.
+			//
+			// ⚠️ ET LE JETON N'EST PAS VÉRIFIÉ ICI — on ne peut pas, la cadence
+			// passe AVANT l'authentification. Présenter un jeton inventé ne
+			// donne donc que la limite LARGE, jamais l'absence de limite ; et
+			// la requête échouera de toute façon à l'authentification. C'est ce
+			// qui rend ce raccourci sans danger.
+			limit := perMinute
+			if r.Header.Get("Authorization") != "" {
+				limit = perMinute * authenticatedFactor
+			}
+			if refused(r, rdb, clientKey(r), limit) {
+				httpx.Error(w, r, apperr.TooManyRequests("too many requests"))
+				return
 			}
 			next.ServeHTTP(w, r)
 		})
@@ -451,4 +466,55 @@ func RequireScope(scope string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// RateLimitAccount compte par COMPTE, et se pose APRÈS l'authentification.
+//
+// ⚠️ C'EST LA MOITIÉ QUI MANQUAIT, ET ELLE MANQUAIT EN SILENCE. `clientKey`
+// contient depuis toujours une branche « si le compte est connu, compter par
+// compte » — inatteignable : la cadence est un middleware GLOBAL, posé avant
+// que l'authentification ait rempli le contexte. Le code disait donc une
+// intention que l'ordre des middlewares rendait impossible, et personne ne
+// pouvait le voir en lisant l'un ou l'autre.
+//
+// Conséquence : tout le monde était compté par ADRESSE. Chez un opérateur
+// mobile, où des milliers d'abonnés partagent une poignée d'adresses publiques,
+// cela plafonnait un opérateur entier.
+//
+// ⚠️ SANS COMPTE DANS LE CONTEXTE, ON NE COMPTE RIEN. Ce middleware ne se monte
+// qu'après `Auth` ; s'il s'y trouvait avant, il compterait tout sous une seule
+// clé — c'est-à-dire qu'il ferait pire que rien. Le silence est ici le bon
+// comportement : la limite par adresse, elle, a déjà fait son office.
+func RateLimitAccount(rdb *redis.Client, perMinute int) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID, ok := auth.UserFromContext(r.Context())
+			if !ok || userID == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if refused(r, rdb, "user:"+userID, perMinute) {
+				httpx.Error(w, r, apperr.TooManyRequests("too many requests"))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// refused incrémente le compartiment de la minute et dit s'il est dépassé.
+//
+// ⚠️ UNE PANNE DE REDIS NE REFUSE PERSONNE. Un compteur injoignable ne doit pas
+// fermer la plateforme : on laisse passer. C'est un choix — la cadence protège
+// contre l'abus, elle n'est pas la porte.
+func refused(r *http.Request, rdb *redis.Client, key string, perMinute int) bool {
+	redisKey := "ratelimit:" + key + ":" + time.Now().UTC().Format("200601021504")
+	count, err := rdb.Incr(r.Context(), redisKey).Result()
+	if err != nil {
+		return false
+	}
+	if count == 1 {
+		rdb.Expire(r.Context(), redisKey, time.Minute)
+	}
+	return count > int64(perMinute)
 }
