@@ -14,6 +14,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
+	"github.com/kgtech-org/dira-core-api/pkg/audit"
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
 	"github.com/kgtech-org/dira-core-api/pkg/country"
 	"github.com/kgtech-org/dira-core-api/pkg/phone"
@@ -32,6 +33,10 @@ type Repo interface {
 	DeleteUser(ctx context.Context, id primitive.ObjectID) error
 	InsertRefreshToken(ctx context.Context, t *RefreshToken) error
 	DeleteRefreshTokenByHash(ctx context.Context, tokenHash string) (bool, error)
+	// UN SEUL APPAREIL PAR CHAUFFEUR : la trace durable de la règle, et de
+	// quoi jeter les jetons de l'appareil chassé.
+	DeleteRefreshTokensOfUser(ctx context.Context, userID primitive.ObjectID) (int64, error)
+	SetDevice(ctx context.Context, userID primitive.ObjectID, d *Device) error
 
 	// Carnet d'adresses. Le client répétait jusqu'ici son adresse à chaque
 	// commande, avec ses indications de porte.
@@ -86,6 +91,13 @@ type Service struct {
 	// defaultCountry est le pays du déploiement, pour un compte qu'aucun
 	// signal — en-tête, indicatif — ne situe.
 	defaultCountry string
+	// UN SEUL APPAREIL PAR CHAUFFEUR — voir `device.go`. Les trois sont
+	// FACULTATIFS et doivent le rester : un registre de sessions injoignable,
+	// un module de notification absent ou un journal d'audit nul ne doivent
+	// jamais empêcher quelqu'un de se connecter.
+	sessions SessionRegistry
+	notifier Notifier
+	auditor  *audit.Recorder
 }
 
 // Entitlements est ce qu'une fiche de staff accorde à un compte `admin`.
@@ -202,11 +214,21 @@ func (s *Service) register(ctx context.Context, req RegisterRequest, role string
 		}
 	}
 
-	pair, err := s.issueTokens(ctx, u)
+	// L'inscription OUVRE une session, comme une connexion : un livreur qui
+	// vient de créer son compte est déjà connecté sur ce téléphone, et sans
+	// cette ligne sa toute première session serait la seule à n'être bornée à
+	// aucun appareil.
+	deviceID, _ := s.claimDevice(ctx, u, req.App, req.DeviceID, req.DeviceName)
+	pair, err := s.issueTokens(ctx, u, deviceID)
 	if err != nil {
 		return AuthResponse{}, err
 	}
-	return AuthResponse{User: newUserResponse(u), AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken}, nil
+	return AuthResponse{
+		User:         newUserResponse(u),
+		AccessToken:  pair.AccessToken,
+		RefreshToken: pair.RefreshToken,
+		Session:      sessionResponse(u, deviceID, false),
+	}, nil
 }
 
 // Login authenticates by phone + password, or email + password (back-office
@@ -255,11 +277,21 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 		return AuthResponse{}, err
 	}
 
-	pair, err := s.issueTokens(ctx, u)
+	// UN SEUL APPAREIL PAR CHAUFFEUR. La dernière connexion gagne : l'appareil
+	// précédent perd ses jetons de rafraîchissement, son jeton d'accès cesse
+	// d'être accepté — y compris par le suivi — et son socket de positions se
+	// ferme dans la seconde. Voir `device.go`.
+	deviceID, chased := s.claimDevice(ctx, u, req.App, req.DeviceID, req.DeviceName)
+	pair, err := s.issueTokens(ctx, u, deviceID)
 	if err != nil {
 		return AuthResponse{}, err
 	}
-	return AuthResponse{User: s.userResponse(ctx, u), AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken}, nil
+	return AuthResponse{
+		User:         s.userResponse(ctx, u),
+		AccessToken:  pair.AccessToken,
+		RefreshToken: pair.RefreshToken,
+		Session:      sessionResponse(u, deviceID, chased),
+	}, nil
 }
 
 // appRole dit quel RÔLE une application attend. `console` sert
@@ -314,6 +346,15 @@ func allowedIn(app, role string) error {
 // Refresh rotates a refresh token: the presented token is verified, its
 // stored hash deleted (single use) and a new pair issued. A token that was
 // already rotated, revoked or never issued is rejected.
+//
+// ⚠️ LE COMPTE EST LU AVANT QUE LE JETON NE SOIT CONSOMMÉ, et cet ordre a
+// changé exprès. Un appareil CHASSÉ arrive ici avec un jeton dont le hash a
+// déjà été effacé par la connexion qui l'a chassé : consommer d'abord répondait
+// donc `invalid_token` — « votre session a expiré, reconnectez-vous » — la
+// personne se reconnectait, chassait à son tour l'autre téléphone, et les deux
+// appareils se renvoyaient la balle indéfiniment sans que rien n'explique
+// pourquoi. En lisant le compte d'abord, l'ancien téléphone reçoit un refus
+// NOMMÉ, stable, tant qu'il n'a pas compris.
 func (s *Service) Refresh(ctx context.Context, refreshToken string) (TokenPairResponse, error) {
 	jwtPart, ok := splitRefreshToken(refreshToken)
 	if !ok {
@@ -321,14 +362,6 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (TokenPairRe
 	}
 	claims, err := s.tokens.Verify(jwtPart)
 	if err != nil || claims.Type != auth.TokenTypeRefresh {
-		return TokenPairResponse{}, auth.ErrInvalidToken
-	}
-
-	deleted, err := s.repo.DeleteRefreshTokenByHash(ctx, hashToken(refreshToken))
-	if err != nil {
-		return TokenPairResponse{}, apperr.Internal(err)
-	}
-	if !deleted {
 		return TokenPairResponse{}, auth.ErrInvalidToken
 	}
 
@@ -346,16 +379,56 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (TokenPairRe
 	if u.Status == StatusSuspended {
 		return TokenPairResponse{}, errAccountSuspended
 	}
+	// UN SEUL APPAREIL PAR CHAUFFEUR : la porte DURABLE de la règle, celle qui
+	// tient même quand le registre Redis a été vidé.
+	deviceID, err := s.deviceForRefresh(ctx, u, claims.Device)
+	if err != nil {
+		return TokenPairResponse{}, err
+	}
 
-	return s.issueTokens(ctx, u)
+	deleted, err := s.repo.DeleteRefreshTokenByHash(ctx, hashToken(refreshToken))
+	if err != nil {
+		return TokenPairResponse{}, apperr.Internal(err)
+	}
+	if !deleted {
+		return TokenPairResponse{}, auth.ErrInvalidToken
+	}
+
+	return s.issueTokens(ctx, u, deviceID)
 }
 
 // Logout invalidates the presented refresh token. Idempotent: logging out an
 // already-invalidated token succeeds.
+//
+// ⚠️ ELLE REND AUSSI LA SESSION D'UN CHAUFFEUR — mais seulement si le jeton
+// présenté est bien celui de l'appareil COURANT. Sans cette précaution, se
+// déconnecter proprement sur l'ancien téléphone effaçait l'appareil du nouveau,
+// qui se retrouvait sans session enregistrée : plus protégé du tout, et de
+// nouveau chassable par n'importe quoi.
 func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 	if _, err := s.repo.DeleteRefreshTokenByHash(ctx, hashToken(refreshToken)); err != nil {
 		return apperr.Internal(err)
 	}
+	jwtPart, ok := splitRefreshToken(refreshToken)
+	if !ok {
+		return nil
+	}
+	claims, err := s.tokens.Verify(jwtPart)
+	if err != nil || claims.Device == "" {
+		return nil
+	}
+	userID, err := primitive.ObjectIDFromHex(claims.UserID)
+	if err != nil {
+		return nil
+	}
+	u, err := s.repo.FindByID(ctx, userID)
+	if err != nil || u == nil {
+		// AU MIEUX : la déconnexion a fait l'essentiel — le jeton est jeté.
+		// Répondre en erreur laisserait l'application croire qu'elle est
+		// encore connectée.
+		return nil
+	}
+	s.releaseDevice(ctx, u, claims.Device)
 	return nil
 }
 
@@ -560,7 +633,16 @@ func (s *Service) findUser(ctx context.Context, userID string) (*User, error) {
 // user within the same second would be byte-identical (JWT iat has second
 // granularity), colliding on the unique token_hash index and defeating
 // single-use rotation.
-func (s *Service) issueTokens(ctx context.Context, u *User) (TokenPairResponse, error) {
+// `deviceID` est l'appareil auquel cette paire est liée — vide pour tout compte
+// qui a le droit d'être sur plusieurs appareils, c'est-à-dire tout le monde
+// sauf les chauffeurs et les livreurs.
+//
+// ⚠️ IL VIENT DE CE QUE CETTE CONNEXION A DÉCLARÉ, PAS DU COMPTE. Un chauffeur
+// dont l'application n'envoie pas encore son identifiant d'installation
+// obtiendrait sinon un jeton portant l'appareil d'une connexion PRÉCÉDENTE —
+// autrement dit un jeton qui se fait passer pour un téléphone qu'il n'est pas,
+// et qui serait accepté ou refusé selon l'humeur du registre.
+func (s *Service) issueTokens(ctx context.Context, u *User, deviceID string) (TokenPairResponse, error) {
 	// ⚠️ LA PORTÉE DU STAFF EST INSCRITE DANS LE JETON, à l'émission. Elle
 	// voyage avec lui parce que chaque verticale le vérifie LOCALEMENT :
 	// la faire lire au socle à chaque requête referait de lui le point de
@@ -578,7 +660,7 @@ func (s *Service) issueTokens(ctx context.Context, u *User) (TokenPairResponse, 
 	// ⚠️ LE PAYS DU COMPTE VOYAGE DE LA MÊME FAÇON, et pour la même raison :
 	// c'est lui qui borne ce que ce compte voit dans chaque service. Le droit
 	// d'en changer (`cty_any`) n'est accordé qu'à la direction.
-	grant := s.grantFor(ctx, u)
+	grant := s.grantFor(ctx, u, deviceID)
 	access, err := s.tokens.Issue(grant)
 	if err != nil {
 		return TokenPairResponse{}, apperr.Internal(err)
@@ -606,8 +688,8 @@ func (s *Service) issueTokens(ctx context.Context, u *User) (TokenPairResponse, 
 }
 
 // grantFor assemble ce que le jeton d'un compte accorde.
-func (s *Service) grantFor(ctx context.Context, u *User) auth.Grant {
-	g := auth.Grant{UserID: u.ID.Hex(), Role: u.Role, Country: u.Country}
+func (s *Service) grantFor(ctx context.Context, u *User, deviceID string) auth.Grant {
+	g := auth.Grant{UserID: u.ID.Hex(), Role: u.Role, Country: u.Country, Device: deviceID}
 	if u.Role != auth.RoleAdmin {
 		return g // la portée et le changement de pays sont des notions de STAFF
 	}

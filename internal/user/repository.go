@@ -160,6 +160,46 @@ func (r *Repository) DeleteRefreshTokenByHash(ctx context.Context, tokenHash str
 	return res.DeletedCount > 0, nil
 }
 
+// DeleteRefreshTokensOfUser jette TOUS les jetons de rafraîchissement d'un
+// compte — ce qu'une nouvelle connexion de chauffeur fait de l'appareil
+// précédent.
+//
+// ⚠️ SANS CETTE LIGNE, LA CHASSE NE DURE QUE QUINZE MINUTES. Le registre Redis
+// fait refuser le jeton d'ACCÈS de l'appareil chassé ; mais son jeton de
+// rafraîchissement, lui, valait trente jours — et le rafraîchissement aurait
+// émis un jeton d'accès portant le MÊME appareil, donc refusé, donc rafraîchi
+// de nouveau : l'ancien téléphone tournait en boucle sans jamais comprendre
+// qu'il devait se taire.
+//
+// Le hash est effacé, mais ce n'est pas lui qui NOMME le refus : c'est
+// l'appareil inscrit dans le jeton présenté, comparé au compte. Un hash absent
+// ne dit pas pourquoi il est absent.
+func (r *Repository) DeleteRefreshTokensOfUser(ctx context.Context, userID primitive.ObjectID) (int64, error) {
+	res, err := r.refreshTokens.DeleteMany(ctx, bson.M{"user_id": userID})
+	if err != nil {
+		return 0, fmt.Errorf("user: delete refresh tokens of user: %w", err)
+	}
+	return res.DeletedCount, nil
+}
+
+// SetDevice écrit l'appareil courant d'un compte, et lui seul.
+//
+// ⚠️ UN `$set` CIBLÉ, PAS `UpdateUser`. Ce dernier réécrit quinze champs — nom,
+// téléphone, empreinte du mot de passe — à partir de ce que le service a en
+// mémoire. L'appeler à chaque connexion aurait fait d'une connexion une
+// réécriture complète du compte : une modification de profil faite dans la même
+// seconde depuis la console y serait passée par la fenêtre.
+func (r *Repository) SetDevice(ctx context.Context, userID primitive.ObjectID, d *Device) error {
+	update := bson.M{"$set": bson.M{"device": d}}
+	if d == nil {
+		update = bson.M{"$unset": bson.M{"device": ""}}
+	}
+	if _, err := r.users.UpdateOne(ctx, bson.M{"_id": userID}, update); err != nil {
+		return fmt.Errorf("user: set device: %w", err)
+	}
+	return nil
+}
+
 // FindNamesByIDs resolves several display names in ONE query. Un commentaire
 // signé d'un identifiant hexadécimal ne se lit pas, et résoudre chaque auteur
 // séparément ferait une requête par ligne.

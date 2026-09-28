@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.34.0** · 28 septembre 2026
+> **Version 4.35.0** · 28 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -966,6 +966,13 @@ le parcours est une trace, pas une facture.
 > `mission_id` absent ou une position jamais poussée. Vérifier le socket avant
 > d'ouvrir un ticket.
 
+> ⚠️ **LE SOCKET SE FERME AUSSI EN 4409 `session_superseded` (v4.35.0)** — pas
+> seulement en 4401 à l'échéance du jeton. `4409` veut dire « ton compte vient
+> d'être ouvert sur un autre téléphone » : **ne te reconnecte pas**, déconnecte
+> l'application et affiche-le (§7). Traiter 4409 comme 4401 — rafraîchir puis
+> revenir — ouvre une boucle muette : la reconnexion est refusée **401** avec
+> `session_superseded` dans le corps, indéfiniment.
+
 ---
 
 
@@ -1224,6 +1231,15 @@ porte :
 tirée à l'envoi change à chaque nouvelle tentative, et l'idempotence ne sert
 plus à rien — c'est l'erreur qui fait les courses en triple.
 
+⚠️ **ET LA FILE SURVIT À UNE DÉCONNEXION — Y COMPRIS À CELLE QU'ON N'A PAS
+DEMANDÉE (v4.35.0).** Un chauffeur ne peut être connecté que sur un seul
+téléphone : se connecter ailleurs ferme cette session-ci, et l'application reçoit
+`401 session_superseded`. Une déconnexion efface d'ordinaire l'état local — ici
+ce serait effacer des courses réellement conduites, que le serveur n'a jamais
+vues. **La file ne se vide QUE sur un `applied`, un `duplicate` ou un refus
+définitif.** Tant que l'ancien jeton d'accès vit, `POST /rides/sync` répond
+encore ; au-delà, il faut se reconnecter sur ce téléphone pour la rendre — §7.
+
 ### 3. Rendre le récit — `POST /rides/sync`
 
 ```
@@ -1440,6 +1456,7 @@ les laisser recadrer en silence.
 | Envoi en cours | Un état visible, et jamais bloquant : on continue de conduire |
 | Élément refusé définitivement | Un message qui **nomme** la course et le motif |
 | Prix estimé | Le mot « **estimé** » à côté du montant, tant que le serveur ne l'a pas confirmé |
+| **Session chassée, file non vide** (v4.35.0) | « **3 courses ne sont pas encore envoyées** — reconnectez-vous sur cet appareil pour les transmettre. » ⚠️ Sur l'écran de déconnexion, pas dans un menu |
 
 ⚠️ **NE MONTREZ JAMAIS UNE FILE VIDE COMME UNE RÉUSSITE TANT QU'ELLE N'EST PAS
 PARTIE.** « Tout est synchronisé » alors que trois courses attendent est le
@@ -1806,6 +1823,218 @@ décrit au support.
 jour continue donc de fonctionner exactement comme avant — mais le mauvais
 compte y entre aussi comme avant. C'est la raison d'envoyer le champ dès
 cette version.
+
+### 📱 UN SEUL APPAREIL À LA FOIS — `device_id` (v4.35.0)
+
+**Un chauffeur ne peut être connecté que sur UN téléphone.** La dernière
+connexion gagne ; la précédente est fermée, immédiatement, et partout à la fois.
+
+⚠️ **POURQUOI — ET CE N'EST PAS UNE QUESTION DE SÉCURITÉ.** Deux téléphones
+connectés sur le même compte poussent **deux flux de positions pour une seule
+voiture**. Le vivier d'appel vous voit à deux endroits, l'appel part vers le
+téléphone resté à la maison, et la course meurt d'un « personne n'a répondu »
+que rien n'explique. Le passager, lui, regarde une carte où sa voiture saute
+d'un quartier à l'autre.
+
+#### Ce que l'application envoie
+
+```
+POST /auth/login   { phone | email, password, app: "driver",
+                     device_id: "9f3c1b7e-…",
+                     device_name: "Tecno Spark 10 · Android 13" }
+```
+
+Les deux champs valent aussi pour `POST /auth/register` : une inscription ouvre
+une session comme une connexion, et sans eux la toute première session d'un
+chauffeur serait la seule à n'être bornée à aucun appareil — trente jours durant.
+
+| Champ | Ce qu'il porte |
+|---|---|
+| `device_id` | l'**identifiant d'installation** : une chaîne opaque, tirée **une seule fois**, 128 caractères au plus. Un UUID convient. |
+| `device_name` | le **libellé lisible** — marque, modèle, version du système. 120 caractères au plus ; au-delà il est **tronqué, jamais refusé**. |
+
+⚠️ **LE SERVEUR NE PEUT PAS LE DEVINER.** Ni l'adresse IP (vous en changez dix
+fois par jour), ni le modèle du téléphone (toute la ville roule sur le même),
+ni le jeton FCM (il change tout seul à la réinstallation des services Google)
+ne désignent une **installation**. Sans ce champ, deux de vos téléphones sont
+indiscernables, et la règle ne s'applique pas.
+
+⚠️ **OÙ LE RANGER : À CÔTÉ DU JETON DE RAFRAÎCHISSEMENT, ET POUR AUSSI
+LONGTEMPS QUE LUI.** Keystore / Keychain, le même endroit, écrit une fois et
+relu ensuite. Un identifiant tiré à chaque lancement, ou rangé dans un cache
+que le système a le droit de vider, fait que **l'application se chasse
+elle-même à chaque ouverture** : « vous avez été déconnecté » en boucle, sur un
+seul téléphone, et personne ne comprend d'où cela vient.
+
+⚠️ **SI LA LECTURE ÉCHOUE, N'EN TIREZ PAS UN NEUF : N'ENVOYEZ PAS LE CHAMP.**
+Sans `device_id`, le serveur ne touche à rien — ni chasse, ni protection.
+C'est moins bien, et c'est réparable à la connexion suivante ; un identifiant
+neuf à chaque échec de lecture, lui, déconnecte un chauffeur en train de
+travailler.
+
+`device_name` sert **à une seule chose, et elle décide de tout le reste** : que
+l'écran puisse dire « vous vous êtes connecté sur **Itel A70** » au lieu de
+« erreur de connexion ».
+
+#### Ce que la connexion répond
+
+```jsonc
+{ "user": { … }, "access_token": "…", "refresh_token": "…",
+  "session": {
+    "device_id": "9f3c1b7e-…",
+    "device_name": "Itel A70",
+    "single_device": true,
+    "superseded_device_id": "4a11d0…",          // seulement si on vient de chasser
+    "superseded_device_name": "Tecno Spark 10"  // seulement si on vient de chasser
+  } }
+```
+
+- **`single_device: true` annonce la règle.** Affichez l'avertissement à partir
+  de ce drapeau plutôt que de coder en dur « je suis l'application chauffeur » :
+  le jour où la règle change de public, l'application suit sans être republiée.
+- **`superseded_device_*` ne sont là que si CETTE connexion vient de chasser un
+  autre appareil.** Montrez-le : « Votre session sur **Tecno Spark 10** a été
+  fermée. » ⚠️ C'est la **seule** occasion de prévenir quelqu'un dont le compte
+  servait ailleurs — l'autre téléphone est peut-être éteint, et ne l'apprendra
+  pas avant trois jours.
+- L'objet `session` est **absent** quand vous n'avez pas envoyé `device_id`, et
+  absent pour tout compte qui a le droit d'être sur plusieurs appareils.
+- Se reconnecter sur le **même** appareil ne chasse personne : `superseded_*`
+  reste absent. N'affichez rien dans ce cas — un « votre session sur X a été
+  fermée » à chaque ouverture, sur un seul téléphone, est exactement le genre
+  de message qui fait désinstaller une application.
+
+#### Ce que reçoit le téléphone chassé — et ce que l'écran doit DIRE
+
+Trois portes se ferment, et chacune a son refus **nommé** :
+
+| Où | Ce qui arrive |
+|---|---|
+| `POST /auth/refresh` | `401` · `error.code: "session_superseded"` · **`error.reason` = le libellé de l'appareil qui a pris la place** |
+| N'importe quel appel authentifié, tant que l'ancien jeton d'accès vit (15 min au plus) | `401` · même `code`, même `reason` |
+| Le socket du suivi `wss://…/track/agent` | fermeture **4409 `session_superseded`** ; une reconnexion est refusée en **401**, avec `session_superseded` dans le corps |
+
+⚠️ **`reason`, ET RIEN D'AUTRE.** L'enveloppe d'erreur du socle ne rend que
+`code`, `message`, `fields` et `reason` — il n'y a pas de `meta` sur le fil.
+C'est `reason` qui porte le nom de l'appareil. Il peut être **absent** si
+l'autre application n'a pas envoyé de `device_name` : prévoyez la phrase sans
+nom (« sur un autre appareil »).
+
+⚠️ **N'ENCHAÎNEZ PAS UNE RECONNEXION AUTOMATIQUE.** Elle chasserait à son tour
+l'autre téléphone, qui chasserait celui-ci : les deux appareils se renvoient la
+balle indéfiniment, le chauffeur voit deux applications qui clignotent, et
+aucune ne travaille. Sur `session_superseded`, on **s'arrête**.
+
+⚠️ **NE RAFRAÎCHISSEZ PAS NON PLUS.** Un `401` déclenche d'ordinaire un
+rafraîchissement puis un rejeu — ici le rafraîchissement répond le **même**
+code, et la boucle tourne jusqu'à épuisement de la batterie. **Testez
+`error.code` avant de rafraîchir** : c'est le seul changement à faire dans
+l'intercepteur.
+
+⚠️ **ET NE TRAITEZ PAS 4409 COMME 4401.** `4401 token_expired` veut dire
+« rafraîchis et reviens » ; `4409 session_superseded` veut dire « ne reviens
+pas ». Les confondre produit la même boucle muette, socket cette fois.
+
+**Ce que l'écran doit dire**, mot pour mot ou presque :
+
+> **Vous avez été déconnecté**
+>
+> Votre compte vient d'être ouvert sur **Itel A70**. Un chauffeur ne peut être
+> connecté que sur un seul appareil à la fois.
+>
+> `[ Se reconnecter sur ce téléphone ]`   `[ Ce n'est pas moi → changer mon mot de passe ]`
+
+⚠️ **JAMAIS « erreur de connexion », JAMAIS « session expirée ».** Le mot de
+passe est bon, le réseau va bien, l'application n'est pas cassée — et une
+personne à qui l'on dit « erreur » réinstalle l'application ou appelle le
+support, ce qui ne change rien à sa situation.
+
+**Le compte est aussi prévenu par une notification** (catégorie `security`, non
+coupable) : « Votre compte vient d'être ouvert sur *Itel A70*. L'appareil
+précédent a été déconnecté. Si ce n'est pas vous, changez votre mot de passe. »
+⚠️ Elle est adressée au **compte**, donc elle arrive **aussi sur le nouveau
+téléphone** — c'est voulu, et c'est pourquoi elle est rédigée comme une annonce
+et non comme un reproche. Ne la transformez pas en écran d'erreur sur
+l'appareil qui vient de se connecter.
+
+#### ⚠️ VOTRE FILE HORS LIGNE N'EST JAMAIS PERDUE — mais elle ne part pas toute seule
+
+C'est le point qui coûte de l'argent, alors il est écrit en toutes lettres.
+
+1. **NE VIDEZ JAMAIS LA FILE LOCALE sur un `session_superseded`.** Une
+   déconnexion efface d'ordinaire l'état local ; ici ce serait effacer des
+   courses **réellement conduites**, que le serveur n'a jamais vues. La file
+   survit à la déconnexion, au redémarrage, et à la perte des jetons — comme
+   elle survit déjà à la fermeture de l'application.
+2. **Tant que l'ancien jeton d'accès vit** — quinze minutes au plus —
+   `POST /rides/sync` **répond encore**. C'est la **seule** route qu'un appareil
+   chassé atteint encore : raconter le passé ne crée aucun second flux de
+   positions, alors que prendre une course, se mettre en ligne ou pousser une
+   position, si. Videz la file tout de suite si vous avez du réseau.
+3. **Au-delà, il faut se reconnecter SUR CE TÉLÉPHONE** pour la vider. Le faire
+   redonne la session à cet appareil — et chasse l'autre, c'est la même règle
+   dans l'autre sens. Aucune course n'est comptée deux fois : `POST /rides/sync`
+   est idempotent par `client_ref`, et ce qui était déjà passé revient en
+   `duplicate`.
+4. **Montrez la file sur l'écran de déconnexion**, pas seulement dans un menu :
+   « **3 courses ne sont pas encore envoyées** — reconnectez-vous sur cet
+   appareil pour les transmettre. » ⚠️ Un chauffeur qui ne sait pas qu'il lui
+   reste des courses à rendre range l'ancien téléphone dans un tiroir, et
+   l'apprend par une paie qui ne tombe pas.
+
+#### ⚠️ Chassé EN PLEINE COURSE
+
+Cela arrive : une connexion malheureuse sur un vieux téléphone, à deux heures du
+matin, avec un passager à bord.
+
+- **La course n'est ni annulée ni perdue.** Elle appartient au COMPTE, pas à
+  l'appareil : `GET /rides?limit=5` la rend sur le nouveau téléphone, à l'état
+  exact où elle en était, et elle s'y termine normalement — `arrived`,
+  `in_transit`, `completed` comme d'habitude.
+- **Mais plus personne n'émet de position** tant que le chauffeur n'a pas repris
+  la main quelque part. Au bout de **deux minutes**, l'exploitation voit
+  « course hors radar » avec son nom et son numéro ; au bout de **cinq**, le
+  serveur le met hors ligne (`offline_reason: "stale"`). Rien n'est annulé —
+  mais le passager ne voit plus rien avancer et finit par appeler.
+- **En reprenant la main, poussez le trou de parcours** avec `backfill: true` et
+  les `ts` d'origine. ⚠️ Sans cela la course se termine avec un parcours amputé :
+  c'est `actual_distance_m` qui s'en trouve raccourci, et le dépassement de
+  kilomètres d'une location avec.
+- ⚠️ **LA PLATEFORME NE REFUSE JAMAIS LA CONNEXION PARCE QU'UNE COURSE EST EN
+  COURS**, et c'est un choix. Un chauffeur dont le téléphone tombe en panne au
+  milieu d'une course doit pouvoir reprendre sur un autre appareil à l'instant
+  même : c'est précisément là qu'un « vous êtes déjà connecté ailleurs » serait
+  le pire refus possible. La contrepartie est celle décrite ci-dessus, et elle
+  se répare en se reconnectant.
+
+#### ⚠️ RÉINSTALLER L'APPLICATION N'EST PAS UN SECOND TÉLÉPHONE
+
+Une réinstallation efface le stockage sécurisé : le jeton de rafraîchissement
+**et** l'identifiant d'installation partent ensemble. La personne se reconnecte,
+un nouveau `device_id` est tiré, et il **chasse** l'ancien — qui n'existe plus.
+Aucune conséquence : il n'y a personne à déconnecter, et rien ne s'affiche.
+
+- **Envoyez le même `device_name`.** C'est ce qui permet au support de
+  distinguer « même modèle, nouvelle installation » de « quelqu'un d'autre a mon
+  compte » : le serveur garde l'appareil précédent à côté du nouveau.
+- ⚠️ **Ne tirez PAS un identifiant neuf** à la mise à jour de l'application, au
+  changement de jeton FCM, au redémarrage du téléphone, ni à la rotation des
+  jetons. Seule une réinstallation — ou un effacement des données — a le droit
+  de le changer.
+
+#### Ce qui NE change pas
+
+- **Un compte de DIRECTION entre partout et n'est jamais borné à un appareil.**
+  L'exploitation ouvre votre application pour reproduire ce qu'on lui décrit ;
+  la borner à un téléphone rendrait le support aveugle.
+- **`device_id` omis ne vérifie rien.** Une version pas encore mise à jour
+  continue de fonctionner exactement comme avant — mais le second téléphone y
+  entre aussi comme avant. ⚠️ **La règle ne mord que lorsque TOUTES les versions
+  en circulation envoient le champ** : tant qu'une seule ne l'envoie pas, deux
+  sessions cohabitent. C'est la raison de l'envoyer dès cette version.
+- **Rien n'est demandé au chauffeur.** Il n'y a pas d'écran « appareils
+  connectés », pas de déconnexion à distance à déclencher, pas de confirmation :
+  se connecter suffit, et c'est tout le mécanisme.
 
 
 ### Le compte — la photo, le nom d'affichage, le prénom et le nom (v4.8.1)

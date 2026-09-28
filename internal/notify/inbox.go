@@ -32,6 +32,15 @@ const (
 	// soi-même ouverte, et l'objet oublié qu'un chauffeur doit chercher.
 	// Pas coupable non plus : on a posé la question, on reçoit la réponse.
 	CategorySupport = "support"
+	// CategorySecurity range ce qui arrive AU COMPTE lui-même : une session
+	// ouverte sur un autre appareil.
+	//
+	// ⚠️ PAS COUPABLE, et c'est la raison de la catégorie. Rangée dans les
+	// mises à jour de commande, elle aurait disparu avec elles — et un
+	// chauffeur dont quelqu'un d'autre utilise le compte l'aurait appris en
+	// constatant qu'il ne reçoit plus d'appels. C'est la seule notification
+	// qu'on n'a pas le droit de laisser couper.
+	CategorySecurity = "security"
 )
 
 // categoryOf range une clé de message dans sa catégorie.
@@ -56,6 +65,8 @@ func categoryOf(key string) string {
 		return CategorySupport
 	case KeyLostItemReported, KeyLostItemFound, KeyLostItemNotFound, KeyTicketReply, KeyTicketResolved:
 		return CategorySupport
+	case KeySessionSuperseded:
+		return CategorySecurity
 	case KeyMerchantNewOrder:
 		// Rangée avec les mises à jour de commande : c'est ce que c'est pour
 		// le marchand, et lui donner une catégorie à part lui offrirait un
@@ -68,7 +79,12 @@ func categoryOf(key string) string {
 
 // Muteable dit si une catégorie peut être coupée par son destinataire.
 func Muteable(category string) bool {
-	return category != CategoryDriverCall && category != CategoryAlerts && category != CategoryStaff && category != CategorySupport
+	switch category {
+	case CategoryDriverCall, CategoryAlerts, CategoryStaff, CategorySupport, CategorySecurity:
+		return false
+	default:
+		return true
+	}
 }
 
 // Inbox is one notification, kept so the user can read it again.

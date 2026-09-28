@@ -60,6 +60,50 @@ type User struct {
 	Status       string    `bson:"status"` // "active" | "suspended"
 	CreatedAt    time.Time `bson:"created_at"`
 	UpdatedAt    time.Time `bson:"updated_at"`
+	// Device est L'APPAREIL COURANT, et il ne concerne QUE les chauffeurs et
+	// les livreurs : eux seuls ne peuvent tenir qu'une session à la fois.
+	// Absent pour les clients, les marchands et le staff — un client a le
+	// droit d'être sur sa tablette et son téléphone.
+	//
+	// ⚠️ SUR LE COMPTE, ET NON DANS UNE COLLECTION À PART. Le document est
+	// déjà lu à la connexion et à chaque rafraîchissement : y ranger
+	// l'appareil ne coûte aucune requête de plus. Une collection dédiée
+	// aurait demandé un index unique, une borne de pays, une exemption
+	// nommée dans le test de frontière — pour trois champs qui n'existent
+	// jamais sans leur compte.
+	Device *Device `bson:"device,omitempty"`
+}
+
+// Device est l'appareil qui détient la session d'un chauffeur ou d'un livreur.
+//
+// ⚠️ C'EST LA TRACE DURABLE DE LA RÈGLE. Le registre Redis fait appliquer le
+// refus dans les six services, mais Redis n'est pas durable : un redémarrage
+// et il ne sait plus rien. Ce document-ci, lui, survit — c'est donc lui qui
+// refuse le RAFRAÎCHISSEMENT d'un appareil chassé, et c'est ce qui borne la
+// dérive à la durée d'un jeton d'accès quand le registre a été perdu.
+type Device struct {
+	// ID est l'identifiant d'INSTALLATION tiré par l'application et conservé
+	// à côté de son jeton de rafraîchissement. Opaque : nous ne le
+	// fabriquons pas et ne le déchiffrons pas.
+	ID string `bson:"id"`
+	// Name est le libellé LISIBLE — « Tecno Spark 10 · Android 13 ». Il sert
+	// à dire à la personne OÙ sa session est ouverte, et au support à
+	// distinguer « un second téléphone » d'« une réinstallation ».
+	Name string `bson:"name,omitempty"`
+	// App est l'application qui s'est connectée (`driver`). Conservée pour le
+	// support : deux métiers partagent ce mot, et la fiche du compte dit
+	// lequel.
+	App string `bson:"app,omitempty"`
+	// Since est le moment où CET appareil a pris la session.
+	Since time.Time `bson:"since"`
+	// PreviousID et PreviousName sont l'appareil CHASSÉ par celui-ci, gardés
+	// pour une seule question, la plus posée au support : « est-ce que
+	// quelqu'un d'autre utilise mon compte ? ». Un même libellé avec un
+	// identifiant différent, c'est une réinstallation ; deux libellés
+	// différents, c'est un second téléphone.
+	PreviousID   string     `bson:"previous_id,omitempty"`
+	PreviousName string     `bson:"previous_name,omitempty"`
+	SupersededAt *time.Time `bson:"superseded_at,omitempty"`
 }
 
 // RefreshToken stores the sha256 hash of an issued refresh token. Rotation

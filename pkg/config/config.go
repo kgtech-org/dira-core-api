@@ -28,16 +28,33 @@ import (
 //	    DeliveryFeeBaseXOF int
 //	}
 type Base struct {
-	Port          string
-	Env           string // dev | staging | prod
-	MongoURI      string
-	MongoDB       string
-	RedisURI      string
-	JWTSecret     string
-	JWTAccessTTL  time.Duration
-	JWTRefreshTTL time.Duration
-	LocalesPath   string
-	RateLimitRPM  int // requêtes par minute, par IP ou par compte
+	Port     string
+	Env      string // dev | staging | prod
+	MongoURI string
+	MongoDB  string
+	RedisURI string
+	// SessionsRedisDB est la BASE REDIS du registre des appareils : quel
+	// téléphone détient la session d'un chauffeur. Voir `pkg/session`.
+	//
+	// ⚠️ UNE BASE À PART, PARTAGÉE — comme le fil des faits (base 7). Chaque
+	// service a sa propre base Redis (socle 3, suivi 1, livraison 2,
+	// courses 4) pour que l'un n'efface pas les clés de l'autre ; mais ce
+	// registre-ci doit être lu par le SUIVI, qui ne dépend d'aucun autre
+	// service et ne peut donc pas le demander au socle. Une base commune est
+	// ce qui leur permet de partager un fait sans partager du code.
+	//
+	// ⚠️ L'HÔTE EST CELUI DE `RedisURI`, jamais réglé séparément : chaque
+	// service COPIE les options qu'il a déjà analysées et n'en change que
+	// l'index. Deux variables d'hôte à tenir en accord dans deux dépôts
+	// différents, c'est la garantie qu'elles finiront par désigner deux
+	// serveurs — et la chasse cesserait alors silencieusement de valoir pour
+	// le suivi, sans que rien ne le dise.
+	SessionsRedisDB int
+	JWTSecret       string
+	JWTAccessTTL    time.Duration
+	JWTRefreshTTL   time.Duration
+	LocalesPath     string
+	RateLimitRPM    int // requêtes par minute, par IP ou par compte
 	// CountryDefault est le pays du DÉPLOIEMENT (ISO 3166-1 alpha-2) : celui
 	// d'une requête que ni jeton ni en-tête ne situe. Chaque service le
 	// porte parce que chaque service borne ses listes par pays — voir
@@ -93,6 +110,9 @@ func LoadBase(defaultDB, defaultBucket string) (Base, error) {
 		return b, err
 	}
 	if b.RateLimitRPM, err = Int("RATE_LIMIT_RPM", 120); err != nil {
+		return b, err
+	}
+	if b.SessionsRedisDB, err = Int("SESSIONS_REDIS_DB", 8); err != nil {
 		return b, err
 	}
 	return b, nil
