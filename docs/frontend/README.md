@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.33.0** · 26 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.34.0** · 28 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -276,6 +276,38 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.34.0 — 28 septembre 2026
+
+🧵 **LE FIL D'UNE REQUÊTE — `X-Request-ID`.** Un geste dans une application
+traverse jusqu'à quatre services ; jusqu'ici, l'identifiant qu'un service posait
+sur une requête **mourait à la première frontière** : le suivi, le socle et les
+cartes en tiraient chacun un neuf, et les quatre moitiés de la même histoire ne
+se retrouvaient jamais. Le même voyage maintenant de bout en bout.
+
+Ce que cela change pour une application — écrit dans les cinq documents,
+section *Le fil d'une requête* :
+
+- **Chaque réponse porte un `X-Request-ID`**, y compris un refus, y compris un
+  `500`. Lisez-le, gardez-le avec l'erreur que vous enregistrez, citez-le dans
+  un ticket : il mène à ce qui s'est passé dans les quatre journaux d'un coup.
+  Un `5xx` est d'ailleurs rangé côté serveur **avec ce fil dedans**.
+- **Vous pouvez envoyer le vôtre**, il est repris tel quel. ⚠️ **C'est le seul
+  moyen de retrouver un appel dont la réponse n'est jamais arrivée** — délai
+  dépassé, tunnel, réseau coupé entre la question et la réponse : il n'y a rien
+  à lire, et ce sont exactement ceux-là qu'on cherche. Son absence de nos
+  journaux répond aussi : la requête ne nous a jamais atteints.
+- **64 caractères au plus**, dans `a-z A-Z 0-9 - _ .` ⚠️ Hors de ces règles il
+  est **refusé, pas tronqué** (tronqué, deux fils différents se confondraient) —
+  on tire le nôtre, et la réponse dit lequel a été retenu.
+- ⚠️ **Jamais de donnée personnelle dedans** : ce mot est recopié dans les
+  journaux de six services, et une base de journaux ne se purge pas comme un
+  compte se supprime.
+- ⚠️ **Un par requête** — le même partout regrouperait tout et n'identifierait
+  rien. Sur une **reprise du même appel**, en revanche, le garder est utile.
+- ⚠️ **Ce n'est pas une référence métier** : le fil nomme un APPEL, pas une
+  course ni une commande. Le confondre avec `client_ref` ferait refuser des
+  courses bien réelles.
 
 ### 4.33.0 — 26 septembre 2026
 

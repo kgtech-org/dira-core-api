@@ -31,13 +31,13 @@ type requestIDKey struct{}
 // through the context and the response header.
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get("X-Request-ID")
+		id := usableRequestID(r.Header.Get(obs.HeaderRequestID))
 		if id == "" {
 			buf := make([]byte, 8)
 			_, _ = rand.Read(buf)
 			id = hex.EncodeToString(buf)
 		}
-		w.Header().Set("X-Request-ID", id)
+		w.Header().Set(obs.HeaderRequestID, id)
 		ctx := context.WithValue(r.Context(), requestIDKey{}, id)
 		// ⚠️ QUI POSE UNE VALEUR LA PUBLIE POUR LES JOURNAUX. Sans cette
 		// ligne, il faudrait ajouter « et aussi l'identifiant de requête » à
@@ -47,6 +47,38 @@ func RequestID(next http.Handler) http.Handler {
 		ctx = obs.WithField(ctx, obs.KeyRequest, id)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// maxRequestIDLen borne ce qu'un client peut nous faire écrire.
+const maxRequestIDLen = 64
+
+// usableRequestID ne garde l'identifiant fourni par l'appelant que s'il est
+// court et inoffensif ; sinon on tire le nôtre.
+//
+// ⚠️ CE QUI ARRIVE DU CLIENT REPART DANS L'EN-TÊTE ET DANS CHAQUE LIGNE DE
+// JOURNAL DE SIX SERVICES. Non borné, il suffit d'une application qui envoie
+// dix kilo-octets à chaque appel pour remplir la base de journaux ; et un
+// identifiant qui porterait un numéro de téléphone le recopierait dans des
+// journaux que personne ne songe à purger.
+//
+// ⚠️ ON REFUSE, ON NE TRONQUE PAS. Tronqué, un identifiant de trente
+// caractères en devient un de soixante-quatre — et deux fils différents
+// finiraient par se confondre au moment précis où on les cherche.
+// L'application n'est pas laissée sans rien pour autant : la réponse porte
+// TOUJOURS l'identifiant retenu, le nôtre le cas échéant.
+func usableRequestID(id string) string {
+	if id == "" || len(id) > maxRequestIDLen {
+		return ""
+	}
+	for _, c := range id {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9',
+			c == '-', c == '_', c == '.':
+		default:
+			return ""
+		}
+	}
+	return id
 }
 
 // RequestIDFromContext returns the request id, or "" when absent.

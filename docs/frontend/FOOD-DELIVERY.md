@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.33.0** · 26 septembre 2026
+> **Version 4.34.0** · 28 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -57,6 +57,7 @@ Ce parcours parle à **quatre serveurs** depuis la v2.0.0 — le socle et la liv
 | Coordonnées | `[lng, lat]`, dans cet ordre, partout |
 | Langue | `Accept-Language: fr` ou `en` — les messages d'erreur et les notifications suivent |
 | Pays | `X-Dira-Country: TG` — sur chaque requête ; la réponse porte le pays **retenu** (voir la section *Le pays*) |
+| Fil | `X-Request-ID` — **sur chaque réponse** ; à l'aller, facultatif mais recommandé (voir la section *Le fil d'une requête*) |
 
 **Traitez le `code`, pas le message.** Le message est traduit et peut changer ;
 le code est le contrat.
@@ -71,6 +72,67 @@ ignorée**, son nom est dans `fields` ; c'est un bug de l'application) ou
 **`401`** = jeton expiré ou invalide : `POST /auth/refresh`, puis rejouer la
 requête ; si le refresh échoue, revenir à la connexion. **`403`** = ce rôle,
 ou cette personne, n'a pas accès — ne pas réessayer.
+
+---
+
+## 🧵 LE FIL D'UNE REQUÊTE — `X-Request-ID` (v4.34.0)
+
+**Chaque réponse porte un `X-Request-ID`.** C'est le nom sous lequel cette
+requête est écrite dans nos journaux, et le même voyage **jusqu'au bout de la
+chaîne** : un geste dans l'application traverse jusqu'à quatre services — le
+métier, le socle (identité, portefeuille), le suivi (l'appel des chauffeurs) et
+les cartes (l'itinéraire). Quatre journaux, un seul identifiant.
+
+**Le minimum : lisez cet en-tête et gardez-le avec l'erreur que vous
+enregistrez.** Un ticket qui cite le fil se lit en trente secondes. Sans lui, il
+faut recouper quatre journaux à l'horodatage — ce qui marche jusqu'au jour où
+deux personnes font le même geste la même seconde.
+
+**Il est sur TOUTES les réponses, y compris un refus et y compris un `500`** —
+précisément celles dont on parle. Un `5xx` est d'ailleurs rangé côté serveur
+**avec ce fil dedans** : citez-le, et le défaut est retrouvé sans chercher.
+
+**Mieux : envoyez le vôtre.** L'en-tête est accepté **à l'aller** aussi, et
+repris tel quel.
+
+⚠️ **C'EST LE SEUL MOYEN DE RETROUVER UN APPEL DONT LA RÉPONSE N'EST JAMAIS
+ARRIVÉE.** Délai dépassé, tunnel, réseau qui tombe entre la question et la
+réponse : il n'y a **rien à lire**, et ce sont exactement les appels qu'on
+cherche à comprendre. L'identifiant que l'application a émis, lui, est dans nos
+journaux — et s'il n'y est pas, cela répond aussi : la requête ne nous a jamais
+atteints, le problème est en amont de nous.
+
+⚠️ Un build qui tourne **dans un navigateur** ne peut lire un en-tête de réponse
+que si la façade l'expose : une raison de plus d'envoyer le vôtre, qui marche
+partout.
+
+**La forme** : **64 caractères au plus**, pris dans `a-z A-Z 0-9 - _ .`
+
+⚠️ **Hors de ces règles, l'identifiant est REFUSÉ — pas tronqué.** On tire le
+nôtre, et la réponse dit lequel a été retenu : l'application n'est jamais
+laissée sans fil. Tronquer aurait fait se confondre deux fils différents au
+moment précis où on les cherche.
+
+⚠️ **JAMAIS DE DONNÉE PERSONNELLE DEDANS.** Ni numéro de téléphone, ni nom, ni
+jeton, ni identifiant de compte : ce mot est recopié dans les journaux de six
+services, et une base de journaux ne se purge pas comme un compte se supprime.
+Un identifiant d'installation plus un compteur suffit : `a1f9c2-1874`.
+
+⚠️ **UN PAR REQUÊTE.** Le même sur tous les appels d'un écran regrouperait tout
+et n'identifierait rien. Sur une **reprise du même appel**, en revanche, garder
+le même est utile : les trois tentatives se relisent comme une seule histoire.
+
+⚠️ **Sur une resynchronisation, c'est ce fil qui sauve la soirée.** Un envoi
+remonte douze courses d'un coup ; quand une seule est refusée et que le relevé
+arrive trois jours plus tard, le fil de **cet** envoi mène directement à ce que
+le serveur a vu, élément par élément — ce qu'aucune capture d'écran ne dira.
+Gardez-le à côté de la file locale, pas seulement dans les journaux de
+l'appareil.
+
+⚠️ **Le fil n'est pas une référence métier.** Il nomme un APPEL, pas une course :
+`client_ref` sert à ne pas créer deux fois la même course, le fil sert à
+comprendre ce qui s'est passé cette fois-là. Les confondre — réutiliser le fil
+comme clé d'idempotence — ferait refuser des courses bien réelles.
 
 ---
 
