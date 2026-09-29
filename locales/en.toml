@@ -209,3 +209,131 @@ other = "Configure a Google Maps key for at least one platform first"
 
 [errors.country_default_testing]
 other = "The default country cannot be reserved for testing"
+
+# ── Added 29 September 2026 — see fr.toml ────────────────────────────────────
+
+[errors.account_not_merchant]
+other = "This account is not a merchant account"
+
+[errors.address_not_found]
+other = "Address not found"
+
+[errors.already_rated]
+other = "This order has already been rated"
+
+[errors.already_staff]
+other = "This account already has a staff record"
+
+[errors.campaign_not_found]
+other = "Campaign not found"
+
+[errors.campaign_started]
+other = "This campaign has already started"
+
+[errors.campaigns_unavailable]
+other = "Campaigns are not available"
+
+[errors.country_default]
+other = "The default country cannot be disabled"
+
+[errors.country_unknown]
+other = "This country is not in the catalog"
+
+[errors.equipment_bad_status]
+other = "This action does not apply to the contract in its current status"
+
+[errors.equipment_contract_not_found]
+other = "Equipment contract not found"
+
+[errors.equipment_handed_over]
+other = "Price and deposit are fixed once handed over"
+
+[errors.equipment_item_not_found]
+other = "Equipment item not found"
+
+[errors.equipment_line_not_found]
+other = "No unpaid line with this number"
+
+[errors.equipment_mode_not_allowed]
+other = "This mode is not offered in this country"
+
+[errors.equipment_no_wallet]
+other = "This contract is settled on the rides ledger, not on a Dira balance"
+
+[errors.equipment_not_accepted]
+other = "The agent has not accepted the terms yet"
+
+[errors.equipment_not_offered]
+other = "This item is not offered under this mode"
+
+[errors.equipment_nothing_owed]
+other = "Nothing is owed on this contract"
+
+[errors.equipment_out_of_stock]
+other = "Out of stock"
+
+[errors.equipment_requests_closed]
+other = "Requests from the app are not open in this country"
+
+[errors.fault_not_found]
+other = "Unknown fault"
+
+[errors.finding_not_found]
+other = "Finding not found"
+
+[errors.fleet_name_taken]
+other = "A fleet already carries this name"
+
+[errors.fleet_not_found]
+other = "Fleet not found"
+
+[errors.insufficient_funds]
+other = "Your Dira balance does not cover this amount"
+
+[errors.marker_not_found]
+other = "Unknown marker kind"
+
+[errors.missing_fallback_locale]
+other = "The French locale is the fallback and cannot be empty"
+
+[errors.notification_not_found]
+other = "Notification not found"
+
+[errors.order_not_delivered]
+other = "An order can only be rated once delivered"
+
+[errors.provider_not_simulatable]
+other = "This payment provider cannot be simulated"
+
+[errors.push_failed]
+other = "The push notification could not be sent"
+
+[errors.push_unavailable]
+other = "The push service did not answer"
+
+[errors.staff_direction_required]
+other = "This action is reserved to the direction"
+
+[errors.staff_not_found]
+other = "Staff member not found"
+
+[errors.storage_unavailable]
+other = "File storage is not configured"
+
+[errors.template_not_found]
+other = "Template not found"
+
+[errors.too_many_addresses]
+other = "You have reached the maximum number of addresses"
+
+[errors.unknown_template]
+other = "No message is sent under this key"
+
+[errors.unknown_variable]
+other = "Unknown variable in the template"
+
+[errors.video_too_long]
+other = "The video is too long"
+
+[errors.video_unreadable]
+other = "The video could not be read"

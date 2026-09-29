@@ -1,0 +1,53 @@
+# The refusals the platform pronounces on everyone's behalf — translated ONCE.
+# See fr.toml for why this file exists; French is the primary language.
+
+[errors.missing_token]
+other = "Authentication required"
+
+[errors.invalid_token]
+other = "Invalid or expired token"
+
+[errors.session_superseded]
+other = "You have been signed out: your account was just opened on another device."
+
+[errors.forbidden]
+other = "You are not allowed to perform this action"
+
+[errors.out_of_scope]
+other = "Your staff scope does not cover this part of the platform"
+
+[errors.not_found]
+other = "Resource not found"
+
+[errors.invalid_service_token]
+other = "Invalid service token"
+
+[errors.service_auth_disabled]
+other = "Service-to-service routes are closed: no service token configured"
+
+[errors.ride_not_found]
+other = "Ride not found"
+
+[errors.driver_not_found]
+other = "Driver not found"
+
+[errors.vehicle_not_found]
+other = "Vehicle not found"
+
+[errors.document_not_found]
+other = "Document not found"
+
+[errors.ticket_not_found]
+other = "Ticket not found"
+
+[errors.duplicate_ticket_reference]
+other = "Ticket reference already exists"
+
+[errors.conversation_closed]
+other = "This conversation is closed"
+
+[errors.no_driver_yet]
+other = "Nobody has taken this yet"
+
+[errors.not_a_lost_item]
+other = "This ticket is not about a lost item"

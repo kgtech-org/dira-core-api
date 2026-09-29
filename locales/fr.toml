@@ -210,3 +210,133 @@ other = "Configurez d'abord une clé Google Maps pour au moins une plateforme"
 
 [errors.country_default_testing]
 other = "Le pays par défaut ne peut pas être réservé aux essais"
+
+# ── Ajoutés le 29 septembre 2026 ─────────────────────────────────────────────
+# ⚠️ Quarante et un refus du socle partaient en ANGLAIS. Aucun test ne le
+# disait ici ; il n'existait que dans les courses. Voir internal/boundary.
+
+[errors.account_not_merchant]
+other = "Ce compte n'est pas un compte marchand"
+
+[errors.address_not_found]
+other = "Adresse introuvable"
+
+[errors.already_rated]
+other = "Cette commande a déjà été notée"
+
+[errors.already_staff]
+other = "Ce compte fait déjà partie du staff"
+
+[errors.campaign_not_found]
+other = "Campagne introuvable"
+
+[errors.campaign_started]
+other = "Cette campagne a déjà commencé"
+
+[errors.campaigns_unavailable]
+other = "Les campagnes ne sont pas disponibles"
+
+[errors.country_default]
+other = "Le pays par défaut ne peut pas être fermé"
+
+[errors.country_unknown]
+other = "Ce pays n'est pas au catalogue"
+
+[errors.equipment_bad_status]
+other = "Cette action ne s'applique pas au contrat dans son état actuel"
+
+[errors.equipment_contract_not_found]
+other = "Contrat de matériel introuvable"
+
+[errors.equipment_handed_over]
+other = "Le prix et la caution sont figés une fois le matériel remis"
+
+[errors.equipment_item_not_found]
+other = "Article de matériel introuvable"
+
+[errors.equipment_line_not_found]
+other = "Aucune échéance impayée ne porte ce numéro"
+
+[errors.equipment_mode_not_allowed]
+other = "Cette formule n'est pas proposée dans ce pays"
+
+[errors.equipment_no_wallet]
+other = "Ce contrat se règle sur le compte des courses, pas sur un solde Dira"
+
+[errors.equipment_not_accepted]
+other = "L'agent n'a pas encore accepté les conditions"
+
+[errors.equipment_not_offered]
+other = "Cet article n'est pas proposé sous cette formule"
+
+[errors.equipment_nothing_owed]
+other = "Rien n'est dû sur ce contrat"
+
+[errors.equipment_out_of_stock]
+other = "Rupture de stock"
+
+[errors.equipment_requests_closed]
+other = "Les demandes depuis l'application ne sont pas ouvertes dans ce pays"
+
+[errors.fault_not_found]
+other = "Panne inconnue"
+
+[errors.finding_not_found]
+other = "Constat introuvable"
+
+[errors.fleet_name_taken]
+other = "Une flotte porte déjà ce nom"
+
+[errors.fleet_not_found]
+other = "Flotte introuvable"
+
+[errors.insufficient_funds]
+other = "Votre solde Dira ne couvre pas ce montant"
+
+[errors.marker_not_found]
+other = "Type de marqueur inconnu"
+
+[errors.missing_fallback_locale]
+other = "La langue française est celle de repli : elle ne peut pas être vide"
+
+[errors.notification_not_found]
+other = "Notification introuvable"
+
+[errors.order_not_delivered]
+other = "Une commande ne peut être notée qu'une fois livrée"
+
+[errors.provider_not_simulatable]
+other = "Ce moyen de paiement ne peut pas être simulé"
+
+[errors.push_failed]
+other = "L'envoi de la notification a échoué"
+
+[errors.push_unavailable]
+other = "Le service de notification n'a pas répondu"
+
+[errors.staff_direction_required]
+other = "Cette action est réservée à la direction"
+
+[errors.staff_not_found]
+other = "Membre du staff introuvable"
+
+[errors.storage_unavailable]
+other = "Le stockage des fichiers n'est pas configuré"
+
+[errors.template_not_found]
+other = "Modèle introuvable"
+
+[errors.too_many_addresses]
+other = "Vous avez atteint le nombre maximal d'adresses"
+
+[errors.unknown_template]
+other = "Aucun message n'est envoyé sous cette clé"
+
+[errors.unknown_variable]
+other = "Variable inconnue dans le modèle"
+
+[errors.video_too_long]
+other = "La vidéo est trop longue"
+
+[errors.video_unreadable]
+other = "La vidéo n'a pas pu être lue"

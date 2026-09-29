@@ -5,6 +5,7 @@ package i18n
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,11 +26,41 @@ type Translator struct {
 	bundle *goi18n.Bundle
 }
 
-// New loads the locale files. Missing or unparsable files are tolerated
-// (translation falls back to the message key's default text).
+// base porte les refus que `pkg/*` prononce AU NOM DE TOUS LES SERVICES.
+//
+// ⚠️ EMBARQUÉ, PAS LU SUR LE DISQUE. Un refus levé par `pkg/middleware` sort
+// dans les trois services ; sa phrase ne peut donc pas vivre dans le
+// `locales/` d'un seul. Elle vivait dans celui du socle, et les courses comme
+// la livraison servaient l'anglais par défaut : « this device is no longer the
+// one signed in to this account » à un chauffeur dont l'application est en
+// français. Relevé par l'équipe mobile le 29 septembre 2026 — et dix des
+// dix-sept refus partagés n'étaient traduits NULLE PART.
+//
+// Le paquet qui lève le refus porte sa phrase. Chargé AVANT les fichiers du
+// service, qui peuvent le surcharger clé par clé, jamais l'oublier.
+//
+//go:embed base/*.toml
+var base embed.FS
+
+// New loads the shared base bundle, then the service's locale files on top.
+// Missing or unparsable service files are an error; a key absent everywhere
+// falls back to the message's default text.
 func New(localesPath string) (*Translator, error) {
 	bundle := goi18n.NewBundle(language.French)
 	bundle.RegisterUnmarshalFunc("toml", toml.Unmarshal)
+
+	// ⚠️ LA BASE D'ABORD. go-i18n garde la DERNIÈRE définition d'une clé : le
+	// fichier du service, chargé ensuite, l'emporte donc sur la base. L'ordre
+	// inverse rendrait la base impossible à surcharger.
+	for _, lang := range supported {
+		data, err := base.ReadFile("base/" + lang + ".toml")
+		if err != nil {
+			return nil, fmt.Errorf("i18n: base %s: %w", lang, err)
+		}
+		if _, err := bundle.ParseMessageFileBytes(data, "base."+lang+".toml"); err != nil {
+			return nil, fmt.Errorf("i18n: parse base %s: %w", lang, err)
+		}
+	}
 
 	for _, lang := range supported {
 		file := filepath.Join(localesPath, lang+".toml")
