@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.37.0** · 28 septembre 2026
+> **Version 4.38.0** · 29 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -1131,6 +1131,20 @@ qui n'ont jamais existé pour la paie.
 
 ### 📴 LES GESTES GARDÉS — `POST /deliveries/sync` (v4.32.1)
 
+> ### 🧪 ÉPROUVEZ CETTE SECTION AU GABON, CONTRE LE VRAI SERVEUR (v4.38.0)
+>
+> Jusqu'ici, cette mécanique — `client_ref`, les issues, le rattrapage
+> `backfill` — n'avait pu être testée que **contre le contrat** : créer des
+> livraisons sur la recette était interdit. **C'est levé.** Le Gabon
+> (`X-Dira-Country: GA`) est un pays réservé aux essais : ce qui s'y passe
+> n'entre ni dans la supervision, ni dans les rapports. Créez, rejouez, coupez
+> le réseau, recommencez — avec `app: "courier"` et les livreurs `+241 06 100 001`
+> à `003`, mot de passe `dira12345`. Trois enseignes y ont un catalogue.
+>
+> ⚠️ **Jamais sur le Togo ni le Sénégal.** Ce sont des pays réels : une
+> livraison d'essai y déclenche les alertes d'exploitation, qui notifient six
+> personnes.
+
 Le rattrapage ci-dessus porte les **positions**. Les **gestes** — collecter,
 terminer — se rejouent ici :
 
@@ -1157,6 +1171,16 @@ du geste** — pas celui de l'envoi.
 | `duplicate` | **Retirez-la aussi** : le geste était déjà passé. `status` dit où en est la livraison |
 | `rejected` + `retryable: true` | **Gardez-la**, réessayez plus tard |
 | `rejected` + `retryable: false` | **Retirez-la** et **dites-le au livreur** : ce refus sera le même dans une heure |
+
+⚠️ **UNE ISSUE QUE VOUS NE CONNAISSEZ PAS SE GARDE, ELLE NE SE JETTE PAS
+(v4.38.0).** Garder coûte une tentative de plus ; jeter coûte une tournée de
+travail à quelqu'un. Traitez tout `outcome` hors de cette table comme un
+`rejected` + `retryable: true`.
+
+**Et en échange, le serveur s'engage :** un nouvel `outcome` **terminal** — qui
+demanderait de retirer la ligne — n'apparaîtra jamais sans **préavis d'une
+version** dans ce document, avec la conduite à tenir. Tant que vous ne l'avez
+pas lu ici, il n'existe pas.
 
 ⚠️ **« DÉJÀ FAIT » EST UNE RÉUSSITE ICI**, pas un refus : c'est la preuve que
 le geste est passé — en ligne, ou lors d'une tentative précédente dont la

@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.37.0** · 28 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.38.0** · 29 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -182,6 +182,34 @@ Côté exploitation, un compte de **direction** (`country_any` dans `GET /me`)
 choisit le pays qu'il regarde par ce même en-tête ; tout autre compte de
 staff voit le pays de son compte.
 
+### 🧪 Le GABON est le pays d'ESSAI (v4.38.0)
+
+**Vous avez le feu vert pour y créer ce que vous voulez** — courses, livraisons,
+resynchronisations, rattrapages de positions — sur la recette. C'est la réponse
+à ce que les équipes mobiles demandaient depuis le 26 septembre : éprouver
+`POST /rides/sync`, `POST /deliveries/sync` et `backfill: true` **contre le vrai
+serveur**, et non contre le contrat.
+
+| | |
+|---|---|
+| Pays | `GA` — `X-Dira-Country: GA`, monnaie XAF |
+| Chauffeurs VTC | `+241 06 100 101`, `…102`, `…103` — mot de passe `dira12345`, `app: "driver"` |
+| Livreurs | `+241 06 100 001`, `…002`, `…003` — mot de passe `dira12345`, `app: "courier"` |
+| Enseignes | trois enseignes semées à Libreville, avec leur catalogue |
+| Ville | Libreville — centre `[9.4500, 0.4100]` |
+
+⚠️ **Ce qui rend ce pays SÛR, et qu'il faut savoir** : `GET /countries` le
+rend avec `"testing": true`. Ce qui s'y passe **n'entre ni dans la supervision,
+ni dans les rapports, ni dans les classements** — un test de charge de cinq
+cents courses n'y réveille personne et ne fait partir aucun courriel annonçant
+une journée record. Nous l'avons vérifié en créant dix-huit courses : les
+jauges de la plateforme n'ont pas bougé d'une unité.
+
+⚠️ **N'y mettez rien de vrai.** Une course faite au Gabon ne sera jamais payée,
+jamais comptée, jamais lue par l'exploitation. Et **ne testez jamais sur un
+autre pays** : le Sénégal et le Togo sont des pays réels, et une course d'essai
+y déclenche les alertes qui notifient six personnes — c'est arrivé.
+
 ## Ce que ces documents remplacent
 
 `docs/specs/*.md` reste la référence **du backend** : un module par fichier, avec ses raisons de conception. Ces trois-ci sont la référence **du frontend** : un rôle par fichier, avec les contrats.
@@ -276,6 +304,44 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.38.0 — 29 septembre 2026
+
+📋 **RÉPONSE AU RELEVÉ DE L'APPLICATION CHAUFFEUR DU 29 SEPTEMBRE** (points C1
+à E). Rien n'a été cassé depuis le 26 ; tout ce qui est écrit ici est vérifié.
+
+- **C3 — la resynchronisation s'éprouve pour de vrai, au GABON.** C'est la
+  réponse que vous attendiez en premier : un pays réservé aux essais, où créer
+  des courses est **permis**. Comptes, feu vert et garde-fous dans la section
+  *Le Gabon est le pays d'essai* ci-dessus, et une note en tête de
+  `VTC-DRIVER.md` §4 quater et de `FOOD-DELIVERY.md` §6. Et un repère : le
+  serveur y a déjà rejoué dix-huit courses libres depuis trois téléphones
+  simultanés — toutes `applied`, et le même lot renvoyé n'a rien créé.
+- **C1 — `session_superseded` parle français, partout.** Le refus naît dans le
+  socle mais sort des courses et de la livraison, qui n'en avaient pas la
+  phrase. ⚠️ En mesurant, ce n'était pas un cas isolé : **une centaine de
+  refus** — `insufficient_funds`, `store_closed`, `debt_over_limit` — partaient
+  en anglais dans trois services sur quatre. Tous traduits ; un test le garde
+  désormais dans chaque dépôt, et le socle embarque les phrases des refus
+  qu'il prononce au nom de tous. Vous n'aurez plus à porter votre propre
+  phrase pour un refus du serveur — mais gardez la vôtre pour celui-ci, le
+  contrat le recommande toujours.
+- **D2 — validé, et ÉCRIT :** une issue de `/rides/sync` inconnue se **garde**
+  (comme un `rejected` + `retryable: true`), et tout nouvel `outcome` terminal
+  arrivera avec **préavis d'une version** dans ce document. Même règle pour
+  `/deliveries/sync`.
+- **D1, D3, D4, D5 — validés, sans réserve.** D5 vérifié dans le code : la
+  majoration de zone n'est calculée que si `mode` est vide ; compteur et
+  location la reçoivent à `nil`.
+- **C2 — acté :** `nav_icon_url` n'est pas produit et ne le sera pas. Écrit
+  dans `VTC-DRIVER.md` §2. Le champ reste au contrat pour la carte du
+  passager — divergence assumée, pas oubli.
+
+⚠️ Deux choses au passage. Le relevé déposé dans `docs/frontend/` était devenu
+**documentation de l'assistant** (le dossier s'embarquait en entier) ; les
+contrats sont désormais nommés un par un, et un relevé n'est qu'un relevé. Et
+ne testez **jamais** sur le Togo ni le Sénégal : une course d'essai y notifie
+six personnes.
 
 ### 4.37.0 — 28 septembre 2026
 

@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.37.0** · 28 septembre 2026
+> **Version 4.38.0** · 29 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -404,6 +404,14 @@ est la `key`.
 >
 > **`nav_icon_url` absent : retombez sur `map_icon_url`.** Une vue de dessus
 > sur une carte penchée reste lisible ; l'absence de tout marqueur, non.
+>
+> ⚠️ **`nav_icon_url` N'EST PAS PRODUIT, ET NE LE SERA PAS (v4.38.0).** Le
+> serveur le sert vide partout. L'application chauffeur a tranché le
+> 29 septembre 2026 : sa navigation dessine un **indicateur au sol** de sa
+> fabrication, pas une silhouette de véhicule, et **ne lit plus ce champ**.
+> C'est acté : l'exploitation ne fournira pas ces images. Le champ reste au
+> contrat parce que la carte du **passager** peut encore le lire — une
+> divergence assumée entre les deux applications, pas un oubli.
 >
 > ⚠️ **DANS LES DEUX, LE NEZ POINTE VERS LE HAUT DE L'IMAGE** — le capot (ou
 > la roue avant) vers le bord supérieur, quel que soit le véhicule et quelle
@@ -1235,6 +1243,27 @@ c'est le **récit** — et cette section dit comment le garder, puis le rendre.
 réseau a coupé est pire qu'un refus affiché : le chauffeur croit avoir fait le
 travail, et l'apprend deux jours plus tard par une paie qui ne tombe pas.
 
+> ### 🧪 ÉPROUVEZ CETTE SECTION AU GABON, CONTRE LE VRAI SERVEUR (v4.38.0)
+>
+> Jusqu'ici, toute cette mécanique — `client_ref`, les quatre `outcome`, le
+> recadrage, `auto_closed`, `backfill` — avait été écrite et testée **contre le
+> contrat**, jamais contre le serveur : créer des courses sur la recette était
+> interdit. Vous l'avez dit le 29 septembre 2026, et c'était le seul gros
+> morceau dans ce cas.
+>
+> **C'est levé.** Le Gabon (`X-Dira-Country: GA`) est un pays réservé aux
+> essais : chauffeurs `+241 06 100 101` à `103`, mot de passe `dira12345`, à
+> Libreville. Ce qui s'y passe n'entre ni dans la supervision, ni dans les
+> rapports — créez, rejouez, coupez le réseau, recommencez.
+>
+> Et pour que vous partiez avec un repère : le serveur a déjà rejoué **dix-huit
+> courses libres** depuis trois téléphones simultanés au Gabon. Toutes
+> `applied`, zéro `rejected`, et **le même lot renvoyé immédiatement n'a rien
+> créé** — l'idempotence par `client_ref` tient sous concurrence.
+>
+> ⚠️ **Jamais sur le Togo ni le Sénégal.** Ce sont des pays réels : une course
+> d'essai y déclenche les alertes d'exploitation, qui notifient six personnes.
+
 ### Ce qui marche sans réseau, et ce qui ne marche pas
 
 | Vous pouvez | Vous ne pouvez pas |
@@ -1349,6 +1378,17 @@ pas de vider une journée en une requête.
 | `duplicate` | **Retirez-le aussi** — il était déjà passé. `ride_id` est le même. |
 | `rejected` + `retryable: true` | **Gardez-le**, réessayez plus tard |
 | `rejected` + `retryable: false` | **Retirez-le** et **dites-le au chauffeur** : ce refus sera le même dans une heure |
+
+⚠️ **UNE ISSUE QUE VOUS NE CONNAISSEZ PAS SE GARDE, ELLE NE SE JETTE PAS
+(v4.38.0).** Garder coûte une tentative de plus ; jeter coûte une journée de
+travail à quelqu'un. Traitez tout `outcome` hors de cette table comme un
+`rejected` + `retryable: true`.
+
+**Et en échange, le serveur s'engage :** un nouvel `outcome` **terminal** — qui
+demanderait de retirer l'élément — n'apparaîtra jamais sans **préavis d'une
+version** dans ce document, avec la conduite à tenir. Tant que vous ne l'avez
+pas lu ici, il n'existe pas. C'est la décision D2 de l'équipe chauffeur du
+29 septembre 2026, et elle est juste.
 
 ⚠️ **N'EXIGEZ RIEN AVANT D'ENVOYER — surtout pas d'être en ligne.** Les
 barrières du départ (en ligne, non suspendu, dette sous le plafond, véhicule
