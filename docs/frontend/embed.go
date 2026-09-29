@@ -24,7 +24,15 @@ import (
 
 // Specs porte les cinq contrats de rôle, plus le journal et le brief de design.
 //
-//go:embed *.md
+// ⚠️ NOMMÉS UN PAR UN, PAS `*.md`. Ce dossier reçoit aussi les RELEVÉS des
+// équipes mobiles (`SERVEUR-…-et-decisions.md`), déposés là pour être lus à côté
+// des contrats qu'ils commentent. Avec `*.md`, le relevé du 29 septembre 2026
+// est entré dans le binaire comme documentation de l'assistant — qui l'aurait
+// cité comme une vérité — et a fait rougir le test de présence des contrats.
+// Un relevé dit ce qu'une équipe a OBSERVÉ ; un contrat dit ce qui est PROMIS.
+// Seul le second se sert à quelqu'un qui pose une question.
+//
+//go:embed README.md DESIGN-BRIEF.md FOOD-CLIENT.md FOOD-DELIVERY.md FOOD-MERCHANT.md VTC-CLIENT.md VTC-DRIVER.md
 var Specs embed.FS
 
 // All rend le contenu de chaque document, par nom de fichier.

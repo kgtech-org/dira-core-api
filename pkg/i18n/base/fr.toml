@@ -1,0 +1,66 @@
+# LES REFUS QUE LE SOCLE PRONONCE AU NOM DE TOUS — traduits UNE fois, ici.
+#
+# ⚠️ CE FICHIER EXISTE PARCE QU'UN CHAUFFEUR TOGOLAIS A LU DE L'ANGLAIS. Le refus
+# `session_superseded` naît dans `pkg/middleware`, partagé par les trois
+# services ; sa traduction ne vivait que dans `locales/fr.toml` du socle. Les
+# courses et la livraison, qui lèvent le même refus, servaient donc le texte
+# anglais par défaut — « this device is no longer the one signed in to this
+# account » — à quelqu'un dont l'application est en français. Relevé par
+# l'équipe mobile le 29 septembre 2026.
+#
+# ⚠️ ET CE N'ÉTAIT PAS UN OUBLI ISOLÉ : dix des seize refus levés par `pkg/*`
+# n'avaient de traduction NULLE PART, même dans le socle. Recopier à la main
+# dans chaque service est précisément ce qui produit ces trous. Le paquet qui
+# lève un refus porte sa phrase ; chaque service charge ce fichier AVANT le sien
+# et peut le surcharger, jamais l'oublier.
+
+[errors.missing_token]
+other = "Authentification requise"
+
+[errors.invalid_token]
+other = "Jeton invalide ou expiré"
+
+[errors.session_superseded]
+other = "Vous avez été déconnecté : votre compte vient d'être ouvert sur un autre appareil."
+
+[errors.forbidden]
+other = "Vous n'êtes pas autorisé à effectuer cette action"
+
+[errors.out_of_scope]
+other = "Votre périmètre ne couvre pas cette partie de la plateforme"
+
+[errors.not_found]
+other = "Ressource introuvable"
+
+[errors.invalid_service_token]
+other = "Jeton de service invalide"
+
+[errors.service_auth_disabled]
+other = "Les échanges entre services sont fermés : aucun jeton de service n'est configuré"
+
+[errors.ride_not_found]
+other = "Course introuvable"
+
+[errors.driver_not_found]
+other = "Chauffeur introuvable"
+
+[errors.vehicle_not_found]
+other = "Véhicule introuvable"
+
+[errors.document_not_found]
+other = "Document introuvable"
+
+[errors.ticket_not_found]
+other = "Ticket introuvable"
+
+[errors.duplicate_ticket_reference]
+other = "La référence du ticket existe déjà"
+
+[errors.conversation_closed]
+other = "Cette conversation est close"
+
+[errors.no_driver_yet]
+other = "Personne n'a encore pris en charge cette demande"
+
+[errors.not_a_lost_item]
+other = "Ce ticket ne concerne pas un objet perdu"
