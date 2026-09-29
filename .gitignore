@@ -2,3 +2,8 @@ tmp/
 
 # Identifiants locaux des collections .rest (jamais versionnés)
 .rest/.env
+
+# Les RELEVÉS et RÉPONSES échangés avec les équipes mobiles vivent dans
+# docs/frontend/ mais ne sont pas des contrats : jamais dans le dépôt.
+# (Un `git add docs` trop large en a embarqué un le 29 sept. 2026.)
+docs/frontend/SERVEUR-*.md
