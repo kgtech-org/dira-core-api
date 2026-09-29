@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.38.0** · 29 septembre 2026
+> **Version 4.39.0** · 29 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -1196,8 +1196,33 @@ POST /ai/chat          { message }   → { reply, plan? }
 ### 🎙️ Le VOCAL — 60 s, transcrit, MONTRÉ, puis envoyé (v4.15.0)
 
 ```
-POST /ai/voice        multipart : file=<audio>        → { "text": "…" }
+POST /ai/voice        multipart : file=<audio>, language=<code facultatif>
+                                                        → { "text": "…", "language": "fr" }
 ```
+
+**La langue parlée (v4.39.0).** Ajoutez `language=<code>` au multipart quand
+la personne a choisi sa langue ; **n'envoyez rien** sinon — le serveur prend
+alors la **première langue du pays**, réglée par l'exploitation (au Sénégal
+ce peut être le wolof, au Togo le français). ⚠️ **Ce n'est PAS
+`Accept-Language`** : celui-ci dit la langue de l'interface, et un téléphone
+réglé en français n'empêche pas son propriétaire de parler wolof. Douze codes
+sont admis, tout autre est refusé (`422 unknown_language`) :
+
+| Code | Langue | Pays |
+|---|---|---|
+| `fr` · `en` | français · anglais | tous |
+| `ee` · `kbp` | éwé · kabiyè | Togo |
+| `wo` · `ff` · `srr` | wolof · peul (pulaar) · sérère | Sénégal |
+| `man` · `sus` · `ff` | malinké · soussou · peul (pular) | Guinée |
+| `shu` · `sba` · `ff` | arabe tchadien · ngambay (sara) · peul (fulfulde) | Tchad |
+| `fan` | fang | Gabon |
+
+La réponse porte la langue retenue : `{ "text": "…", "language": "wo" }`.
+Deux refus de plus : `503 language_not_served` (`reason` = la langue) quand
+aucun fournisseur configuré ne l'entend — gardez le clavier, comme pour
+`assistant_unavailable` — et `422 unknown_language`. Un vocal dans une
+langue locale est transcrit **dans cette langue**, mots français compris :
+ne le traduisez pas, montrez-le tel quel.
 
 ⚠️ **La transcription n'est PAS exécutée.** Elle revient à vous ; vous
 l'**affichez dans le champ de saisie**, corrigible, et c'est le client qui
