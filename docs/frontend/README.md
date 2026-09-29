@@ -313,6 +313,10 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
   langue de la requête.** Vous aviez raison : la traduction couvrait
   l'enveloppe, pas les lignes de résultat — « ride not found » restait en
   anglais au pire moment. Corrigé dans les deux verticales ; un test le garde.
+  ⚠️ Trouvé en le vérifiant : `retryable` **manquait** sur une ligne refusée
+  quand il valait `false` (les faux étaient tus). Une ligne `rejected` le
+  porte désormais **toujours** — c'est lui qui décide « retirez-le » ou
+  « gardez-le », et un champ absent ne décide rien.
 - **C5 — confirmé par écrit, et éprouvable :** un point `backfill: true` daté
   de plus d'une heure est **accepté et rangé à son `ts` d'origine** ; le
   parcours n'a aucune limite d'âge (seule la position courante expire). Et le
