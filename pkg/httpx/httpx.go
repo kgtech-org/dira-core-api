@@ -4,6 +4,7 @@
 package httpx
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -112,13 +113,7 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 			})
 		}
 	}
-	msg := appErr.Message
-	if translator != nil {
-		if localized, ok := translator.Translate(i18n.LangFromContext(r.Context()), "errors."+appErr.Code, appErr.Meta); ok {
-			msg = localized
-		}
-	}
-	detail := errorDetail{Code: appErr.Code, Message: msg}
+	detail := errorDetail{Code: appErr.Code, Message: Message(r.Context(), appErr)}
 	if fields, ok := appErr.Meta["fields"].([]string); ok {
 		detail.Fields = fields
 	}
@@ -126,6 +121,26 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 		detail.Reason = reason
 	}
 	JSON(w, appErr.HTTPStatus, errorBody{Error: detail})
+}
+
+// Message rend la phrase d'un refus DANS LA LANGUE DE LA REQUÊTE — la même
+// que l'enveloppe `Error` écrit —, pour les endroits qui portent un refus
+// ailleurs que dans l'enveloppe : une ligne de `results[]` d'une
+// resynchronisation, par exemple.
+//
+// ⚠️ Sans cela, l'enveloppe parlait français et la ligne de résultat
+// anglais — « ride not found », lu par un chauffeur au moment précis où on
+// lui annonce qu'une course roulée n'a pas été enregistrée (relevé de
+// l'équipe chauffeur, 29 sept. 2026). Sans traducteur installé, la phrase
+// anglaise du code.
+func Message(ctx context.Context, err error) string {
+	appErr := apperr.From(err)
+	if translator != nil {
+		if localized, ok := translator.Translate(i18n.LangFromContext(ctx), "errors."+appErr.Code, appErr.Meta); ok {
+			return localized
+		}
+	}
+	return appErr.Message
 }
 
 // unknownFieldRe extrait la clé d'une erreur `json: unknown field "x"`.

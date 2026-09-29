@@ -1,7 +1,10 @@
 package httpx
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/kgtech-org/dira-core-api/pkg/apperr"
+	"github.com/kgtech-org/dira-core-api/pkg/i18n"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -67,4 +70,23 @@ func TestE164RequiresThePlus(t *testing.T) {
 			assert.Error(t, err, body)
 		}
 	}
+}
+
+// Un refus porté AILLEURS que dans l'enveloppe (une ligne `results[]` de
+// resynchronisation) parle la langue de la requête, comme l'enveloppe. Sans
+// traducteur, la phrase anglaise du code — jamais une chaîne vide.
+func TestMessageSpeaksTheRequestsLanguage(t *testing.T) {
+	prev := translator
+	t.Cleanup(func() { translator = prev })
+	tr, err := i18n.New("../../locales")
+	require.NoError(t, err)
+	SetTranslator(tr)
+
+	err = apperr.NotFound("ride_not_found", "ride not found")
+	assert.Equal(t, "Course introuvable", Message(i18n.WithLang(context.Background(), "fr"), err))
+	assert.Equal(t, "Ride not found", Message(i18n.WithLang(context.Background(), "en"), err))
+
+	SetTranslator(nil)
+	assert.Equal(t, "ride not found", Message(context.Background(), err))
+	assert.Equal(t, "boom", Message(context.Background(), apperr.Validation("boom")), "un code sans phrase garde la sienne")
 }
