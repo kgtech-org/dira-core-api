@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.39.0** · 29 septembre 2026
+> **Version 4.39.1** · 29 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -1372,6 +1372,14 @@ POST /rides/sync
 **Cinquante éléments au plus par envoi.** Envoyez-les par paquets ; ne tentez
 pas de vider une journée en une requête.
 
+**`results[].message` parle la langue de la requête (v4.39.1)** — la même
+phrase que l'enveloppe d'erreur pour le même `code` (`Accept-Language: fr` →
+« Course introuvable »). ⚠️ Jusqu'à la 4.39.0, cette ligne restait en anglais
+alors que l'enveloppe était traduite : une application qui suivait la règle
+générale montrait « ride not found » au pire moment. C'est le point C4 du
+relevé chauffeur du 29 septembre ; garder votre propre phrase par `code` reste
+une bonne pratique, le `message` du serveur est le repli d'un code inconnu.
+
 | `outcome` | Ce que vous faites |
 |---|---|
 | `applied` | **Retirez** l'élément de la file. Affichez le `fare_xof` **du serveur**. |
@@ -1442,8 +1450,14 @@ horodatage est **refusé** : daté de maintenant, il prétendrait dire où vous
 serveur s'en garde — mais c'est elle qui **complète le parcours, donc la
 distance, donc le prix**.
 
-⚠️ **L'ORDRE D'ENVOI EST LIBRE** : chaque point porte son temps, et le serveur
-les remet en ordre. En revanche, **poussez-les après la resynchronisation**
+⚠️ **L'ORDRE D'ENVOI EST LIBRE, ET L'ÂGE AUSSI (confirmé v4.39.1)** : chaque
+point porte son temps, et le serveur les remet en ordre. **Un point `backfill`
+daté de plus d'une heure — ou de trois — est accepté et rangé à son `ts`
+d'origine** : le parcours n'a aucune limite d'âge, seule la position
+*courante* a une durée de vie. C'est écrit en réponse au point C5 du relevé
+chauffeur du 29 septembre, parce que vous ne pouviez pas le vérifier seuls ;
+vous le pouvez désormais au Gabon, en roulant une course et en coupant le
+réseau au milieu — le feu vert y couvre **aussi** les rattrapages de positions. En revanche, **poussez-les après la resynchronisation**
 pour une course libre faite hors ligne : le `mission_id` est l'identifiant que
 `POST /rides/sync` vient de vous rendre — il n'existait pas avant.
 

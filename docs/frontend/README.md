@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.39.0** · 29 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.39.1** · 29 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -305,7 +305,24 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 
 ## Journal
 
-### 4.39.0 — 29 septembre 2026
+### 4.39.1 — 29 septembre 2026
+
+📋 **SECONDE RÉPONSE AU RELEVÉ CHAUFFEUR DU 29 SEPTEMBRE** (C4, C5, E6).
+
+- **C4 — `results[].message` de `/rides/sync` et `/deliveries/sync` parle la
+  langue de la requête.** Vous aviez raison : la traduction couvrait
+  l'enveloppe, pas les lignes de résultat — « ride not found » restait en
+  anglais au pire moment. Corrigé dans les deux verticales ; un test le garde.
+- **C5 — confirmé par écrit, et éprouvable :** un point `backfill: true` daté
+  de plus d'une heure est **accepté et rangé à son `ts` d'origine** ; le
+  parcours n'a aucune limite d'âge (seule la position courante expire). Et le
+  feu vert du Gabon couvre **aussi** les rattrapages — roulez, coupez le
+  réseau, reprenez. Écrit dans `VTC-DRIVER.md` §4 quater, *Les positions*.
+- **E6 — `maps` :** aucun pays n'a de clé Google aujourd'hui, sur aucune
+  plateforme ; `basemap` vaut `dira` partout. Vous n'avez rien à construire
+  tant que le bloc `maps` d'une connexion ne porte pas `google_key` — et c'est
+  ce bloc, pas une annonce, qui vous le dira.
+
 
 🎙️ **LES VOCAUX DANS LES LANGUES D'ICI.** Jusque-là, un vocal en wolof
 partait chez un modèle à qui personne n'avait dit que c'était du wolof, et
