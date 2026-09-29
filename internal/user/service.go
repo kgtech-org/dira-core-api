@@ -242,7 +242,7 @@ func (s *Service) register(ctx context.Context, req RegisterRequest, role string
 		AccessToken:  pair.AccessToken,
 		RefreshToken: pair.RefreshToken,
 		Session:      sessionResponse(u, deviceID, false),
-		Maps:         s.basemap(ctx, u, req.Platform),
+		Maps:         s.basemap(ctx, u),
 	}, nil
 }
 
@@ -313,7 +313,7 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 		AccessToken:  pair.AccessToken,
 		RefreshToken: pair.RefreshToken,
 		Session:      sessionResponse(u, deviceID, chased),
-		Maps:         s.basemap(ctx, u, req.Platform),
+		Maps:         s.basemap(ctx, u),
 	}, nil
 }
 
@@ -471,7 +471,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, platform string) (T
 	}
 	// Le fond de carte À JOUR : c'est ici que la rotation d'une clé atteint une
 	// application déjà connectée depuis des semaines.
-	pair.Maps = s.basemap(ctx, u, platform)
+	pair.Maps = s.basemap(ctx, u)
 	return pair, nil
 }
 

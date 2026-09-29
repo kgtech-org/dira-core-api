@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.39.1** · 29 septembre 2026
+> **Version 4.40.0** · 29 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -101,65 +101,57 @@ appel rejoué à l'identique en a un troisième. Pour désigner l'objet, c'est s
 
 ---
 
-## 🗺️ LE FOND DE CARTE — `platform` et `maps` (v4.36.0)
+## 🗺️ LE FOND DE CARTE — `maps` (v4.40.0)
 
 La plateforme sert **deux fonds de carte** : le nôtre, et Google. Le pays règle
 celui qu'on voit **d'abord** ; la personne choisit ensuite celui qui lui va, et
 son choix reste chez elle.
 
-**Ce que l'application envoie** : un champ `platform` — `android`, `ios` ou
-`web` — sur `POST /auth/login`, `POST /auth/register` **et**
-`POST /auth/refresh`.
-
-⚠️ **LES TROIS, ET SURTOUT LE RAFRAÎCHISSEMENT.** Une clé change le jour où elle
-fuit ou où la facture s'envole. Envoyée seulement à la connexion, la nouvelle
-n'atteindrait un chauffeur resté connecté que trente jours plus tard —
-c'est-à-dire que la rotation, seule raison de servir la clé depuis le serveur, ne
-servirait à rien.
-
-⚠️ **CHAQUE PLATEFORME A SA CLÉ**, et ce n'est pas une complication gratuite :
-une clé Google se restreint par ce qui l'utilise — nom de paquet + empreinte
-SHA-1 sur Android, identifiant de bundle sur iOS, référent HTTP sur le web. Une
-clé servie à la mauvaise plateforme est refusée par Google : carte grise, et une
-facture pour rien.
-
 **Ce que le serveur rend**, dans la réponse de connexion, d'inscription et de
 rafraîchissement :
 
 ```json
-"maps": {
-  "basemap": "dira",
-  "google_key": "AIza…",
-  "google_map_type": "roadmap"
-}
+"maps": { "basemap": "dira" }
 ```
 
 | | |
 |---|---|
 | `basemap` | `dira` ou `google` — le fond par **défaut** du pays, la case cochée d'avance |
-| `google_key` | la clé de **votre** plateforme. **Absente** = ce pays n'en a pas |
-| `google_map_type` | `roadmap`, `satellite` ou `terrain` |
 
-⚠️ **`google_key` ABSENTE : NE PROPOSEZ PAS LE CHOIX.** Pas de bouton grisé, pas
-d'option qui échoue — rien. Une bascule vers un fond qu'aucune clé ne sert donne
-un rectangle gris, et la personne croit l'application cassée. Et si `basemap`
-valait `google` sans clé, le serveur a déjà remis `dira` : il ne vous demandera
-jamais l'impossible.
+C'est **tout** ce que le serveur a à dire de votre carte : quel fond montrer
+d'abord ici. Un seul champ, une seule question.
 
-⚠️ **`maps` ABSENT** (plateforme non envoyée, socle plus ancien) **= notre fond,
-et rien d'autre à faire.** Une application pas encore à jour garde une carte qui
-marche.
+### ⚠️ `google_key` ET `google_map_type` ONT DISPARU (v4.40.0)
 
-**Le choix de la personne se garde en local** et prime sur le défaut du pays.
-⚠️ **Gardez-le même quand il devient impossible** : quelqu'un qui passe dans un
-pays sans clé a changé de pays, pas d'avis — son choix doit reprendre effet en
-revenant.
+Jusqu'à la 4.39.1, `maps` portait la clé Google du pays pour votre plateforme.
+**Ces deux champs ne sont plus servis.** La raison est simple et elle vous
+concerne : **une clé Google se restreint par ce qui l'utilise** — nom de paquet
++ empreinte SHA-1 sur Android, identifiant de bundle sur iOS, référent HTTP sur
+le web. Elle appartient donc à **l'application**, pas au pays, et vous en avez
+déjà une, correctement restreinte. Une clé servie par l'API arrivait trop tard,
+pour quelqu'un qui n'en avait pas besoin.
 
-**Comment l'afficher** : sur Android et iOS, utilisez le **SDK Google Maps
-natif** avec cette clé — il gère lui-même les tuiles, le cache et le logo. Ne
-tentez pas de charger les tuiles Google dans un autre moteur de rendu : c'est une
-autre API (*Map Tiles*), avec sa propre facturation et son propre jeton de
-session.
+Ce que ça change pour vous, dans l'ordre :
+
+1. **Si vous lisiez `google_key`, cessez.** Elle sera absente, définitivement.
+2. **Si vous conditionniez le CHOIX à sa présence, ne le conditionnez plus** :
+   proposez **toujours** les deux fonds. C'était la règle inverse jusqu'ici, et
+   c'est le seul point où votre code doit changer.
+3. **Affichez Google avec VOTRE clé** — le SDK natif sur Android et iOS.
+4. `platform` sur `/auth/login`, `/auth/register` et `/auth/refresh` est
+   désormais **acceptée et ignorée**. ⚠️ **Ne la retirez pas** de vos requêtes :
+   le serveur refuse les champs inconnus, mais celui-là reste déclaré
+   exprès — l'envoyer ne coûte rien, et le retirer n'apporte rien.
+
+### Ce que vous faites, concrètement
+
+1. À la connexion **et au rafraîchissement**, lisez `maps.basemap` : c'est le
+   fond que vous montrez **d'abord** dans ce pays.
+2. **Gardez le choix de la personne en local** ; il **prime** sur le défaut du
+   pays. ⚠️ Et il **survit au changement de pays** : quelqu'un qui passe du Togo
+   au Sénégal a changé de pays, pas d'avis.
+3. `maps` **absent** (socle plus ancien, réponse sans le bloc) = **notre fond**,
+   et rien d'autre à faire.
 
 ⚠️ **LE LOGO GOOGLE EST OBLIGATOIRE** dès que ses tuiles s'affichent : **16 dp de
 haut au minimum**, **10 dp de dégagement**, **jamais recouvert** par un autre
@@ -167,17 +159,11 @@ logo — le vôtre compris. Ce n'est pas une politesse, c'est une clause du cont
 d'utilisation de l'API. Les SDK natifs le dessinent eux-mêmes ; ne le masquez pas
 sous une barre ou un bouton flottant.
 
-⚠️ **N'ÉCRIVEZ JAMAIS LA CLÉ DANS UN JOURNAL NI DANS UN RAPPORT DE PLANTAGE.**
-Elle voyage en clair — Google l'exige sur chaque requête —, mais un journal
-d'application part chez un tiers, se garde des mois et se relit par des gens qui
-n'ont rien à voir avec votre pays. Ce qui la protège est sa **restriction** côté
-Google, et une clé recopiée dans mille rapports finit par être utilisée ailleurs
-malgré tout.
-
-⚠️ **NE LA COMPILEZ PAS DANS L'APPLICATION**, même « en secours ». Une clé dans
-le binaire ne se change pas : le jour où il faut la révoquer, il faudrait
-republier sur les magasins et attendre que tout le monde mette à jour. C'est
-exactement ce qu'on vient d'éviter.
+⚠️ **VOTRE clé se protège par sa RESTRICTION, pas par le secret.** Elle voyage en
+clair sur chaque requête de tuile — Google l'exige. Restreignez-la (empreinte,
+bundle, référent), plafonnez son quota, et ne la recopiez pas dans un journal ni
+dans un rapport de plantage : ces fichiers partent chez un tiers et se gardent
+des mois.
 
 ---
 
