@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.38.0** · 29 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.39.0** · 29 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -304,6 +304,26 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.39.0 — 29 septembre 2026
+
+🎙️ **LES VOCAUX DANS LES LANGUES D'ICI.** Jusque-là, un vocal en wolof
+partait chez un modèle à qui personne n'avait dit que c'était du wolof, et
+revenait en charabia français. Douze langues sont désormais **nommées** aux
+modèles — français, anglais, éwé, kabiyè, wolof, peul, sérère, malinké,
+soussou, arabe tchadien, ngambay, fang —, et l'exploitation règle **par
+pays** les langues attendues, qui transcrit, et les mots d'ici.
+
+- `POST /ai/voice` accepte `language=<code>` (facultatif) et rend
+  `{ text, language }`. **N'envoyez rien** quand la personne n'a pas choisi :
+  le serveur prend la première langue du pays. ⚠️ **Ce n'est pas
+  `Accept-Language`** — la langue de l'interface n'est pas la langue parlée.
+  Codes et refus (`422 unknown_language`, `503 language_not_served`) dans la
+  section *Le VOCAL* de `FOOD-CLIENT.md` et `VTC-CLIENT.md`.
+- ⚠️ **Le texte revient dans la langue parlée**, mots français compris. Ne
+  le traduisez pas : montrez-le, laissez corriger, envoyez.
+- Rien ne change pour un vocal en français : même route, même délai
+  (« transcription : 1-3 s »).
 
 ### 4.38.0 — 29 septembre 2026
 
@@ -1241,6 +1261,13 @@ avec `POST /rides { quote_id }`, comme un devis composé à la main :
 l'application **affiche et laisse corriger** avant de l'envoyer : une
 transcription est une saisie, pas un ordre — partir à « l'aéroport » quand
 quelqu'un a dit « la gare » serait pire que pas d'assistant du tout.
+
+**Un vocal peut être dans une langue d'ici (v4.39.0).** Douze langues sont
+nommées aux modèles — français, anglais, et dix langues des cinq pays :
+éwé, kabiyè, wolof, peul, sérère, malinké, soussou, arabe tchadien, ngambay,
+fang. L'application peut déclarer la langue parlée (`language=wo`) ; sinon
+le serveur prend la **première langue du pays**, réglée par l'exploitation.
+Le texte revient **dans la langue parlée**, mots français compris.
 
 **Toute l'IA de la plateforme est dans un seul service** (`dira-analytics`),
 y compris la transcription : aucune verticale n'embarque de fournisseur, de
