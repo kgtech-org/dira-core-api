@@ -25,15 +25,15 @@ type RegisterRequest struct {
 	DeviceName string `json:"device_name,omitempty" validate:"omitempty,max=120"`
 	// Platform dit SUR QUOI l'application tourne — `web`, `android`, `ios`.
 	//
-	// ⚠️ ELLE NE SERT QU'AU FOND DE CARTE, et elle est indispensable pour ça :
-	// une clé Google se restreint par ce qui l'utilise (empreinte SHA-1 + nom
-	// de paquet sur Android, identifiant de bundle sur iOS, référent HTTP sur
-	// le web), donc chaque plateforme a la SIENNE. Servir la clé du web à une
-	// application Android donnerait une carte grise et une facture pour rien.
+	// ⚠️ ACCEPTÉE ET IGNORÉE depuis la v4.40.0. Elle ne servait qu'à choisir la
+	// clé Google du pays ; le serveur n'en garde plus aucune, et le fond par
+	// défaut est le même pour les trois plateformes.
 	//
-	// ABSENTE = aucune clé servie, donc fond Dira. Un repli silencieux et
-	// correct : une application pas encore mise à jour garde une carte qui
-	// marche.
+	// ⚠️ ELLE RESTE DÉCLARÉE, ET IL NE FAUT PAS LA RETIRER. Le décodeur refuse
+	// les champs inconnus (`422 unknown_field`) : la supprimer d'ici casserait,
+	// d'un déploiement à l'autre, TOUTES les applications qui l'envoient déjà —
+	// c'est-à-dire toutes. Un champ toléré coûte une ligne ; un 422 à la
+	// connexion coûte la journée.
 	Platform string `json:"platform,omitempty" validate:"omitempty,oneof=web android ios"`
 }
 
@@ -92,29 +92,28 @@ type LoginRequest struct {
 	DeviceName string `json:"device_name,omitempty" validate:"omitempty,max=120"`
 	// Platform dit SUR QUOI l'application tourne — `web`, `android`, `ios`.
 	//
-	// ⚠️ ELLE NE SERT QU'AU FOND DE CARTE, et elle est indispensable pour ça :
-	// une clé Google se restreint par ce qui l'utilise (empreinte SHA-1 + nom
-	// de paquet sur Android, identifiant de bundle sur iOS, référent HTTP sur
-	// le web), donc chaque plateforme a la SIENNE. Servir la clé du web à une
-	// application Android donnerait une carte grise et une facture pour rien.
+	// ⚠️ ACCEPTÉE ET IGNORÉE depuis la v4.40.0. Elle ne servait qu'à choisir la
+	// clé Google du pays ; le serveur n'en garde plus aucune, et le fond par
+	// défaut est le même pour les trois plateformes.
 	//
-	// ABSENTE = aucune clé servie, donc fond Dira. Un repli silencieux et
-	// correct : une application pas encore mise à jour garde une carte qui
-	// marche.
+	// ⚠️ ELLE RESTE DÉCLARÉE, ET IL NE FAUT PAS LA RETIRER. Le décodeur refuse
+	// les champs inconnus (`422 unknown_field`) : la supprimer d'ici casserait,
+	// d'un déploiement à l'autre, TOUTES les applications qui l'envoient déjà —
+	// c'est-à-dire toutes. Un champ toléré coûte une ligne ; un 422 à la
+	// connexion coûte la journée.
 	Platform string `json:"platform,omitempty" validate:"omitempty,oneof=web android ios"`
 }
 
 // RefreshRequest rotates a refresh token.
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
-	// Platform, facultative, pour recevoir le FOND DE CARTE à jour.
+	// Platform : ACCEPTÉE ET IGNORÉE depuis la v4.40.0 — voir
+	// `RegisterRequest.Platform`. À ne pas retirer : le décodeur refuse les
+	// champs inconnus, et toutes les applications l'envoient.
 	//
-	// ⚠️ SANS ELLE, UNE CLÉ RÉVOQUÉE VIT AUSSI LONGTEMPS QUE LA SESSION. Un
-	// chauffeur reste connecté trente jours ; si la clé n'était servie qu'à la
-	// connexion, la changer dans la console ne l'atteindrait qu'un mois plus
-	// tard — c'est-à-dire que la rotation, seule raison de servir la clé
-	// depuis le serveur, ne servirait à rien. Renvoyée ici, la dérive se borne
-	// à la durée d'un jeton d'accès.
+	// Le fond de carte, lui, est servi au rafraîchissement QUOI QU'IL ARRIVE :
+	// un chauffeur reste connecté trente jours, et un défaut changé dans la
+	// console doit l'atteindre avant.
 	Platform string `json:"platform,omitempty" validate:"omitempty,oneof=web android ios"`
 }
 
@@ -281,28 +280,22 @@ type TokenPairResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	// Maps : le fond de carte À JOUR. C'est ici que la rotation d'une clé
-	// atteint une application déjà connectée — voir `RefreshRequest.Platform`.
+	// atteint une application déjà connectée, sans attendre sa reconnexion.
 	Maps *MapsResponse `json:"maps,omitempty"`
 }
 
-// MapsResponse est le fond de carte servi à une application.
+// MapsResponse est le fond de carte servi à une application : UN SEUL CHAMP.
 //
-// ⚠️ LA CLÉ EST DEDANS, EN CLAIR, ET C'EST INÉVITABLE. Google l'exige sur chaque
-// requête de tuile, en plus du jeton de session : aucun montage n'affiche un
-// fond Google sans que la clé atteigne le client. Ce qui la protège est sa
-// RESTRICTION côté Google (empreinte, bundle, référent) et son plafond de
-// quota, pas le secret. La chiffrer pour que l'application la déchiffre ne
-// protégerait rien : la phrase de passe voyagerait dans le même binaire.
+// ⚠️ AUCUNE CLÉ N'Y VOYAGE (v4.40.0). Le serveur en a servi une, par pays et
+// par plateforme, du 22 au 29 septembre 2026 — pour la faire tourner sans
+// republier. Inutilisable en pratique : chaque application porte déjà SA clé,
+// restreinte à son empreinte, à son bundle ou à son référent, et c'est cette
+// restriction qui protège une clé. Le serveur ne répond donc qu'à la question
+// qu'il est seul à pouvoir trancher : quel fond montrer D'ABORD ici.
 type MapsResponse struct {
 	// Basemap est le fond par DÉFAUT du pays — la case cochée d'avance, que la
-	// personne peut changer.
+	// personne peut changer, et dont son choix a le dernier mot.
 	Basemap string `json:"basemap"`
-	// GoogleKey et GoogleMapType sont absents quand ce pays n'a pas de clé pour
-	// cette plateforme. ⚠️ ABSENTS = NE PAS PROPOSER LE CHOIX : une bascule
-	// vers un fond qu'aucune clé ne sert donne une carte grise, et la personne
-	// croit l'application cassée.
-	GoogleKey     string `json:"google_key,omitempty"`
-	GoogleMapType string `json:"google_map_type,omitempty"`
 }
 
 // formatBirthDate rend la date seule, sans heure : une date de naissance n'a

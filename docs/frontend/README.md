@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.39.1** · 29 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.40.0** · 29 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -305,6 +305,34 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 
 ## Journal
 
+### 4.40.0 — 29 septembre 2026
+
+🗺️ **LE SERVEUR NE SERT PLUS DE CLÉ GOOGLE. `maps` NE PORTE PLUS QUE
+`basemap`.** Il a servi une clé par pays et par plateforme du 22 au 29
+septembre, pour pouvoir la faire tourner sans republier les applications.
+L'intention était juste ; le montage était incompatible avec la façon dont vous
+êtes faits. **Une clé Google se restreint par ce qui l'utilise** — nom de paquet
++ empreinte SHA-1, bundle, référent HTTP —, donc elle appartient à
+l'application, et vous en avez déjà une. La clé du serveur arrivait trop tard,
+pour quelqu'un qui n'en avait pas besoin, et elle demandait à l'exploitation de
+ranger trois secrets par pays dans un écran d'administration.
+
+Il reste **la seule question que le serveur tranche mieux que vous** : dans ce
+pays, quel fond montre-t-on d'abord ?
+
+- `"maps": { "basemap": "dira" | "google" }` — un champ, servi à la connexion,
+  à l'inscription et au rafraîchissement.
+- ⚠️ **`google_key` et `google_map_type` ont disparu.** Si vous les lisiez,
+  cessez.
+- ⚠️ **Le CHOIX ne se conditionne plus à rien : proposez toujours les deux
+  fonds**, et affichez Google avec **votre** clé. C'était la règle inverse
+  jusqu'ici — c'est le seul point où votre code doit changer.
+- ⚠️ **`platform` est acceptée et IGNORÉE** sur les trois routes d'authentification.
+  **Ne la retirez pas** : le serveur refuse les champs inconnus, et ce champ
+  reste déclaré exprès pour que rien ne casse d'un déploiement à l'autre.
+- Côté exploitation, la console n'a plus qu'une bascule par pays — plus de clé
+  à coller, plus de plateforme à choisir.
+
 ### 4.39.1 — 29 septembre 2026
 
 📋 **SECONDE RÉPONSE AU RELEVÉ CHAUFFEUR DU 29 SEPTEMBRE** (C4, C5, E6).
@@ -322,10 +350,11 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
   parcours n'a aucune limite d'âge (seule la position courante expire). Et le
   feu vert du Gabon couvre **aussi** les rattrapages — roulez, coupez le
   réseau, reprenez. Écrit dans `VTC-DRIVER.md` §4 quater, *Les positions*.
-- **E6 — `maps` :** aucun pays n'a de clé Google aujourd'hui, sur aucune
-  plateforme ; `basemap` vaut `dira` partout. Vous n'avez rien à construire
-  tant que le bloc `maps` d'une connexion ne porte pas `google_key` — et c'est
-  ce bloc, pas une annonce, qui vous le dira.
+- **E6 — `maps` : la question est tranchée autrement, voir 4.40.0.** La réponse
+  du matin (« attendez que le bloc `maps` porte `google_key` ») ne vaut plus :
+  le serveur ne sert plus de clé du tout. Vous n'attendez donc rien — vous
+  affichez Google avec la vôtre quand la personne le demande, et `basemap` dit
+  seulement quel fond montrer d'abord.
 
 
 🎙️ **LES VOCAUX DANS LES LANGUES D'ICI.** Jusque-là, un vocal en wolof
@@ -449,34 +478,20 @@ fond de carte*.
 
 Ce que les applications ont à faire :
 
-- **Envoyer `platform`** (`android` / `ios` / `web`) sur `POST /auth/login`,
-  `POST /auth/register` **et** `POST /auth/refresh`. ⚠️ Les trois, et surtout le
-  rafraîchissement : envoyée seulement à la connexion, une clé changée
-  n'atteindrait un chauffeur resté connecté que trente jours plus tard — la
-  rotation, seule raison de servir la clé depuis le serveur, ne servirait à rien.
-- **Lire `maps`** dans la réponse : `{basemap, google_key?, google_map_type?}`.
-  ⚠️ **`google_key` absente = ne proposez pas le choix** — ni bouton grisé, ni
-  option qui échoue. Une bascule vers un fond qu'aucune clé ne sert donne un
-  rectangle gris, et la personne croit l'application cassée.
+> ⚠️ **CE QUI SUIT A ÉTÉ SIMPLIFIÉ PAR LA 4.40.0** : le serveur ne sert plus de
+> clé, `maps` ne porte plus que `basemap`, et le choix se propose **toujours**.
+> Lisez la section *Le fond de carte* d'un des cinq documents, pas cette liste.
+
+- **Lire `maps`** dans la réponse (connexion, inscription, rafraîchissement).
 - ⚠️ **`maps` absent = notre fond, rien d'autre à faire.** Une application pas
   encore à jour garde une carte qui marche.
 - **Garder le choix de la personne en local**, ⚠️ **même quand il devient
-  impossible** : quelqu'un qui passe dans un pays sans clé a changé de pays, pas
-  d'avis.
+  impossible** : quelqu'un qui change de pays a changé de pays, pas d'avis.
 - ⚠️ **Le logo Google est obligatoire** dès que ses tuiles s'affichent — 16 dp,
   10 dp de dégagement, jamais recouvert, le vôtre compris. C'est une clause du
   contrat d'utilisation, pas une politesse.
-- ⚠️ **Jamais la clé dans un journal ni dans un rapport de plantage**, et
-  ⚠️ **jamais compilée dans l'application** : une clé dans le binaire ne se
-  révoque pas sans republier sur les magasins.
-
-**Pourquoi la clé voyage en clair, puisqu'on la protège.** Google l'exige sur
-**chaque** requête de tuile, en plus du jeton de session : aucun montage
-n'affiche un fond Google en la gardant sur le serveur. Ce qui la protège est sa
-**restriction** côté Google — nom de paquet + empreinte SHA-1 sur Android,
-identifiant de bundle sur iOS, référent HTTP sur le web — et son plafond de
-quota. Une clé volée devient alors inutilisable ailleurs. Ce qu'on gagne à la
-servir depuis le serveur, c'est de pouvoir la **changer sans republier**.
+- ⚠️ **Jamais la clé dans un journal ni dans un rapport de plantage** : ces
+  fichiers partent chez un tiers et se gardent des mois.
 
 ### 4.35.0 — 28 septembre 2026
 

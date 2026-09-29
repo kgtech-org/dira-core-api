@@ -60,92 +60,38 @@ const (
 	// BasemapDira est notre fond — celui qui ne coûte rien et ne dépend de
 	// personne.
 	BasemapDira = "dira"
-	// BasemapGoogle exige une clé configurée pour la plateforme qui demande.
+	// BasemapGoogle : le fond de Google. ⚠️ C'est l'APPLICATION qui porte la
+	// clé, restreinte à son empreinte — le serveur dit seulement que c'est le
+	// fond à montrer d'abord dans ce pays.
 	BasemapGoogle = "google"
 )
 
-// Les plateformes qui portent chacune SA clé.
+// Maps porte le réglage de carte d'un pays : UN SEUL FAIT.
 //
-// ⚠️ UNE CLÉ PAR PLATEFORME, ET CE N'EST PAS UN CAPRICE. Google restreint une
-// clé par ce qui l'utilise : empreinte SHA-1 plus nom de paquet sur Android,
-// identifiant de bundle sur iOS, référent HTTP sur le web. Une clé unique pour
-// les trois ne peut être restreinte à AUCUN des trois — c'est-à-dire qu'elle
-// reste utilisable par n'importe qui l'aura lue, et c'est justement la seule
-// protection qui vaille ici.
-const (
-	PlatformWeb     = "web"
-	PlatformAndroid = "android"
-	PlatformIOS     = "ios"
-)
-
-// Les vues que Google sait rendre.
-const (
-	MapTypeRoadmap   = "roadmap"
-	MapTypeSatellite = "satellite"
-	MapTypeTerrain   = "terrain"
-)
-
-// GoogleMaps est la clé d'une plateforme, et ce qu'elle affiche.
-type GoogleMaps struct {
-	// Key est la clé Google Maps. ⚠️ ELLE NE RESSORT JAMAIS PAR LA CONSOLE :
-	// on la pose, on ne la relit pas. La console n'en voit que les quatre
-	// derniers caractères, de quoi reconnaître laquelle est en place sans
-	// pouvoir l'emporter. Une clé qu'un écran d'administration réaffiche est
-	// une clé qui finit dans une capture d'écran, un ticket, un canal de
-	// discussion.
-	Key       string    `bson:"key"`
-	MapType   string    `bson:"map_type,omitempty"`
-	UpdatedAt time.Time `bson:"updated_at,omitempty"`
-}
-
-// Maps porte les réglages de carte d'un pays.
+// ⚠️ LE SERVEUR NE GARDE PLUS AUCUNE CLÉ GOOGLE (v4.40.0). Il en a gardé une
+// par pays et par plateforme pendant une semaine, pour pouvoir la faire tourner
+// sans republier les applications. C'était incompatible avec la façon dont les
+// frontends sont faits : chacun porte SA clé, restreinte à son empreinte, à son
+// bundle ou à son référent — une clé servie par l'API arrivait trop tard, pour
+// une plateforme qui en avait déjà une. Le serveur ne répond donc plus qu'à une
+// question : « dans ce pays, quel fond montre-t-on d'ABORD ? »
 type Maps struct {
 	// Basemap est le fond par DÉFAUT du pays — et seulement le défaut : la
 	// personne choisit ensuite celui qui lui va, et son choix vit chez elle.
 	// Vide = `dira`.
 	Basemap string `bson:"basemap,omitempty"`
-	// Google : une clé par plateforme, absente quand il n'y en a pas.
-	Google map[string]GoogleMaps `bson:"google,omitempty"`
 }
 
-// GoogleUpdate pose ou retire la clé d'une plateforme.
-//
-// Les deux champs sont des POINTEURS : absent = ne pas y toucher. C'est la même
-// convention que `UpdateRequest` — on règle le type de carte sans avoir à
-// renvoyer la clé, ce qui obligerait à la connaître pour changer autre chose.
-type GoogleUpdate struct {
-	// Key vide (`""`) RETIRE la clé. ⚠️ Il faut un moyen explicite de retirer :
-	// sans lui, une clé compromise ne pourrait qu'être remplacée, jamais
-	// enlevée — et le pays resterait sur un fond Google qu'aucune clé ne sert.
-	Key     *string `json:"key" validate:"omitempty,max=200"`
-	MapType *string `json:"map_type" validate:"omitempty,oneof=roadmap satellite terrain"`
-}
-
-// MapsUpdateRequest règle le fond d'un pays depuis la console.
+// MapsUpdateRequest règle le fond d'un pays depuis la console. Un champ, un
+// choix : `dira` ou `google`.
 type MapsUpdateRequest struct {
-	Basemap *string                 `json:"basemap" validate:"omitempty,oneof=dira google"`
-	Google  map[string]GoogleUpdate `json:"google"`
+	Basemap *string `json:"basemap" validate:"omitempty,oneof=dira google"`
 }
 
-// GoogleKeyStatus est ce que la console voit d'une clé : qu'elle existe, de
-// quoi la reconnaître, et depuis quand.
-type GoogleKeyStatus struct {
-	Configured bool `json:"configured"`
-	// Hint est la fin de la clé (quatre caractères). Assez pour dire « c'est
-	// bien celle du 12 mars », pas assez pour s'en servir.
-	Hint    string `json:"hint,omitempty"`
-	MapType string `json:"map_type,omitempty"`
-	// ⚠️ UN POINTEUR, PAS UNE DATE. `omitempty` ne sait pas taire un `time.Time`
-	// vide : une plateforme sans clé rendait `"0001-01-01T00:00:00Z"`, une date
-	// que la console afficherait telle quelle. Un champ absent se lit ; une date
-	// de l'an 1 se lit aussi, et elle ment.
-	UpdatedAt *time.Time `json:"updated_at,omitempty"`
-}
-
-// MapsResponse est le réglage du pays tel que la console le lit.
+// MapsResponse est le réglage du pays tel que la console le lit — et tel que
+// les applications le reçoivent : le fond par défaut, rien d'autre.
 type MapsResponse struct {
-	Basemap string                     `json:"basemap"`
-	Google  map[string]GoogleKeyStatus `json:"google"`
+	Basemap string `json:"basemap"`
 }
 
 // Response est un pays tel que le public et la console le lisent : la fiche
@@ -228,13 +174,7 @@ var (
 	// tableaux de bord, en silence.
 	errDefaultTesting = apperr.Conflict("country_default_testing",
 		"the default country cannot be reserved for testing")
-	errDefaultCountry  = apperr.Conflict("country_default", "the default country cannot be disabled")
-	errNoCoordinates   = apperr.Validation("lng and lat go together: send both or neither")
-	errNoMapsUpdate    = apperr.Validation("nothing to update: send basemap and/or google")
-	errUnknownPlatform = apperr.Validation("unknown platform: expected web, android or ios")
-	// ⚠️ On refuse de mettre un pays sur `google` sans clé : sinon la bascule
-	// est « réussie » et toutes les cartes du pays deviennent grises, sans que
-	// rien nulle part ne dise pourquoi.
-	errGoogleWithoutKey = apperr.Conflict("maps_google_without_key",
-		"configure at least one platform key before switching this country to the Google basemap")
+	errDefaultCountry = apperr.Conflict("country_default", "the default country cannot be disabled")
+	errNoCoordinates  = apperr.Validation("lng and lat go together: send both or neither")
+	errNoMapsUpdate   = apperr.Validation("nothing to update: send basemap")
 )
