@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.40.0** · 29 septembre 2026
+> **Version 4.41.0** · 29 septembre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -155,15 +155,55 @@ Ce que ça change pour vous, dans l'ordre :
    le serveur refuse les champs inconnus, mais celui-là reste déclaré
    exprès — l'envoyer ne coûte rien, et le retirer n'apporte rien.
 
+### Où lire le défaut d'un pays — DEUX endroits, et il faut les deux (v4.41.0)
+
+| | Quand | Ce qu'il dit |
+|---|---|---|
+| `maps.basemap` de `/auth/login`, `/auth/register`, `/auth/refresh` | à la connexion et à chaque rafraîchissement de jeton | le fond du pays où l'on **se connecte** |
+| **`basemap` de chaque pays dans `GET /countries`** | à chaque ouverture de l'application, sans jeton | le fond de **n'importe quel** pays ouvert |
+
+⚠️ **LE BLOC `maps` NE SUFFIT PAS, ET C'EST LE PIÈGE.** Il voyage avec le jeton :
+il dit le fond du pays où l'on s'est connecté, **une fois**. Or l'application
+rouvre sans se reconnecter (le jeton d'accès se rafraîchit, mais pas à chaque
+lancement), et surtout **le pays peut changer sans reconnexion** — un passager
+togolais qui ouvre l'application à Dakar opère au Sénégal. Une application qui ne
+lirait que `maps` garderait le fond de la veille, dans le mauvais pays.
+
+`GET /countries` est **public** et déjà appelé avant l'inscription : chaque pays
+y porte désormais `basemap`.
+
+```jsonc
+{ "items": [
+  { "code": "SN", "name": "Sénégal", "currency": "XOF", …, "basemap": "google" },
+  { "code": "TG", "name": "Togo",    "currency": "XOF", …, "basemap": "dira" } ] }
+```
+
 ### Ce que vous faites, concrètement
 
-1. À la connexion **et au rafraîchissement**, lisez `maps.basemap` : c'est le
-   fond que vous montrez **d'abord** dans ce pays.
-2. **Gardez le choix de la personne en local** ; il **prime** sur le défaut du
-   pays. ⚠️ Et il **survit au changement de pays** : quelqu'un qui passe du Togo
-   au Sénégal a changé de pays, pas d'avis.
-3. `maps` **absent** (socle plus ancien, réponse sans le bloc) = **notre fond**,
+1. **Au lancement**, lisez `GET /countries` (vous l'appelez déjà) et gardez le
+   `basemap` de chaque pays avec le reste de la fiche.
+2. **Le fond effectif** se décide dans cet ordre, et il n'y en a pas d'autre :
+
+   ```
+   le choix de la personne (gardé chez vous)
+     sinon  le basemap du pays où elle OPÈRE  (celui de l'en-tête X-Dira-Country)
+       sinon  dira
+   ```
+
+3. **Tant que la personne n'a rien choisi, suivez le pays** — c'est exactement ce
+   à quoi sert ce réglage. Dès qu'elle choisit, son choix **prime** et ne se
+   perd plus. ⚠️ Il **survit au changement de pays** : quelqu'un qui passe du
+   Togo au Sénégal a changé de pays, pas d'avis.
+4. **Au changement de pays**, relisez le `basemap` du nouveau pays et
+   **redessinez la carte** si le fond effectif change. Un fond lu à la première
+   carte et jamais relu est un fond qui ment dès le second voyage.
+5. `maps` **absent** (socle plus ancien) ou `basemap` inconnu = **notre fond**,
    et rien d'autre à faire.
+
+> ⚠️ **Le fond change, la carte doit RENAÎTRE.** Les SDK lisent leur style à la
+> création : changer la valeur sans reconstruire la vue ne se voit pas, et on
+> croit le réglage sans effet. C'est le défaut que la console a eu le
+> 30 septembre — le logo Google posé sur les tuiles de l'autre fond.
 
 ⚠️ **LE LOGO GOOGLE EST OBLIGATOIRE** dès que ses tuiles s'affichent : **16 dp de
 haut au minimum**, **10 dp de dégagement**, **jamais recouvert** par un autre

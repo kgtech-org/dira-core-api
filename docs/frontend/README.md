@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.40.0** · 29 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.41.0** · 29 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -304,6 +304,27 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.41.0 — 30 septembre 2026
+
+🗺️ **LE FOND PAR DÉFAUT D'UN PAYS SE LIT DANS `GET /countries`.** Chaque pays du
+catalogue public porte `basemap` (`dira` | `google`).
+
+⚠️ **Pourquoi c'était nécessaire, et c'est le piège** : le bloc `maps` de
+l'authentification voyage avec le jeton — il dit le fond du pays où l'on s'est
+**connecté**, une fois. L'application rouvre sans se reconnecter, et surtout le
+pays peut changer sans reconnexion (un passager togolais qui ouvre l'application
+à Dakar). Une application qui ne lirait que `maps` garderait le fond de la
+veille, dans le mauvais pays.
+
+- La règle du fond effectif, écrite dans les cinq documents : **le choix de la
+  personne, sinon le `basemap` du pays où elle OPÈRE, sinon `dira`**.
+- **Tant que la personne n'a rien choisi, suivez le pays.** Dès qu'elle choisit,
+  son choix prime et survit au changement de pays.
+- ⚠️ **Le fond change → la carte doit RENAÎTRE.** Les SDK lisent leur style à la
+  création ; changer la valeur sans reconstruire la vue ne se voit pas. C'est le
+  défaut que la console a eu le 30 septembre : le logo Google posé sur les
+  tuiles de l'autre fond.
 
 ### 4.40.0 — 29 septembre 2026
 

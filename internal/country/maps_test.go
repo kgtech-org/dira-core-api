@@ -61,3 +61,28 @@ func TestAnEmptyCacheMakesACountryCountRatherThanVanish(t *testing.T) {
 	assert.False(t, s.Testing("GA"))
 	assert.Empty(t, s.TestingCodes())
 }
+
+// LE FOND PART AUSSI DANS LE CATALOGUE PUBLIC (v4.41.0).
+//
+// ⚠️ `maps` de l'authentification ne suffit pas : il voyage avec le jeton, donc
+// il dit le fond du pays où l'on s'est CONNECTÉ, une fois. Une application qui
+// change de pays sans se reconnecter — ou qui rouvre après un simple `GET /me` —
+// garderait le fond de la veille. Le catalogue, lui, se relit à chaque
+// ouverture.
+func TestThePublicCatalogueCarriesTheCountrysBasemap(t *testing.T) {
+	var s Service
+	// Cache vide (base injoignable au démarrage) : NOTRE fond, celui qui ne
+	// demande ni clé ni facture. Se tromper vers `google` donnerait une carte
+	// grise à qui n'a pas de clé.
+	assert.Equal(t, BasemapDira, s.BasemapOf("SN"))
+
+	s.basemap = map[string]string{"SN": BasemapGoogle}
+	assert.Equal(t, BasemapGoogle, s.BasemapOf("SN"))
+	assert.Equal(t, BasemapGoogle, s.BasemapOf("sn"), "le code se normalise")
+	assert.Equal(t, BasemapDira, s.BasemapOf("TG"), "un pays non réglé garde le nôtre")
+
+	// Une valeur abîmée en base ne sort pas telle quelle : seul `google` est
+	// un fond, tout le reste est le nôtre.
+	s.basemap = map[string]string{"TD": "openstreetmap"}
+	assert.Equal(t, BasemapDira, s.BasemapOf("TD"))
+}
