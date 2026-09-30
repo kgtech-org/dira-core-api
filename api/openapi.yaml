@@ -397,6 +397,16 @@ paths:
         ouverts d'office : Togo, Sénégal, Guinée, Tchad, Gabon. Une application
         s'en sert avant toute connexion : proposer l'indicatif à
         l'inscription, dire « Dira n'est pas encore chez vous ».
+      description: >-
+        Les pays OUVERTS, avec leur monnaie EN VIGUEUR et leur **fond de carte
+        par défaut** (`basemap` : `dira` | `google`, v4.41.0).
+
+
+        ⚠️ **`basemap` est ici parce que le bloc `maps` de l'authentification ne
+        suffit pas** : celui-ci voyage avec le jeton, donc il dit le fond du pays
+        où l'on s'est CONNECTÉ, une fois. Une application qui change de pays sans
+        se reconnecter garderait le fond de la veille. Ce catalogue, lui, se
+        relit à chaque ouverture.
       responses:
         "200":
           description: Open countries

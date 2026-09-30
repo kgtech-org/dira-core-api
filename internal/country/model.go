@@ -113,6 +113,15 @@ type Response struct {
 	// ni dans la supervision, ni dans les rapports. La console doit le montrer,
 	// sans quoi on prendra ses courses pour de vraies.
 	Testing bool `json:"testing,omitempty"`
+	// Basemap est le FOND DE CARTE par défaut du pays — `dira` ou `google`.
+	//
+	// ⚠️ ICI PARCE QUE `maps` DE L'AUTHENTIFICATION NE SUFFIT PAS. Ce bloc-là
+	// voyage avec le jeton : il dit le fond du pays où l'on s'est CONNECTÉ, une
+	// fois. Or une application change de pays sans se reconnecter — un passager
+	// togolais qui ouvre l'application à Dakar, une console dont la direction
+	// bascule d'un clic — et elle relit ce catalogue à chaque ouverture. Sans ce
+	// champ, elle garderait le fond de la veille, dans le mauvais pays.
+	Basemap string `json:"basemap"`
 }
 
 // UpdateRequest règle un pays : ouvert ou fermé, et sa monnaie. Les deux

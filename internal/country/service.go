@@ -46,7 +46,12 @@ type Service struct {
 	// testing : les pays RÉSERVÉS AUX ESSAIS. Lu par tout ce qui compte —
 	// supervision, rapports, classements — pour ne pas mêler des courses
 	// fabriquées à de vraies.
-	testing  map[string]bool
+	testing map[string]bool
+	// basemap : le FOND DE CARTE par défaut de chaque pays. Dans le cache pour
+	// la même raison que la monnaie — il part dans `GET /countries`, que les
+	// applications relisent à chaque ouverture, et une lecture Mongo par appel
+	// pour un réglage qui change deux fois l'an n'a pas de sens.
+	basemap  map[string]string
 	loadedAt time.Time
 	cacheTTL time.Duration
 }
@@ -92,6 +97,7 @@ func (s *Service) refresh(ctx context.Context) {
 	m := make(map[string]bool, len(rows))
 	cur := make(map[string]string, len(rows))
 	test := make(map[string]bool, len(rows))
+	base := make(map[string]string, len(rows))
 	for _, r := range rows {
 		m[r.Code] = r.Enabled
 		if r.Currency != "" {
@@ -100,9 +106,12 @@ func (s *Service) refresh(ctx context.Context) {
 		if r.Testing {
 			test[r.Code] = true
 		}
+		if b := basemapOf(r.Maps); b != BasemapDira {
+			base[r.Code] = b
+		}
 	}
 	s.mu.Lock()
-	s.enabled, s.currency, s.testing, s.loadedAt = m, cur, test, time.Now()
+	s.enabled, s.currency, s.testing, s.basemap, s.loadedAt = m, cur, test, base, time.Now()
 	s.mu.Unlock()
 }
 
@@ -132,6 +141,7 @@ func (s *Service) respond(info country.Info, enabled bool) Response {
 	return Response{
 		Info: info, Enabled: enabled, Default: info.Code == s.defaultCode,
 		Testing:      s.Testing(info.Code),
+		Basemap:      s.BasemapOf(info.Code),
 		CurrencyName: cur.Name, CurrencySymbol: cur.Symbol, CurrencyDecimals: cur.Decimals,
 	}
 }
@@ -306,6 +316,23 @@ func (s *Service) Testing(code string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.testing[code]
+}
+
+// BasemapOf rend le fond de carte par DÉFAUT d'un pays — `dira` quand rien
+// n'est réglé, ou quand le cache est vide.
+//
+// ⚠️ AU MIEUX DANS LE SENS QUI MARCHE : notre fond ne demande ni clé ni
+// facture, et il s'affiche partout. Se tromper vers `google` donnerait une
+// carte grise à qui n'a pas de clé ; se tromper vers `dira` ne coûte qu'un
+// fond moins détaillé le temps qu'une lecture aboutisse.
+func (s *Service) BasemapOf(code string) string {
+	code = country.Normalize(code)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if b := s.basemap[code]; b == BasemapGoogle {
+		return BasemapGoogle
+	}
+	return BasemapDira
 }
 
 // TestingCodes rend les pays d'essai, triés — ce qu'une verticale exclut de ses
