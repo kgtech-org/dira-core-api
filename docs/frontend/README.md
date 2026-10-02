@@ -377,6 +377,7 @@ pays, quel fond montre-t-on d'abord ?
   affichez Google avec la vôtre quand la personne le demande, et `basemap` dit
   seulement quel fond montrer d'abord.
 
+### 4.39.0 — 29 septembre 2026
 
 🎙️ **LES VOCAUX DANS LES LANGUES D'ICI.** Jusque-là, un vocal en wolof
 partait chez un modèle à qui personne n'avait dit que c'était du wolof, et
