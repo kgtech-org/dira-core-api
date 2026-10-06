@@ -343,9 +343,11 @@ minutes.
   voiture fera un détour qu'il ne pourra pas expliquer point par point.
 - **Trois pushs** : `ride_pool_matched` (à celui qui attendait — on a trouvé
   quelqu'un), `ride_pool_no_match`, `ride_pool_partner_left`.
-- **Refus du devis** : `pool_off`, `pool_too_short` (`meta.distance_m`,
-  `meta.min_distance_m` — **affichez les deux**), `pool_direct_only` (pas
-  d'arrêt intermédiaire), `pool_no_class`.
+- **Refus du devis** : `pool_off`, `pool_too_short`, `pool_direct_only` (pas
+  d'arrêt intermédiaire), `pool_no_class`. ⚠️ **Les chiffres sont DANS la
+  phrase** — « Ce trajet fait 2 100 m : la course partagée commence à
+  5 000 m » —, pas dans un `meta` : l'enveloppe ne rend que `code`, `message`,
+  `fields` et `reason`, et c'est la règle depuis le début.
 - **Réglé par pays** (`GET /settings/modes → pool`) : 2,5 km entre les départs,
   2,5 km entre les arrivées, 5 km de trajet minimum, 5 min de recherche, 2
   passagers. ⚠️ **Allumé par défaut**, contrairement aux deux autres modes : il
@@ -353,6 +355,14 @@ minutes.
   s'il la choisit.
 - ⚠️ **Pas d'entrée `tracking.pool`** : une course partagée est une course
   commandée, elle utilise la cadence `normal`.
+
+📝 **CORRECTION, et elle touche la LOCATION aussi.** `VTC-CLIENT` et
+`VTC-DRIVER` annonçaient depuis la v4.29.0 que `422 rental_out_of_range`
+portait un `meta` avec `distance_km` et `max_km`. **Il n'arrive pas** — les deux
+documents disaient par ailleurs, et depuis toujours, que l'enveloppe ne rend
+que `code`, `message`, `fields` et `reason`. Les nombres n'ont jamais voyagé
+qu'à l'intérieur de la phrase traduite, qui les porte bel et bien. Aucun
+changement de serveur : c'est la rédaction qui était fausse.
 
 📍 **`GET /settings/modes` SUIT ENFIN LE LIEU — `?near=lng,lat`.** Depuis la
 v4.27.0 un devis est calculé dans le pays du **départ**, et `GET /classes?near=`
