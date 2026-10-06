@@ -1251,9 +1251,15 @@ son côté — **relisez la course** quand une trame `status` arrive.
 **Vous pouvez aussi rouler sans destination du tout.** C'est normal pour ce
 mode : ne bloquez pas l'écran sur « ajoutez une arrivée ».
 
-⚠️ **`422 rental_out_of_range`** : l'arrêt sort du rayon. `meta` porte
-`distance_km` et `max_km` — dites les deux au passager, il choisit encore.
-Refuser sans chiffres vous met en position de ne rien pouvoir expliquer.
+⚠️ **`422 rental_out_of_range`** : l'arrêt sort du rayon. **Sa phrase porte les
+deux chiffres** — « Cet arrêt est à 190 km du départ : votre location va
+jusqu'à 60 km » — dites-les au passager, il choisit encore. Refuser sans
+chiffres vous met en position de ne rien pouvoir expliquer.
+
+⚠️ **Corrigé en v4.42.0** : ce paragraphe annonçait un `meta` portant
+`distance_km` et `max_km`. **Il n'arrive pas** — l'enveloppe ne rend que `code`,
+`message`, `fields` et `reason`, et c'est la règle depuis le début. Les nombres
+n'ont jamais voyagé qu'à l'intérieur de la phrase traduite.
 
 **Prévenez AVANT le plafond.** Vous avez votre position et le départ :
 alertez à `rental_alert_km_before` km du rayon. Prévenir laisse le temps de

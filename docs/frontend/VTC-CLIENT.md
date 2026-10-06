@@ -1195,10 +1195,15 @@ dit de vive voix. Vos arrêts peuvent donc changer sans que vous les ayez
 envoyés : **relisez la course** sur une trame `status` comme d'habitude, et
 n'écrasez pas la liste sans l'avoir relue.
 
-**`422 rental_out_of_range`** : l'arrêt demandé sort du rayon. `meta` porte
-`distance_km` et `max_km` — **affichez les deux** : « Kaolack est à 190 km,
-votre location va jusqu'à 60 km ». Un « trop loin » sans chiffres laisse
-deviner de combien.
+**`422 rental_out_of_range`** : l'arrêt demandé sort du rayon. ⚠️ **Sa phrase
+porte les deux chiffres** — « Cet arrêt est à 190 km du départ : votre location
+va jusqu'à 60 km » — et c'est elle qu'il faut afficher : un « trop loin » sans
+chiffres laisse deviner de combien.
+
+⚠️ **Corrigé en v4.42.0** : ce paragraphe annonçait un `meta` portant
+`distance_km` et `max_km`. **Il n'arrive pas** — l'enveloppe ne rend que `code`,
+`message`, `fields` et `reason` (§8), et c'est la règle depuis le début. Les
+nombres n'ont jamais voyagé qu'à l'intérieur de la phrase traduite.
 
 #### Le temps qui reste
 
@@ -1315,12 +1320,20 @@ elle rappelle une voiture (`calling`). La réponse dit lequel.
 
 #### Ce que le devis refuse, et pourquoi le dire AVANT
 
-| Refus | `meta` | Ce que vous affichez |
-|---|---|---|
-| `409 pool_off` | — | ne montrez pas le mode du tout (lisez `settings.pool.enabled`) |
-| `409 pool_too_short` | `distance_m`, `min_distance_m` | « le partage commence à 5 km » — **avec les deux chiffres** |
-| `409 pool_direct_only` | `stops` | « une course partagée va d'un point à un autre » — retirez les arrêts intermédiaires |
-| `409 pool_no_class` | — | aucune voiture ne le propose ici pour le moment |
+| Refus | Ce que vous affichez |
+|---|---|
+| `409 pool_off` | ne montrez pas le mode du tout (lisez `settings.pool.enabled`) |
+| `409 pool_too_short` | **la phrase du serveur, telle quelle** : « Ce trajet fait 2 100 m : la course partagée commence à 5 000 m » |
+| `409 pool_direct_only` | « une course partagée va d'un point à un autre » — retirez les arrêts intermédiaires |
+| `409 pool_no_class` | aucune voiture ne le propose ici pour le moment |
+
+⚠️ **LES CHIFFRES SONT DANS LA PHRASE, PAS DANS UN `meta`.** L'enveloppe
+d'erreur ne rend que `code`, `message`, `fields` et `reason` — c'est la règle de
+toute la plateforme (§8), et `pool_too_short` ne fait pas exception : son
+`message` est déjà traduit **et déjà chiffré**. Si vous voulez votre propre
+mise en forme, **prenez les deux nombres de `settings.pool.min_distance_m` et du
+`distance_m` du devis ordinaire** — ne tentez pas de lire un `meta` qui
+n'arrive pas.
 
 ⚠️ **PROPOSEZ LE MODE SEULEMENT QUAND IL EST POSSIBLE.** `settings.pool` vous
 donne tout pour le savoir avant d'appeler : `enabled`, et `min_distance_m` à
