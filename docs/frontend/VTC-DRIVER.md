@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.43.0** · 6 octobre 2026
+> **Version 4.44.0** · 6 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -1124,13 +1124,14 @@ GET /settings/modes?near=lng,lat
   → { free:   { enabled, scannable, max_hours },
       rental: { enabled, max_radius_km, alert_km_before },
       pool:   { enabled, pickup_radius_m, dropoff_radius_m,
-                min_distance_m, search_ttl_s, max_riders } }      # v4.42.0
+                min_distance_m, search_ttl_s, max_riders,
+                fare_pct } }                                      # v4.44.0
 
 GET /classes?near=lng,lat
   → items[].modes = {
        "free":   { base_xof, per_km_xof, per_min_xof, min_fare_xof },
        "rental": { tiers: [ { hours, price_xof, included_km } ], extra_per_km_xof },
-       "pool":   { base_xof, per_km_xof, per_min_xof } }           # v4.42.0
+       "pool":   { } }    # v4.44.0 — présence = cette voiture partage
 ```
 
 ⚠️ **`near` NOMME LE LIEU** (v4.42.0) : passez votre position, et les deux
@@ -1141,6 +1142,12 @@ vous, et faux le jour où vous passez une frontière.
 ⚠️ **LE PARTAGE N'EST PAS UN BOUTON POUR VOUS.** C'est le PASSAGER qui le
 choisit ; vous, vous recevez un appel différent (voir plus bas). Rien à
 afficher dans vos réglages — mais tout à afficher sur l'écran d'appel.
+
+⚠️ **ET IL N'A PAS DE GRILLE** (v4.44.0) : `modes.pool` est un objet **vide**,
+dont la seule présence dit « cette voiture partage ». Le prix est une **part**
+du tarif ordinaire (`settings.modes.pool.fare_pct`, 70 % par défaut), la même
+pour tout le pays. Jusqu'à la v4.43.0 trois nombres y étaient servis ; ils ne
+facturent plus.
 
 ⚠️ **LISEZ-LES AVANT DE MONTRER LE BOUTON.** Un mode éteint doit **disparaître
 de l'écran**, pas y rester et répondre `409`. Un chauffeur qui appuie sur un
@@ -1305,6 +1312,7 @@ prendre une course simple se répare en annulant, ce qui pénalise tout le monde
 |---|---|
 | **« PARTAGÉE · 2 passagers »**, en grand | c'est la seule information qui change la décision |
 | `meta.fare_xof` / `driver_xof` | ⚠️ c'est **le total du groupe** — ce que vous gagnez pour ce déplacement. Afficher le prix d'un seul passager sous-vendrait la course de moitié |
+| `share_pct` sur chaque course | ⚠️ **chaque passager paie une PART du tarif ordinaire** (70 % par défaut, réglé par pays). Deux parts valent plus qu'une course entière : c'est le volume qui paie, pas le prix unitaire |
 | `meta.stops: 4` | deux prises en charge, deux dépôts |
 
 ⚠️ **`pickup` N'EST LE DÉPART D'AUCUN DES DEUX PASSAGERS.** C'est le **milieu**
