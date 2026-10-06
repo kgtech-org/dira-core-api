@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.41.0** · 29 septembre 2026
+> **Version 4.42.0** · 6 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -996,17 +996,29 @@ POST /subscriptions/{id}/pause · /resume · /cancel
 
 ## 4 quater. 🚕 LES AUTRES MODES DE COURSE (v4.31.0)
 
-**Deux modes en plus du mode ordinaire. Le PAYS les ouvre, et chaque VOITURE
+**Trois modes en plus du mode ordinaire. Le PAYS les ouvre, et chaque VOITURE
 dit lesquels elle vend — les deux conditions, pas l'une ou l'autre.**
 
 ```
-GET /settings/modes → { free:   { enabled, scannable, max_hours },
-                        rental: { enabled, max_radius_km, alert_km_before } }
+GET /settings/modes?near=lng,lat
+  → { free:   { enabled, scannable, max_hours },
+      rental: { enabled, max_radius_km, alert_km_before },
+      pool:   { enabled, pickup_radius_m, dropoff_radius_m,
+                min_distance_m, search_ttl_s, max_riders } }      # v4.42.0
 
-GET /classes        → items[].modes = {
+GET /classes?near=lng,lat
+  → items[].modes = {
        "free":   { base_xof, per_km_xof, per_min_xof, min_fare_xof },
-       "rental": { tiers: [ { hours, price_xof, included_km } ], extra_per_km_xof } }
+       "rental": { tiers: [ { hours, price_xof, included_km } ], extra_per_km_xof },
+       "pool":   { base_xof, per_km_xof, per_min_xof } }           # v4.42.0
 ```
+
+⚠️ **PASSEZ `near` SUR LES DEUX, AVEC LE POINT DE DÉPART** (v4.42.0). Les deux
+routes rendent alors les réglages et le catalogue **du pays où la course se
+fera**. Sans `near`, elles rendent ceux du pays du **compte** — et un passager
+togolais à Dakar lisait jusqu'ici les modes du Togo avec les prix du Sénégal :
+deux pays dans un seul écran. Tant que vous ne connaissez pas encore le départ,
+appelez sans `near` ; **rappelez dès que le passager l'a posé**.
 
 ⚠️ **DEUX DOCUMENTS, ET ILS NE DISENT PAS LA MÊME CHOSE.** Les réglages disent
 ce que le pays **ouvre** et les bornes qui valent pour toutes les voitures ; le
@@ -1022,6 +1034,13 @@ deux documents écran par écran — et c'est le point : le premier écran qui
 l'oublierait proposerait une location qu'on refuse à la commande, au pire
 moment. Une voiture **sans** `modes.rental` ne se loue pas ; ne l'affichez pas
 dans la liste des locations.
+
+⚠️ **LA POLITIQUE EST DANS LES RÉGLAGES, LES PRIX DANS LE CATALOGUE — et il
+n'y a qu'un endroit pour chacune.** « Le partage est-il ouvert ? à partir de
+combien de kilomètres ? pendant combien de temps cherche-t-on ? » :
+`GET /settings/modes`. « Combien coûte ce trajet dans cette voiture ? » : le
+devis, et la grille du catalogue pour l'expliquer. Si vous trouvez la même
+valeur aux deux endroits, c'est une erreur de notre part — dites-le.
 
 ⚠️ **LES PRIX D'UN MODE NE SONT PLUS DANS LES RÉGLAGES DEPUIS LA v4.31.0.**
 Les plages de location, leur forfait, les kilomètres compris, le tarif du
@@ -1195,6 +1214,148 @@ C'est un **instant** : décomptez-le localement, sans réinterroger.
 supplément apparaît dans `fare_adjustments` avec le motif `rental_overage`.
 ⚠️ **Le kilomètre commencé est dû** — c'était écrit dans les conditions.
 Aucun supplément pour un **retard** : la durée est ce qu'on a vendu.
+
+---
+
+### 🤝 La course PARTAGÉE — deux passagers, une voiture (v4.42.0)
+
+Deux personnes dont les **départs** et les **arrivées** sont proches montent
+dans la même voiture et paient **chacune son trajet**, moins cher. Le chauffeur
+sert deux courses pour un seul déplacement.
+
+> ⚠️ **Ce n'est PAS le « partage de trajet » de l'écran sécurité** (envoyer sa
+> position à un proche), qui n'existe toujours pas. Ici, on partage la
+> **voiture** avec un inconnu.
+
+```
+POST /rides/pool/quote  { "stops": [ { kind: "pickup", … }, { kind: "dest", … } ] }
+  → { items: [ { id, class_key, mode: "pool", fare_xof, distance_m, duration_s,
+                 country, expires_at }, … ] }
+
+POST /rides  { quote_id, payment_method }        # comme un devis ordinaire
+```
+
+#### ⚠️ LA RECHERCHE SE FAIT EN DEUX TEMPS — c'est TOUT ce qu'il faut comprendre
+
+```
+POST /rides
+   │
+   ├─▶ dispatch_state: "pooling"      ← 1. on cherche un CO-PASSAGER
+   │     pool_until: <instant>           AUCUN chauffeur n'est appelé
+   │
+   ├─▶ dispatch_state: "calling"      ← 2. le groupe est formé, on appelle
+   │     pool_id, pool_size: 2           UNE voiture pour les deux
+   │
+   └─▶ status: "accepted"             ← un chauffeur a pris le groupe
+```
+
+⚠️ **PENDANT L'ÉTAPE 1, PERSONNE N'EST APPELÉ. Ne dites pas « nous cherchons un
+chauffeur »** — ce serait faux, et le passager s'étonnerait que ça dure cinq
+minutes. Dites « nous cherchons quelqu'un qui fait le même trajet », et
+décomptez `pool_until`.
+
+⚠️ **`pool_until` EST UN INSTANT, pas une durée** — comme `eta_at`. Décomptez-le
+localement, sans réinterroger : une durée servie il y a trois minutes en vaut
+une de moins.
+
+**Quand le groupe se forme**, le passager qui attendait reçoit le push
+**`ride_pool_matched`** (`data.type: "ride_status"`, `dispatch_state: "calling"`,
+`pool_id`) — relisez la course. Celui qui vient de commander, lui, voit déjà
+`calling` dans la réponse de `POST /rides` : il n'y a pas de push pour lui.
+
+#### Le prix : chacun sa distance, à la grille partagée
+
+⚠️ **IL N'EXISTE AUCUN PRIX COMMUN.** Chaque passager paie **son** trajet, au
+tarif remisé du partage. Les deux ne font pas le même chemin — l'un roule
+peut-être deux fois plus longtemps que l'autre. **N'affichez pas un montant
+« à deux », ne divisez rien** : `fare_xof` est ce que *cette* personne paie.
+
+⚠️ **LE PRIX EST FIGÉ AU DEVIS, ET IL NE BOUGE PLUS.** Trouver un co-passager
+ne le baisse pas ; ne pas en trouver ne le remonte pas ; le co-passager qui
+annule en route ne le change pas non plus. C'est ce qui a été vendu.
+
+⚠️ **PAS DE MAJORATION DE ZONE, PAS DE PROMOTION** sur un devis partagé : la
+remise est déjà dans la grille. `surge_name`, `promo_title` sont absents — ne
+réservez pas de place pour eux sur cet écran.
+
+#### Quand ça ne marche pas — `dispatch_reason` décide de ce que vous proposez
+
+La recherche s'arrête, la course **reste** `searching`, et **rien n'est changé
+à sa place** : son mode et son prix sont ceux qu'elle a achetés.
+
+| `dispatch_reason` | Ce qui s'est passé | Push | Ce que vous proposez |
+|---|---|---|---|
+| `pool_no_match` | personne ne partageait ce trajet | `ride_pool_no_match` | **Relancer** · **Prendre une course ordinaire** · Annuler |
+| `pool_partner_left` | le co-passager a annulé | `ride_pool_partner_left` | **Relancer** · Annuler — dites que le prix ne change pas |
+| `pool_call_failed` | le groupe était formé, l'appel n'a pas pu s'ouvrir | `ride_search_exhausted` | **Relancer** · Annuler |
+| *(absent)* | aucun chauffeur n'a pris le groupe | `ride_search_exhausted` | **Relancer** · Annuler |
+
+⚠️ **« PRENDRE UNE COURSE ORDINAIRE » EST UN AUTRE DEVIS, ET UN AUTRE PRIX.**
+Annulez la course partagée (`POST /rides/{id}/cancel` — remboursée, personne ne
+l'a prise), puis repassez par `POST /rides/quote` + `POST /rides`. **Il n'existe
+pas de route qui change le mode d'une course** : elle ferait payer un tarif que
+le passager n'a pas vu.
+
+⚠️ **NE BASCULEZ JAMAIS D'OFFICE.** Au bout de cinq minutes, l'écran demande —
+il ne décide pas. C'est la règle de tout ce document : le passager a payé, c'est
+à lui de choisir.
+
+```
+POST /rides/{id}/relaunch
+```
+
+**La relance reprend là où ça s'est arrêté**, et vous n'avez rien à distinguer :
+sans groupe, elle recherche un co-passager (`pooling`) ; avec un groupe intact,
+elle rappelle une voiture (`calling`). La réponse dit lequel.
+
+| Refus | Quand |
+|---|---|
+| `409 search_running` | `dispatch_state` vaut `pooling` **ou** `calling` — masquez « Relancer » dans les deux cas. ⚠️ Sinon un passager impatient remet sa fenêtre à zéro toutes les dix secondes et n'atteint jamais les cinq minutes, donc jamais un groupe |
+| `409 pool_off` | le pays a fermé le partage entre-temps — proposez d'annuler et de commander une course ordinaire |
+
+#### Ce que le devis refuse, et pourquoi le dire AVANT
+
+| Refus | `meta` | Ce que vous affichez |
+|---|---|---|
+| `409 pool_off` | — | ne montrez pas le mode du tout (lisez `settings.pool.enabled`) |
+| `409 pool_too_short` | `distance_m`, `min_distance_m` | « le partage commence à 5 km » — **avec les deux chiffres** |
+| `409 pool_direct_only` | `stops` | « une course partagée va d'un point à un autre » — retirez les arrêts intermédiaires |
+| `409 pool_no_class` | — | aucune voiture ne le propose ici pour le moment |
+
+⚠️ **PROPOSEZ LE MODE SEULEMENT QUAND IL EST POSSIBLE.** `settings.pool` vous
+donne tout pour le savoir avant d'appeler : `enabled`, et `min_distance_m` à
+comparer au `distance_m` du devis ordinaire. Un bouton qu'on refuse est pire
+qu'un bouton absent.
+
+⚠️ **PAS D'ARRÊT INTERMÉDIAIRE.** Le partage n'accepte que **deux** étapes, un
+départ et une arrivée : l'itinéraire du groupe en contient déjà quatre, et une
+escale la ferait disparaître sans rien dire. `PATCH /rides/{id}/stops` reste
+possible **après** l'acceptation, comme sur une course ordinaire.
+
+#### Ce que vous montrez d'une course partagée
+
+| Champ | Quand | Ce que vous en faites |
+|---|---|---|
+| `mode: "pool"` | toujours | un badge « partagée » — un passager doit savoir qu'un inconnu montera |
+| `pool_until` | pendant `pooling` | le décompte de la recherche de co-passager |
+| `pool_id` | dès le groupe formé | rien à afficher ; utile au support |
+| `pool_size` | dès le groupe formé | « vous partagez avec 1 personne » |
+
+⚠️ **VOUS NE RECEVEZ NI LE NOM NI L'ADRESSE DE L'AUTRE PASSAGER, et c'est
+délibéré.** On ne donne pas l'adresse de quelqu'un à un inconnu avant qu'il ne
+monte en voiture. Le chauffeur, lui, a l'itinéraire complet : c'est lui qui
+conduit. Sur la carte, vous verrez donc la voiture faire un détour que vous ne
+pouvez pas expliquer point par point — **dites-le d'avance** : « le chauffeur
+prend d'abord l'autre passager ».
+
+⚠️ **LE CHAUFFEUR PREND LES DEUX PASSAGERS AVANT D'EN DÉPOSER UN.** Si vous
+montez en second, la voiture arrive chez vous après un premier arrêt ; si vous
+montez en premier, vous attendez une prise en charge de plus. `eta_at` en tient
+compte — **servez-le tel quel**, ne recalculez pas.
+
+⚠️ **VOTRE COURSE RESTE LA VÔTRE.** Statut, prix, reçu, note, pourboire,
+conversation : tout fonctionne exactement comme sur une course ordinaire. Le
+partage est un **lien**, pas une fusion — ne fusionnez rien à l'écran.
 
 ---
 
@@ -1394,9 +1555,16 @@ Une course `searching` porte alors **`dispatch_state`** :
 | `dispatch_state` | Ce que ça veut dire | Ce que montre l'écran |
 |---|---|---|
 | `calling` | on appelle des chauffeurs | « nous cherchons un chauffeur », animation |
+| `pooling` | course **partagée** uniquement (v4.42.0) : on cherche un **co-passager**, aucun chauffeur n'est encore appelé | « nous cherchons quelqu'un qui fait le même trajet » + le décompte de `pool_until` — ⚠️ **pas** « nous cherchons un chauffeur », ce serait faux |
 | `exhausted` | la recherche s'est arrêtée **sans preneur** — la course n'est **pas** annulée | « aucun chauffeur disponible » + deux boutons : **Relancer** et **Annuler** |
 
-`dispatch_at` date le dernier passage. Le passager l'apprend par **push**
+`dispatch_at` date le dernier passage.
+
+⚠️ **`dispatch_reason` (v4.42.0) DIT POURQUOI, quand il y a plusieurs façons de
+s'arrêter** — et il change ce que vous proposez. Il n'apparaît que sur une
+course partagée : `pool_no_match`, `pool_partner_left`, `pool_call_failed`.
+Voir §4 quater. Sur une course ordinaire il est **absent** : il n'y a qu'une
+façon d'y échouer. Le passager l'apprend par **push**
 `ride_search_exhausted` (`data.type: "ride_status"`, `ride_id`,
 `status: "searching"`, `dispatch_state: "exhausted"`) — ouvrir la course,
 `GET /rides/{id}`, afficher les deux gestes.
@@ -1780,6 +1948,9 @@ avant la réponse.
 | `ride_driver_honked` | **il klaxonne** : sur place, il ne vous voit pas (v4.24.0) — ⚠️ son et vibration d'urgence, ce n'est pas l'arrivée redite | `status: arrived`, `event: honk`, `honk_count` |
 | `ride_cancelled` | annulée par le chauffeur ou la plateforme (`reason`) | `status: cancelled` |
 | `ride_search_exhausted` | personne n'a pris la course — relancer ou annuler (§5, v4.1.0) | `status: searching`, `dispatch_state: exhausted` |
+| `ride_pool_matched` | course **partagée** : on a trouvé un co-passager, on cherche maintenant une voiture (§4 quater, v4.42.0) — ⚠️ seulement pour celui qui **attendait** | `status: searching`, `dispatch_state: calling`, `pool_id` |
+| `ride_pool_no_match` | personne ne partageait ce trajet — relancer **ou** prendre une course ordinaire (v4.42.0) | `status: searching`, `dispatch_state: exhausted`, `dispatch_reason: pool_no_match` |
+| `ride_pool_partner_left` | le co-passager a annulé — relancer, le prix ne change pas (v4.42.0) | `status: searching`, `dispatch_state: exhausted`, `dispatch_reason: pool_partner_left` |
 | `ride_cancelled` (`search_expired`) | la plateforme a **abandonné** une recherche épuisée depuis trop longtemps, et **remboursé** (§5, v4.25.0) | `status: cancelled`, `cancelled_by: system` |
 | `ride_fare_adjusted` | le trajet a changé en route, le prix aussi — ce qui a été débité ou rendu (§5, v4.4.0) | `event: stops_changed`, `fare_xof`, `delta_xof` |
 | `ride_rate_prompt` | terminée — noter, remercier (§7 bis) | `type: ride_rate_prompt` |
@@ -2138,6 +2309,10 @@ directement le devis.
 ### ❌ Le partage de trajet et le contact d'urgence
 
 L'écran « sécurité » n'a aucune route. Non commencé.
+
+> ⚠️ **À ne pas confondre avec la course PARTAGÉE** (§4 quater, v4.42.0), qui
+> est un mode de course — partager la **voiture** avec un autre passager.
+> Envoyer sa position à un proche reste à faire.
 
 ### 🟡 Le prix « à partir de » sur l'écran d'accueil
 
