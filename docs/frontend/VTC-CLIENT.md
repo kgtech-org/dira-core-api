@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.42.0** · 6 octobre 2026
+> **Version 4.43.0** · 6 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -1428,7 +1428,21 @@ aucune réponse, et sont refusés en entrée) :
 ```
 GET /rides/{id}
 GET /rides?cursor=…     # l'historique de VOS courses, page par page
+GET /rides?before=2026-10-05T00:00:00Z   # bornée à ce qui est né AVANT (v4.43.0)
 ```
+
+⏳ **`before` BORNE L'HISTORIQUE À UNE FENÊTRE DE DATE (v4.43.0)** — un instant
+RFC 3339, **strictement** avant. Il se combine avec `cursor` sans se gêner :
+l'un borne la fenêtre, l'autre dit où l'on en était dedans.
+
+⚠️ **UNE DATE ILLISIBLE EST REFUSÉE** (`422`, `fields: ["before"]`), pas
+ignorée : l'ignorer servirait silencieusement l'historique entier là où vous
+demandiez une tranche, et une application qui pagine ne s'en apercevrait jamais.
+
+Il existe pour **l'application cliente unifiée** (`DIRA-CLIENT.md`), qui mêle
+les courses et les commandes semaine par semaine : sans borne de date, elle
+repartait du haut à chaque page. Vous n'en avez pas besoin pour un historique
+ordinaire — `cursor` suffit.
 
 L'historique rend **les plus récentes d'abord** — par date de création, puis identifiant (v4.12.1) ; `?cursor=` est l'identifiant de la dernière course reçue et rend la page suivante, plus ancienne.
 

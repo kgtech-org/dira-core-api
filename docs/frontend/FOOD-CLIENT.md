@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.42.0** · 6 octobre 2026
+> **Version 4.43.0** · 6 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -596,9 +596,22 @@ GET  /payments/{id}
 
 ```
 GET /orders?status=paid,preparing&limit=20&cursor=
+GET /orders?before=2026-10-05T00:00:00Z   # bornée à ce qui est né AVANT (v4.43.0)
 GET /orders/{id}
 POST /orders/{id}/cancel
 ```
+
+⏳ **`before` BORNE L'HISTORIQUE À UNE FENÊTRE DE DATE (v4.43.0)** — un instant
+RFC 3339, **strictement** avant. Il se combine avec `?status=` et `?cursor=`
+sans se gêner. ⚠️ **Une date illisible est REFUSÉE** (`422`,
+`fields: ["before"]`), pas ignorée : l'ignorer servirait silencieusement
+l'historique entier là où vous demandiez une tranche, et une application qui
+pagine ne s'en apercevrait jamais.
+
+Il existe pour **l'application cliente unifiée** (`DIRA-CLIENT.md`), qui mêle
+les commandes et les courses semaine par semaine : sans borne de date, elle
+repartait du haut à chaque page. Vous n'en avez pas besoin pour un historique
+ordinaire — `cursor` suffit.
 
 `?status=` prend plusieurs statuts séparés par des virgules — c'est l'onglet « en cours » qui en couvre six. Un statut inconnu est **refusé** plutôt que rendu vide.
 

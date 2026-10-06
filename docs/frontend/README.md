@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.42.0** · 6 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.43.0** · 6 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -52,6 +52,22 @@ La maquette de septembre 2026 porte **cinq** rôles : client, livreur, marchand,
 | **vtc + chauffeur** | **13** | ✅ servi, sauf conformité, notation d'une course et sécurité |
 
 > Les écrans `vtc_*` et `ch_*` ont désormais leurs contrats : [`VTC-CLIENT.md`](VTC-CLIENT.md) et [`VTC-DRIVER.md`](VTC-DRIVER.md). Ce que l'API ne sert **pas** y est écrit noir sur blanc, section 9 et section 8 — à lire avant de câbler un écran.
+
+### 🆕 L'APPLICATION CLIENTE UNIFIÉE — [`DIRA-CLIENT.md`](DIRA-CLIENT.md) (v4.43.0)
+
+**Un client Dira commande à manger ET prend des taxis.** Il n'a aucune raison
+d'installer deux applications pour un compte, un solde et une boîte de
+notifications. `DIRA-CLIENT.md` est le contrat de **l'application qui réunit
+les deux** : les quatre bases d'URL, l'identité et l'argent partagés,
+**l'assistant unifié** (un champ de saisie, deux métiers), **le fil d'activité**
+(courses et commandes par semaine), les **deux** canaux temps réel et la boîte
+unique.
+
+⚠️ **ELLE NE REMPLACE PAS `VTC-CLIENT` NI `FOOD-CLIENT`.** Les deux parcours
+métier — composer un panier, chiffrer une course — y sont décrits en entier et
+restent à jour ; les recopier dans un troisième document aurait fait deux
+sources de vérité pour les mêmes routes. `DIRA-CLIENT` §10 donne l'inventaire
+route par route de ce qui vit où.
 
 Le partage de tokens de design et de composants entre les deux familles reste une bonne idée — c'est le **réseau** qui diffère, pas l'habillage.
 
@@ -304,6 +320,84 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.43.0 — 6 octobre 2026
+
+🆕 **UNE SEULE APPLICATION CLIENTE POUR LES DEUX MÉTIERS** —
+[`DIRA-CLIENT.md`](DIRA-CLIENT.md), premier document. Un compte, un solde, une
+boîte, un historique, et deux métiers à l'intérieur. Deux endpoints **combinés**
+le rendent possible, servis par `dira-analytics` — le service qui détient le
+modèle de langage **et** interroge déjà les deux métiers.
+
+💬 **L'ASSISTANT UNIFIÉ — `POST /analytics/ai/chat`.** « J'ai faim » et
+« emmène-moi à l'aéroport » arrivent par le **même** champ. Le serveur tranche
+de quel métier il s'agit, délègue à l'assistant de ce métier-là, et rend sa
+réponse **verbatim** : `vertical` dit qui a répondu, `plan` garde la forme de la
+spec du métier, `routed_by` dit comment on a tranché (`app` · `lexical` ·
+`model`).
+
+- ⚠️ **`vertical` ABSENT = ON N'A PAS SU TRANCHER**, et `choices` donne les
+  métiers possibles : **posez la question**. On ne devine pas — envoyer
+  « commande-moi quelque chose » au hasard ferait livrer un repas à quelqu'un
+  qui attend un taxi, et il le découvrirait au prix.
+- ⚠️ **ENVOYEZ `vertical` DÈS QUE VOUS LE SAVEZ** (on arrive depuis un onglet) :
+  c'est gratuit, exact, et cela évite un appel de modèle. **Omettez-le** depuis
+  un accueil où les deux métiers cohabitent.
+- ⚠️ **UN PLAN NE COMMANDE RIEN** : il se confirme par la route du métier
+  (`POST /orders`, `POST /rides { quote_id }`), comme s'il avait été composé à
+  la main. `unresolved` se **dit**, il ne se tait pas.
+- ⚠️ **PAS DE VOCAL COMBINÉ** : utilisez `POST /ai/voice` du métier visé. Un
+  vocal n'est **jamais** exécuté directement — la transcription revient à
+  l'application, qui l'affiche et laisse corriger.
+- Refus : `ai_disabled` et `assistant_unavailable` (masquez la boîte),
+  `ai_quota_reached` et `ai_budget_reached` (proposez la composition à la main).
+
+📜 **LE FIL D'ACTIVITÉ — `GET /analytics/activity`.** Les courses et les
+commandes dans une seule liste, la plus récente d'abord, découpée en
+**semaines**.
+
+- ⚠️ **LE PAS DE PAGINATION EST LA SEMAINE, jamais la ligne.** Redonnez
+  `next_before`. Une semaine n'est **jamais** coupée entre deux pages : son
+  en-tête « 3 courses · 12 000 F » mentirait sur la moitié servie.
+- ⚠️ **LES SEMAINES SONT DÉCOUPÉES DANS LE FUSEAU DU PAYS** (`timezone`), pas en
+  UTC. Le Gabon et le Tchad sont à UTC+1 : une course prise **lundi 00 h 30** à
+  Libreville a eu lieu dimanche 23 h 30 en UTC, et un découpage en UTC la
+  rangerait dans la semaine **précédente**.
+- ⚠️ **`iso_year` N'EST PAS TOUJOURS L'ANNÉE DE LA DATE** : le 29 décembre 2025
+  est en **semaine 1 de 2026**.
+- ⚠️ **LES SEMAINES VIDES SONT SAUTÉES** : entre deux commandes espacées d'un
+  mois, vous recevez deux semaines, pas cinq. Lisez `start` et `iso_week`, pas
+  l'index dans la liste.
+- ⚠️ **`sources` DIT CE QUI A RÉPONDU.** Un métier muet ne vide pas l'historique
+  de l'autre — mais **dites-le** : un fil où la moitié manque sans le dire se lit
+  comme un fil complet, et le client croit avoir perdu ses commandes. Un jeton
+  **refusé**, lui, refuse le fil **entier**.
+- ⚠️ **C'EST UN FIL, PAS L'OBJET.** Une ligne porte des **faits** (`pickup`,
+  `first_item`, `mode`) et le `status` du métier **verbatim** ; le détail se lit
+  chez le métier, seule source de vérité. Fabriquer « Course vers l'aéroport »
+  côté serveur aurait demandé de traduire et de choisir une longueur — des
+  décisions d'écran prises loin de l'écran.
+
+⏳ **`?before=` SUR `GET /rides` ET `GET /orders`** (RFC 3339, **strictement**
+avant) — la fenêtre de date qui rend le fil combiné possible. Sans elle, il
+repartait du haut à chaque page et relisait tout ce qu'il avait déjà lu : le
+coût d'une page croissait avec la profondeur. ⚠️ **Une date illisible est
+REFUSÉE, pas ignorée** : l'ignorer servirait silencieusement l'historique entier
+là où l'appelant demandait une tranche. Additif — une application qui ne
+l'envoie pas ne voit aucun changement.
+
+⚠️ **LES DEUX PIÈGES PROPRES À UNE APPLICATION UNIFIÉE**, écrits dans
+`DIRA-CLIENT` parce qu'aucune des deux specs métier ne pouvait les dire :
+
+- **DEUX SOCKETS, DEUX SERVICES, DEUX CYCLES DE VIE** — celui des commandes est
+  global, celui du suivi est **par opération**. Ne les factorisez pas sous
+  prétexte que ce sont deux WebSockets : une couche unique finit par fermer le
+  mauvais. ⚠️ Et **les courses n'ont pas de socket global** : attendre la
+  symétrie des deux métiers, c'est attendre une trame qui n'arrive jamais.
+- **UNE SEULE BOÎTE, DEUX VOCABULAIRES** — `GET /notifications` rend les deux.
+  ⚠️ **Routez sur `data.type`, pas sur la clé du gabarit** : la clé est du texte,
+  renommable par l'exploitation. Une clé **inconnue** s'affiche quand même, sans
+  rien ouvrir.
 
 ### 4.42.0 — 6 octobre 2026
 
