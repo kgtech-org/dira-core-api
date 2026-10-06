@@ -160,6 +160,22 @@ const (
 	// preneur — message au PASSAGER, avec de quoi relancer. La course n'est
 	// pas annulée : c'est lui qui décide.
 	KeyRideSearchExhausted = "ride_search_exhausted"
+	// LA COURSE PARTAGÉE : les trois moments où le passager doit être prévenu.
+	//
+	// ⚠️ TROIS CLÉS ET NON UNE, parce que l'écran ne propose pas la même
+	// chose. `ride_pool_matched` annonce qu'on a trouvé quelqu'un et qu'on
+	// cherche maintenant une voiture ; `ride_pool_no_match` que personne ne
+	// partageait ce trajet — on peut relancer OU prendre une course ordinaire,
+	// qui n'a pas le même prix ; `ride_pool_partner_left` que le co-passager a
+	// annulé — là, relancer suffit. Un seul message pour les trois en aurait
+	// dit un faux deux fois sur trois.
+	//
+	// ⚠️ `ride_pool_matched` va à CELUI QUI ATTENDAIT, pas au nouvel arrivant :
+	// le second a la réponse de sa commande sous les yeux, le premier est
+	// debout dans la rue depuis plusieurs minutes.
+	KeyRidePoolMatched     = "ride_pool_matched"
+	KeyRidePoolNoMatch     = "ride_pool_no_match"
+	KeyRidePoolPartnerLeft = "ride_pool_partner_left"
 	// KeyDeliveryCancelled va au LIVREUR qui portait la course d'une commande
 	// annulée : il est libre, et doit l'apprendre avant d'arriver au
 	// restaurant.
@@ -475,6 +491,33 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "No driver available", Body: "We could not find a driver for your ride from [pickup]. Relaunch the search, or cancel for a refund."},
 		},
 	},
+	KeyRidePoolMatched: {
+		Key:         KeyRidePoolMatched,
+		Description: "Un co-passager a été trouvé pour une course partagée — message à CELUI QUI ATTENDAIT ; on cherche maintenant une voiture.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Co-passager trouvé", Body: "Quelqu'un partage votre trajet depuis [pickup]. Nous cherchons une voiture pour vous deux."},
+			LocaleEN: {Title: "Co-rider found", Body: "Someone is sharing your trip from [pickup]. We are now finding a car for the two of you."},
+		},
+	},
+	KeyRidePoolNoMatch: {
+		Key:         KeyRidePoolNoMatch,
+		Description: "Aucun co-passager ne partageait le trajet — message au PASSAGER, qui relance ou commande une course ordinaire.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Personne à partager", Body: "Nous n'avons trouvé personne pour partager votre trajet depuis [pickup]. Relancez la recherche, ou commandez une course ordinaire."},
+			LocaleEN: {Title: "No one to share with", Body: "We could not find anyone to share your trip from [pickup]. Relaunch the search, or order a regular ride."},
+		},
+	},
+	KeyRidePoolPartnerLeft: {
+		Key:         KeyRidePoolPartnerLeft,
+		Description: "Le co-passager a annulé — message à CELUI QUI RESTE, qui garde son prix de partage et relance.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "Votre co-passager a annulé", Body: "La personne qui partageait votre trajet depuis [pickup] a annulé. Votre prix ne change pas : relancez la recherche."},
+			LocaleEN: {Title: "Your co-rider cancelled", Body: "The person sharing your trip from [pickup] has cancelled. Your fare does not change: relaunch the search."},
+		},
+	},
 	KeyRideStopsChanged: {
 		Key:         KeyRideStopsChanged,
 		Description: "Le trajet d'une course en cours a changé (arrêt ajouté ou retiré) — message au CHAUFFEUR, qui relit la course.",
@@ -745,11 +788,18 @@ var provided = map[string][]string{
 	// Le klaxon : QUI attend et DANS QUOI — c'est ce que le passager cherche
 	// des yeux en sortant. Ni l'heure, ni le prix : il n'a pas le temps de
 	// lire, il a le temps de reconnaître une voiture.
-	KeyRideDriverHonked:      {"driver", "vehicle"},
-	KeyRideCancelled:         {"reason"},
-	KeyRideCancelledByRider:  {"reason"},
-	KeyDeliveryCancelled:     {"order_ref"},
-	KeyRideSearchExhausted:   {"pickup"},
+	KeyRideDriverHonked:     {"driver", "vehicle"},
+	KeyRideCancelled:        {"reason"},
+	KeyRideCancelledByRider: {"reason"},
+	KeyDeliveryCancelled:    {"order_ref"},
+	KeyRideSearchExhausted:  {"pickup"},
+	// LA COURSE PARTAGÉE : le LIEU DE DÉPART, et lui seul. ⚠️ Pas le nom du
+	// co-passager, ni son adresse : deux inconnus se rencontrent dans la
+	// voiture, pas dans une notification — et le lieu de départ est ce qui
+	// permet au passager de reconnaître DE QUELLE course on lui parle.
+	KeyRidePoolMatched:       {"pickup"},
+	KeyRidePoolNoMatch:       {"pickup"},
+	KeyRidePoolPartnerLeft:   {"pickup"},
 	KeyRideStopsChanged:      {"stops", "dest", "fare"},
 	KeyRideFareAdjusted:      {"fare", "adjustment"},
 	KeyMerchantNewOrder:      {"order_ref", "items", "amount"},

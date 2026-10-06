@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.41.0** · 29 septembre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
+> **Version 4.42.0** · 6 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -304,6 +304,66 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.42.0 — 6 octobre 2026
+
+🤝 **LA COURSE PARTAGÉE.** Deux passagers dont les départs **et** les arrivées
+sont proches montent dans la même voiture et paient **chacun son trajet**,
+moins cher. Le chauffeur fait un déplacement et sert deux courses. Un mode de
+plus, à côté du compteur et de la location — `VTC-CLIENT` §4 quater,
+`VTC-DRIVER` §4 ter.
+
+⚠️ **LA RECHERCHE SE FAIT EN DEUX TEMPS, et c'est tout ce qu'il faut retenir.**
+D'abord un **co-passager** (`dispatch_state: "pooling"`, 5 min par défaut,
+**aucun chauffeur appelé**) ; ensuite **une voiture pour les deux**
+(`dispatch_state: "calling"`), sur un cercle centré au **milieu** des deux
+départs. Côté passager : ne dites pas « nous cherchons un chauffeur » pendant
+la première étape — ce serait faux, et il s'étonnerait que ça dure cinq
+minutes.
+
+- **`pool_until`** est un **instant**, à décompter localement — comme `eta_at`.
+- **`dispatch_reason`** dit pourquoi la recherche s'est arrêtée, et **change ce
+  que l'écran propose** : `pool_no_match` (relancer **ou** prendre une course
+  ordinaire), `pool_partner_left` (relancer — le prix ne change pas),
+  `pool_call_failed` (relancer). Absent sur une course ordinaire : il n'y a
+  qu'une façon d'y échouer.
+- ⚠️ **ON NE BASCULE JAMAIS D'OFFICE** en course ordinaire : elle n'a pas le
+  même prix. Changer de mode = annuler (remboursé, personne ne l'a prise) et
+  repasser par un devis.
+- **Chacun paie SA distance**, à la grille remisée, **figée au devis**. Il
+  n'existe aucun prix commun : ne divisez rien, n'affichez pas de montant « à
+  deux ». Ni majoration de zone ni promotion sur ce mode — la remise est déjà
+  dans la grille.
+- **Côté chauffeur : il reçoit DEUX courses et un ORDRE de passage**
+  (`pool_plan`) — les deux prises en charge d'abord, **puis** les deux dépôts.
+  Déposer le premier avant d'aller chercher le second ferait deux courses à la
+  suite, pas une course partagée. Chaque arrêt porte son `ride_id`.
+- ⚠️ **`pool_plan` ne va qu'au CHAUFFEUR.** Un passager ne reçoit ni le nom ni
+  l'adresse de l'autre : ils se rencontrent dans la voiture. Prévenez-le que la
+  voiture fera un détour qu'il ne pourra pas expliquer point par point.
+- **Trois pushs** : `ride_pool_matched` (à celui qui attendait — on a trouvé
+  quelqu'un), `ride_pool_no_match`, `ride_pool_partner_left`.
+- **Refus du devis** : `pool_off`, `pool_too_short` (`meta.distance_m`,
+  `meta.min_distance_m` — **affichez les deux**), `pool_direct_only` (pas
+  d'arrêt intermédiaire), `pool_no_class`.
+- **Réglé par pays** (`GET /settings/modes → pool`) : 2,5 km entre les départs,
+  2,5 km entre les arrivées, 5 km de trajet minimum, 5 min de recherche, 2
+  passagers. ⚠️ **Allumé par défaut**, contrairement aux deux autres modes : il
+  n'ajoute qu'une option au passager, ne retire rien, et ne se déclenche que
+  s'il la choisit.
+- ⚠️ **Pas d'entrée `tracking.pool`** : une course partagée est une course
+  commandée, elle utilise la cadence `normal`.
+
+📍 **`GET /settings/modes` SUIT ENFIN LE LIEU — `?near=lng,lat`.** Depuis la
+v4.27.0 un devis est calculé dans le pays du **départ**, et `GET /classes?near=`
+rend le catalogue de ce pays-là. Les réglages, non : un passager togolais à
+Dakar lisait les modes du **Togo** avec les prix du **Sénégal**, deux pays dans
+un seul écran.
+
+⚠️ **Passez `near` sur les DEUX routes, avec le point de départ.** C'était
+invisible jusqu'ici parce que les prix venaient du bon pays ; avec le partage,
+cela devenait faux à l'affichage — « à partir de 5 km » là où le pays d'accueil
+en demande trois. Un `near` illisible est **ignoré**, pas refusé.
 
 ### 4.41.0 — 30 septembre 2026
 

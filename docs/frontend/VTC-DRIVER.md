@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.41.0** · 29 septembre 2026
+> **Version 4.42.0** · 6 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -1116,17 +1116,31 @@ avant d'avoir déposé. Réglage inactif : rien ne change, une course à la fois
 
 ## 4 ter. 🚕 LES AUTRES MODES DE COURSE (v4.31.0)
 
-**Deux modes en plus du mode ordinaire. Le PAYS les ouvre, et chaque VOITURE
+**Trois modes en plus du mode ordinaire. Le PAYS les ouvre, et chaque VOITURE
 dit lesquels elle sert — les deux conditions, pas l'une ou l'autre.**
 
 ```
-GET /settings/modes → { free:   { enabled, scannable, max_hours },
-                        rental: { enabled, max_radius_km, alert_km_before } }
+GET /settings/modes?near=lng,lat
+  → { free:   { enabled, scannable, max_hours },
+      rental: { enabled, max_radius_km, alert_km_before },
+      pool:   { enabled, pickup_radius_m, dropoff_radius_m,
+                min_distance_m, search_ttl_s, max_riders } }      # v4.42.0
 
-GET /classes        → items[].modes = {
+GET /classes?near=lng,lat
+  → items[].modes = {
        "free":   { base_xof, per_km_xof, per_min_xof, min_fare_xof },
-       "rental": { tiers: [ { hours, price_xof, included_km } ], extra_per_km_xof } }
+       "rental": { tiers: [ { hours, price_xof, included_km } ], extra_per_km_xof },
+       "pool":   { base_xof, per_km_xof, per_min_xof } }           # v4.42.0
 ```
+
+⚠️ **`near` NOMME LE LIEU** (v4.42.0) : passez votre position, et les deux
+routes rendent les réglages et le catalogue **du pays où vous êtes**. Sans lui,
+c'est le pays de votre compte — ce qui est juste tant que vous roulez chez
+vous, et faux le jour où vous passez une frontière.
+
+⚠️ **LE PARTAGE N'EST PAS UN BOUTON POUR VOUS.** C'est le PASSAGER qui le
+choisit ; vous, vous recevez un appel différent (voir plus bas). Rien à
+afficher dans vos réglages — mais tout à afficher sur l'écran d'appel.
 
 ⚠️ **LISEZ-LES AVANT DE MONTRER LE BOUTON.** Un mode éteint doit **disparaître
 de l'écran**, pas y rester et répondre `409`. Un chauffeur qui appuie sur un
@@ -1256,6 +1270,102 @@ Terminez comme une course ordinaire. ⚠️ **Le retard n'est pas facturé** —
 durée est ce qui a été vendu. Les **kilomètres** au-delà des compris, eux, le
 sont (`rental_overage_km`, motif `rental_overage`) : c'est votre carburant et
 votre usure.
+
+---
+
+### 🤝 La course PARTAGÉE — deux passagers, un déplacement (v4.42.0)
+
+Deux passagers qui partent à peu près du même endroit et vont à peu près au
+même endroit montent dans **votre** voiture. Vous faites **un** déplacement et
+vous êtes payé **deux courses**.
+
+```json
+{ "type": "call", "call_id": "…", "ref": "<ride_id de la course MENEUSE>",
+  "pickup": { "lng": 1.2161, "lat": 6.1762 },
+  "meta": { "mode": "pool", "pool_size": 2, "pool_id": "<ride_id>",
+            "fare_xof": 4900, "driver_xof": 3970,
+            "class": "eco", "stops": 4, "distance_m": 9800 } }
+```
+
+⚠️ **UN ÉCRAN D'APPEL DISTINCT, comme pour la location, et pour la même
+raison.** L'appel arrive dans la même trame qu'une course ordinaire, avec les
+mêmes **cinq secondes** pour décider — mais ce n'est pas le même travail :
+**quatre arrêts**, **deux inconnus** à bord, et un détour. Accepter en croyant
+prendre une course simple se répare en annulant, ce qui pénalise tout le monde.
+
+**Ce que l'écran doit dire, en un coup d'œil :**
+
+| À montrer | Pourquoi |
+|---|---|
+| **« PARTAGÉE · 2 passagers »**, en grand | c'est la seule information qui change la décision |
+| `meta.fare_xof` / `driver_xof` | ⚠️ c'est **le total du groupe** — ce que vous gagnez pour ce déplacement. Afficher le prix d'un seul passager sous-vendrait la course de moitié |
+| `meta.stops: 4` | deux prises en charge, deux dépôts |
+
+⚠️ **`pickup` N'EST LE DÉPART D'AUCUN DES DEUX PASSAGERS.** C'est le **milieu**
+des deux, et le rayon de l'appel est élargi en conséquence : c'est ce qui fait
+qu'un chauffeur du bord du cercle est à portée des **deux**. N'affichez pas ce
+point comme une adresse de prise en charge — montrez-le comme la zone de
+départ, et attendez l'acceptation pour les vraies adresses.
+
+#### ⚠️ VOUS RECEVEZ DEUX COURSES, PAS UNE
+
+Vous acceptez **un** appel (`POST /rides/{ref}/accept`, ou l'acceptation par le
+socket, comme d'habitude). La plateforme vous attribue alors **les deux
+courses** : elles apparaissent toutes les deux dans `GET /rides` et portent
+votre `driver_id`.
+
+⚠️ **CHAQUE COURSE GARDE SA VIE : son statut, son prix, son passager, sa note,
+sa conversation, son reçu.** Vous avancez chacune séparément
+(`PATCH /rides/{id}/status`), vous signalez l'arrivée de chacune, et vous êtes
+noté deux fois. **Ne les fusionnez pas** : il n'existe pas de « course de
+groupe » à terminer d'un coup.
+
+#### L'ORDRE DE PASSAGE — `pool_plan`
+
+Chaque course du groupe porte l'itinéraire **entier**, dans l'ordre où vous
+devez le faire :
+
+```jsonc
+GET /rides/{id}   // l'une OU l'autre des deux : elles portent le même plan
+{
+  "mode": "pool", "pool_id": "…", "pool_size": 2,
+  "pool_plan": [
+    { "ride_id": "A…", "kind": "pickup", "label": "Tokoin", "geo": [1.2122, 6.1725] },
+    { "ride_id": "B…", "kind": "pickup", "label": "Nukafu", "geo": [1.2200, 6.1800] },
+    { "ride_id": "A…", "kind": "dest",   "label": "Aéroport", "geo": [1.2544, 6.1656] },
+    { "ride_id": "B…", "kind": "dest",   "label": "Be Plage", "geo": [1.2600, 6.1300] }
+  ]
+}
+```
+
+⚠️ **LES DEUX PRISES EN CHARGE D'ABORD, PUIS LES DEUX DÉPÔTS.** Déposer le
+premier passager avant d'aller chercher le second ferait **deux courses à la
+suite**, pas une course partagée — et le second aurait attendu tout le trajet du
+premier. **Suivez `pool_plan` dans l'ordre donné**, ne le réordonnez pas.
+
+⚠️ **`ride_id` DIT À QUI EST CHAQUE ARRÊT.** C'est ce qui vous permet d'annoncer
+le bon nom, de signaler la bonne arrivée et de faire avancer la bonne course.
+Sans le lire, vous avez quatre points et aucun moyen de savoir lequel va avec
+lequel.
+
+⚠️ **LE PLAN EST FIGÉ À VOTRE ACCEPTATION** : c'est ce que vous avez accepté. Si
+un passager annule en route, sa course passe à `cancelled` — **le plan ne change
+pas**, et vous sautez simplement ses arrêts. Fiez-vous au **statut de chaque
+course**, pas à la longueur du plan.
+
+⚠️ **ABSENT SUR UNE COURSE ORDINAIRE**, et absent aussi côté passager : les
+clients ne reçoivent **pas** l'adresse de l'autre. Ils savent qu'ils partagent,
+pas avec qui ni d'où. N'en parlez pas à leur place.
+
+#### Les cadences et le reste
+
+⚠️ **UNE COURSE PARTAGÉE EST UNE COURSE COMMANDÉE : utilisez la cadence
+`normal`** (§4 quater, `tracking.normal`). Il n'existe **pas** d'entrée
+`tracking.pool` — n'en cherchez pas une, et ne retombez pas sur une cadence
+plus lente parce que la clé manque.
+
+L'attente au départ, le temps réel, le klaxon, l'enchaînement, le hors ligne :
+tout fonctionne comme sur une course ordinaire, **course par course**.
 
 ---
 
