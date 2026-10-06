@@ -161,6 +161,9 @@ func TestEveryRoleSpecIsPresent(t *testing.T) {
 
 	assert.Equal(t, []string{
 		"DESIGN-BRIEF.md",
+		// L'application cliente UNIFIÉE — la livraison et les courses dans
+		// une seule application (v4.43.0).
+		"DIRA-CLIENT.md",
 		"FOOD-CLIENT.md",
 		"FOOD-DELIVERY.md",
 		"FOOD-MERCHANT.md",
@@ -170,7 +173,7 @@ func TestEveryRoleSpecIsPresent(t *testing.T) {
 	}, have)
 }
 
-// TestSpecsShareOneVersion : les cinq documents portent la MÊME version.
+// TestSpecsShareOneVersion : tous les documents portent la MÊME version.
 //
 // C'est la règle écrite dans le journal — « un frontend qui cite v2.1.0
 // désigne un contrat précis ». Elle ne tient pas toute seule : il suffit d'en

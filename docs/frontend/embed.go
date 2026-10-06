@@ -32,7 +32,7 @@ import (
 // Un relevé dit ce qu'une équipe a OBSERVÉ ; un contrat dit ce qui est PROMIS.
 // Seul le second se sert à quelqu'un qui pose une question.
 //
-//go:embed README.md DESIGN-BRIEF.md FOOD-CLIENT.md FOOD-DELIVERY.md FOOD-MERCHANT.md VTC-CLIENT.md VTC-DRIVER.md
+//go:embed README.md DESIGN-BRIEF.md DIRA-CLIENT.md FOOD-CLIENT.md FOOD-DELIVERY.md FOOD-MERCHANT.md VTC-CLIENT.md VTC-DRIVER.md
 var Specs embed.FS
 
 // All rend le contenu de chaque document, par nom de fichier.
