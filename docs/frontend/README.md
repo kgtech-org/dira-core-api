@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.43.0** · 6 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.44.0** · 6 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -320,6 +320,49 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.44.0 — 6 octobre 2026
+
+💸 **LE PRIX D'UNE COURSE PARTAGÉE EST UNE *PART* DU TARIF ORDINAIRE** —
+`settings.modes.pool.fare_pct`, **70 % par défaut**, réglé par **pays**. Le
+devis et la course portent **`share_pct`**.
+
+⚠️ **`share_pct: 70` VEUT DIRE « IL PAIE 70 % », donc 30 % de moins.** C'est
+une **part**, pas une remise : le nombre servi est celui qu'on paie. Pour
+afficher l'économie, montrez `100 − share_pct`. Dire l'inverse aurait rendu
+« 0 » ambigu — gratuit, ou plein tarif ?
+
+⚠️ **AFFICHEZ-LA, au devis ET sur le reçu.** « 2 000 F » à côté de « 2 850 F »
+ne se comprend pas tout seul : c'est « −30 % » qui donne une raison d'accepter
+un détour et un inconnu à bord. Et des mois plus tard, c'est la seule chose qui
+explique un montant inférieur au tarif — sans elle, le client lit une erreur de
+facturation, et l'exploitation une sous-facturation.
+
+⚠️ **`modes.pool` NE PORTE PLUS DE GRILLE** — c'est un objet **vide**, dont la
+seule présence dit « cette voiture partage ». Jusqu'à la v4.43.0 il servait
+`base_xof`, `per_km_xof` et `per_min_xof` : ils ne facturent plus et ne sont
+plus servis. Une application qui les lirait encore n'y trouverait **rien**.
+
+**Pourquoi ce changement.** Chaque véhicule avait sa propre grille de partage :
+**deux endroits où lire un prix pour le même trajet**, dont le second pouvait
+être saisi **plus cher** que l'ordinaire sans que rien ne l'interdise — et le
+mode ne prenait alors jamais, sans que personne ne comprenne pourquoi. Une part
+ne peut pas être plus chère que ce dont elle est une part, et elle suit toute
+seule chaque changement de la grille ordinaire, **y compris par véhicule** :
+70 % d'un van est une remise de van.
+
+- ⚠️ **La part s'applique au sous-total, une fois**, puis le prix est arrondi
+  au multiple de 50 comme partout, et la commission se calcule sur **ce**
+  montant. Remiser la prise en charge, le kilomètre et la minute séparément
+  aurait tronqué trois fois et le total ne serait pas retombé sur la part
+  annoncée.
+- ⚠️ **La part est FIGÉE au devis** : un pays qui la change à midi ne change
+  pas un devis déjà affiché.
+- **La commission reste propre au mode**, réglable par véhicule : la plateforme
+  a apparié deux trajets, et le chauffeur en sert deux pour un seul
+  déplacement. Laissée à zéro, celle de la course ordinaire s'applique.
+- ⚠️ **Pas de majoration de zone, pas de promotion** : la remise **est** la
+  promotion de ce mode.
 
 ### 4.43.0 — 6 octobre 2026
 

@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.43.0** · 6 octobre 2026
+> **Version 4.44.0** · 6 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -1004,13 +1004,14 @@ GET /settings/modes?near=lng,lat
   → { free:   { enabled, scannable, max_hours },
       rental: { enabled, max_radius_km, alert_km_before },
       pool:   { enabled, pickup_radius_m, dropoff_radius_m,
-                min_distance_m, search_ttl_s, max_riders } }      # v4.42.0
+                min_distance_m, search_ttl_s, max_riders,
+                fare_pct } }                                      # v4.44.0
 
 GET /classes?near=lng,lat
   → items[].modes = {
        "free":   { base_xof, per_km_xof, per_min_xof, min_fare_xof },
        "rental": { tiers: [ { hours, price_xof, included_km } ], extra_per_km_xof },
-       "pool":   { base_xof, per_km_xof, per_min_xof } }           # v4.42.0
+       "pool":   { } }    # v4.44.0 — présence = cette voiture partage
 ```
 
 ⚠️ **PASSEZ `near` SUR LES DEUX, AVEC LE POINT DE DÉPART** (v4.42.0). Les deux
@@ -1268,20 +1269,45 @@ une de moins.
 `pool_id`) — relisez la course. Celui qui vient de commander, lui, voit déjà
 `calling` dans la réponse de `POST /rides` : il n'y a pas de push pour lui.
 
-#### Le prix : chacun sa distance, à la grille partagée
+#### Le prix : chacun sa distance, remisée d'une PART (v4.44.0)
 
-⚠️ **IL N'EXISTE AUCUN PRIX COMMUN.** Chaque passager paie **son** trajet, au
-tarif remisé du partage. Les deux ne font pas le même chemin — l'un roule
-peut-être deux fois plus longtemps que l'autre. **N'affichez pas un montant
-« à deux », ne divisez rien** : `fare_xof` est ce que *cette* personne paie.
+Le devis et la course portent **`share_pct`** : la **part du tarif ordinaire**
+que ce passager paie.
+
+```jsonc
+// `fare_xof: 2000` au lieu de 2 850 — et on vous dit pourquoi
+{ "mode": "pool", "fare_xof": 2000, "share_pct": 70, … }
+```
+
+⚠️ **`share_pct: 70` VEUT DIRE « IL PAIE 70 % », donc 30 % de moins.** C'est
+une **part**, pas une remise : le nombre servi est celui qu'on paie. Pour
+afficher l'économie, montrez `100 − share_pct`.
+
+⚠️ **AFFICHEZ-LA.** « 2 000 F » à côté de « 2 850 F » ne se comprend pas tout
+seul : c'est « −30 % » qui donne une raison d'accepter un détour et un inconnu
+à bord. Et sur le **reçu**, des mois plus tard, c'est la seule chose qui
+explique un montant inférieur au tarif — sans elle, le client lit une erreur de
+facturation.
+
+⚠️ **IL N'Y A PLUS DE GRILLE DE PARTAGE** (v4.44.0). Jusqu'à la v4.43.0 chaque
+voiture avait la sienne, servie dans `modes.pool`. Elle ne facture plus et
+n'est plus servie : le prix est **une part de la grille ordinaire**, réglée par
+**pays** (`settings.modes.pool.fare_pct`). Une application qui lirait encore
+`modes.pool.base_xof` n'y trouverait **rien**.
+
+⚠️ **IL N'EXISTE AUCUN PRIX COMMUN.** Chaque passager paie **son** trajet,
+remisé. Les deux ne font pas le même chemin — l'un roule peut-être deux fois
+plus longtemps que l'autre. **N'affichez pas un montant « à deux », ne divisez
+rien** : `fare_xof` est ce que *cette* personne paie.
 
 ⚠️ **LE PRIX EST FIGÉ AU DEVIS, ET IL NE BOUGE PLUS.** Trouver un co-passager
 ne le baisse pas ; ne pas en trouver ne le remonte pas ; le co-passager qui
-annule en route ne le change pas non plus. C'est ce qui a été vendu.
+annule en route ne le change pas non plus. ⚠️ Et un **pays** qui change sa part
+à midi ne change pas un devis déjà affiché. C'est ce qui a été vendu.
 
 ⚠️ **PAS DE MAJORATION DE ZONE, PAS DE PROMOTION** sur un devis partagé : la
-remise est déjà dans la grille. `surge_name`, `promo_title` sont absents — ne
-réservez pas de place pour eux sur cet écran.
+remise **est** la promotion de ce mode. `surge_name`, `promo_title` sont
+absents — ne réservez pas de place pour eux sur cet écran.
 
 #### Quand ça ne marche pas — `dispatch_reason` décide de ce que vous proposez
 
@@ -1353,6 +1379,7 @@ possible **après** l'acceptation, comme sur une course ordinaire.
 | `pool_until` | pendant `pooling` | le décompte de la recherche de co-passager |
 | `pool_id` | dès le groupe formé | rien à afficher ; utile au support |
 | `pool_size` | dès le groupe formé | « vous partagez avec 1 personne » |
+| `share_pct` | toujours | « −30 % » (`100 − share_pct`) — au devis **et** sur le reçu |
 
 ⚠️ **VOUS NE RECEVEZ NI LE NOM NI L'ADRESSE DE L'AUTRE PASSAGER, et c'est
 délibéré.** On ne donne pas l'adresse de quelqu'un à un inconnu avant qu'il ne
