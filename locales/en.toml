@@ -35,6 +35,33 @@ other = "This account is suspended"
 [errors.wrong_app]
 other = "This account does not belong to this app. Open the one it belongs to — your password is fine."
 
+# --- THE CODE DOOR (see internal/user/otp.go) ---
+# ⚠️ These sentences are read on the six-digit screen, and they say WHAT TO DO:
+# "ask for a new code" beats "invalid code" in front of someone who has been
+# waiting six minutes.
+
+[errors.otp_invalid]
+other = "Wrong code. Check the six digits, or ask for a new one."
+
+[errors.otp_expired]
+other = "This code has expired. Ask for a new one."
+
+[errors.otp_too_many_attempts]
+other = "Too many attempts. Ask for a new code."
+
+[errors.otp_too_soon]
+other = "A code has just been sent to you. Wait before asking for another."
+
+[errors.otp_too_many_requests]
+other = "Too many codes requested for this number. Try again later."
+
+[errors.otp_not_available]
+other = "This account signs in with a password."
+
+[errors.otp_delivery_failed]
+other = "The code could not be sent. Try again."
+
+
 # ONE DEVICE PER DRIVER. ⚠️ The sentence does NOT name the device: the label
 # travels in `error.reason`, and a template inserting it here would print
 # "<no value>" whenever the app did not send one.
@@ -337,3 +364,27 @@ other = "The video is too long"
 
 [errors.video_unreadable]
 other = "The video could not be read"
+
+# --- DELETING AN ACCOUNT (see internal/user/erasure.go) ---
+# ⚠️ These sentences face someone who has just tapped "delete my account", so
+# they always name the next step: empty the wallet, write to support, sign up
+# again. "Operation failed" would leave someone exercising a right with no way
+# forward.
+
+[errors.account_closed]
+other = "This account has been deleted. You can sign up again with the same number, or write to support if this was a mistake."
+
+[errors.deletion_already_requested]
+other = "This account is already scheduled for deletion. Write to support to cancel it."
+
+[errors.wallet_not_empty]
+other = "This account still holds money, tokens or a debt. Empty your balance, or ask support for a refund, before deleting."
+
+[errors.erasure_not_self_serve]
+other = "This kind of account is deleted by support, not from the app: it carries payouts and sometimes a debt that must be settled first."
+
+[errors.account_already_erased]
+other = "This account's data is already erased: it can no longer be restored."
+
+[errors.erasure_unavailable]
+other = "Account deletion is not available on this deployment. Please tell the technical team."

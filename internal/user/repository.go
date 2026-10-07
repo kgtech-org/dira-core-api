@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -23,6 +24,7 @@ type Repository struct {
 	users         *mongo.Collection
 	refreshTokens *mongo.Collection
 	addresses     *mongo.Collection
+	otpCodes      *mongo.Collection
 }
 
 func NewRepository(m *db.Mongo) *Repository {
@@ -30,6 +32,7 @@ func NewRepository(m *db.Mongo) *Repository {
 		users:         m.Collection(usersCollection),
 		refreshTokens: m.Collection(refreshTokensCollection),
 		addresses:     m.Collection(CollectionAddresses),
+		otpCodes:      m.Collection(CollectionOTP),
 	}
 }
 
@@ -152,12 +155,21 @@ func (r *Repository) InsertRefreshToken(ctx context.Context, t *RefreshToken) er
 
 // DeleteRefreshTokenByHash removes a stored refresh token hash and reports
 // whether it existed (false means already rotated, revoked or never issued).
-func (r *Repository) DeleteRefreshTokenByHash(ctx context.Context, tokenHash string) (bool, error) {
-	res, err := r.refreshTokens.DeleteOne(ctx, bson.M{"token_hash": tokenHash})
+func (r *Repository) DeleteRefreshTokenByHash(ctx context.Context, tokenHash string) (string, bool, error) {
+	// ⚠️ ELLE REND L'APPAREIL DE LA SESSION EFFACÉE, et c'est ce qui permet à
+	// une session de GARDER son appareil d'un rafraîchissement à l'autre. Sans
+	// lui, la rotation — qui efface la ligne et en écrit une autre — perdait
+	// l'identifiant d'installation dès le premier quart d'heure, et le même
+	// téléphone revenant plus tard comptait pour un appareil de plus.
+	var row RefreshToken
+	err := r.refreshTokens.FindOneAndDelete(ctx, bson.M{"token_hash": tokenHash}).Decode(&row)
 	if err != nil {
-		return false, fmt.Errorf("user: delete refresh token: %w", err)
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("user: delete refresh token: %w", err)
 	}
-	return res.DeletedCount > 0, nil
+	return row.DeviceID, true, nil
 }
 
 // DeleteRefreshTokensOfUser jette TOUS les jetons de rafraîchissement d'un
@@ -180,6 +192,153 @@ func (r *Repository) DeleteRefreshTokensOfUser(ctx context.Context, userID primi
 		return 0, fmt.Errorf("user: delete refresh tokens of user: %w", err)
 	}
 	return res.DeletedCount, nil
+}
+
+// CloseAccount ferme un compte et date la demande — le premier des deux temps
+// de la suppression (voir `erasure.go`).
+func (r *Repository) CloseAccount(ctx context.Context, id primitive.ObjectID, at time.Time) error {
+	_, err := r.users.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{
+		"status":                StatusClosed,
+		"deletion_requested_at": at,
+		"updated_at":            at,
+	}})
+	if err != nil {
+		return fmt.Errorf("user: close account: %w", err)
+	}
+	return nil
+}
+
+// AccountsDueForErasure rend les comptes fermés depuis plus longtemps que le
+// délai de grâce et pas encore anonymisés.
+func (r *Repository) AccountsDueForErasure(ctx context.Context, before time.Time, limit int) ([]*User, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	cur, err := r.users.Find(ctx, bson.M{
+		"deletion_requested_at": bson.M{"$lte": before},
+		"anonymised_at":         bson.M{"$exists": false},
+	}, options.Find().SetLimit(int64(limit)))
+	if err != nil {
+		return nil, fmt.Errorf("user: list accounts due for erasure: %w", err)
+	}
+	var out []*User
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, fmt.Errorf("user: read accounts due for erasure: %w", err)
+	}
+	return out, nil
+}
+
+// AnonymiseUser retire l'identité et garde la ligne — le second temps.
+//
+// ⚠️ LA LIGNE RESTE, et c'est tout le mécanisme : chaque course, commande,
+// écriture de portefeuille et entrée de grand livre porte un `user_id`. La
+// supprimer laisserait des milliers de références vers un compte introuvable,
+// et les écrans afficheraient « compte inconnu » là où il faut lire « compte
+// supprimé » — une donnée manquante et une donnée effacée ne se disent pas
+// pareil.
+//
+// Le téléphone est BROUILLÉ plutôt que vidé : l'index est unique, deux comptes
+// effacés au téléphone vide entreraient en collision — et le brouiller LIBÈRE
+// le numéro, que la personne peut réutiliser pour revenir.
+func (r *Repository) AnonymiseUser(ctx context.Context, id primitive.ObjectID, scrambledPhone, name string, at time.Time) error {
+	_, err := r.users.UpdateOne(ctx, bson.M{"_id": id}, bson.M{
+		"$set": bson.M{
+			"phone":         scrambledPhone,
+			"name":          name,
+			"status":        StatusClosed,
+			"anonymised_at": at,
+			"updated_at":    at,
+			"password_hash": "",
+		},
+		"$unset": bson.M{
+			"email":      "",
+			"first_name": "",
+			"last_name":  "",
+			"avatar_url": "",
+			"birth_date": "",
+			"gender":     "",
+			"device":     "",
+			// Les préférences — langue, thème, catégories coupées, sons.
+			// Elles ne nomment personne, mais ce sont ses choix, et une ligne
+			// anonyme n'a plus personne à servir.
+			"preferences": "",
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("user: anonymise: %w", err)
+	}
+	return nil
+}
+
+// DeleteAddressesOf efface le carnet d'adresses — « Maison », « Bureau » et
+// leurs coordonnées : la donnée la plus personnelle que le socle détienne.
+func (r *Repository) DeleteAddressesOf(ctx context.Context, userID primitive.ObjectID) error {
+	if _, err := r.addresses.DeleteMany(ctx, bson.M{"user_id": userID}); err != nil {
+		return fmt.Errorf("user: delete addresses: %w", err)
+	}
+	return nil
+}
+
+// TrimRefreshTokens garde les `max` sessions les plus récentes d'un compte et
+// supprime les autres ; rend le nombre de sessions déconnectées.
+//
+// ⚠️ `keepHash` EST GARDÉ QUOI QU'IL ARRIVE. C'est la session qu'on vient
+// d'ouvrir : l'évincer déconnecterait la personne au moment même où elle donne
+// son mot de passe, et elle réessaierait en boucle sans jamais comprendre.
+//
+// ⚠️ `deviceID` : les sessions de la MÊME installation partent d'abord, et ne
+// comptent pas dans le quota. Une application réinstallée, ou qui se reconnecte
+// sans s'être déconnectée, est le MÊME téléphone qui revient — le compter comme
+// un appareil de plus aurait poussé dehors le téléphone principal de quelqu'un
+// à chaque réinstallation.
+//
+// Le tri est sur `created_at` DÉCROISSANT, et une session est datée de son
+// dernier rafraîchissement (la rotation réécrit la ligne) : ce qui part est
+// donc la session la plus SILENCIEUSE, pas la plus ancienne à avoir été
+// ouverte. C'est la différence entre déconnecter un téléphone oublié dans un
+// tiroir et déconnecter celui dont on se sert tous les jours.
+func (r *Repository) TrimRefreshTokens(ctx context.Context, userID primitive.ObjectID, keepHash, deviceID string, max int) (int, error) {
+	if max < 1 {
+		max = 1
+	}
+	cur, err := r.refreshTokens.Find(ctx,
+		bson.M{"user_id": userID},
+		options.Find().
+			SetSort(bson.D{{Key: "created_at", Value: -1}}).
+			SetProjection(bson.M{"token_hash": 1, "device_id": 1}))
+	if err != nil {
+		return 0, fmt.Errorf("user: list refresh tokens: %w", err)
+	}
+	var rows []RefreshToken
+	if err := cur.All(ctx, &rows); err != nil {
+		return 0, fmt.Errorf("user: read refresh tokens: %w", err)
+	}
+
+	var doomed []primitive.ObjectID
+	kept := 0
+	for _, row := range rows {
+		switch {
+		case row.TokenHash == keepHash:
+			// La session du jour. Elle compte dans le quota.
+			kept++
+		case deviceID != "" && row.DeviceID == deviceID:
+			// Le même téléphone, revenu : sa session précédente s'efface sans
+			// consommer une place.
+			doomed = append(doomed, row.ID)
+		case kept < max:
+			kept++
+		default:
+			doomed = append(doomed, row.ID)
+		}
+	}
+	if len(doomed) == 0 {
+		return 0, nil
+	}
+	res, err := r.refreshTokens.DeleteMany(ctx, bson.M{"_id": bson.M{"$in": doomed}})
+	if err != nil {
+		return 0, fmt.Errorf("user: trim refresh tokens: %w", err)
+	}
+	return int(res.DeletedCount), nil
 }
 
 // SetDevice écrit l'appareil courant d'un compte, et lui seul.

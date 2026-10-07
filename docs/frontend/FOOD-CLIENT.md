@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.45.2** · 7 octobre 2026
+> **Version 4.47.0** · 7 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -316,6 +316,86 @@ PATCH  /me                   { name?, first_name?, last_name?, birth_date?, gend
 - **`phone_taken` (409)** à l'inscription : le numéro a déjà un compte → proposer la connexion, pas « une erreur est survenue ».
 - **`account_suspended` (403)** à la connexion, mot de passe correct : le dire tel quel — ce n'est ni un mauvais mot de passe, ni une panne.
 
+### 🆕 S'INSCRIRE ET SE CONNECTER PAR CODE — le téléphone, et rien d'autre (v4.46.0)
+
+Deux routes, un écran de six chiffres, **pas de mot de passe à choisir ni à
+retrouver** :
+
+```
+POST /auth/otp          { phone, channel?: "whatsapp"|"sms", app: "client", locale? }
+   → 200 { sent, channel, expires_at, resend_after, dev_code? }
+
+POST /auth/otp/verify   { phone, code, name?, first_name?, last_name?,
+                          app: "client", device_id?, device_name? }
+   → 201 { …, created: true }   le compte VIENT DE NAÎTRE
+   → 200 { …, created: false }  connexion
+```
+
+Le corps de la réponse de `verify` est **exactement celui de
+`POST /auth/login`** (`user`, `access_token`, `refresh_token`, `session?`,
+`maps?`), augmenté de `created`.
+
+⚠️ **LA PASSERELLE N'EST PAS ENCORE CÂBLÉE — LE CODE REVIENT DANS LA RÉPONSE.**
+Tant que le serveur répond `channel: "echo"`, **rien n'est envoyé** : le code
+est dans **`dev_code`**. C'est ce qui vous permet de câbler l'écran dès
+maintenant. ⚠️ **`dev_code` disparaîtra sans préavis** le jour où WhatsApp ou
+le SMS sera branché : traitez-le comme un bonus de développement — pré-remplir
+le champ si vous voulez —, **jamais** comme la source du code. L'écran doit
+fonctionner à l'identique quand il n'y est plus.
+
+⚠️ **LE COMPTE À REBOURS SE REND DEPUIS `expires_at`**, jamais depuis l'horloge
+du téléphone, et le bouton « renvoyer » se rouvre après `resend_after`
+secondes. Un code vit **5 minutes** et meurt après **5 essais**.
+
+⚠️ **NE DEMANDEZ LE NOM QU'APRÈS LA VÉRIFICATION, ET SEULEMENT SI
+`created: true`.** La demande de code **ne dit jamais** si le numéro est déjà
+client — ce serait un annuaire : qui veut savoir si quelqu'un utilise Dira
+n'aurait qu'à poster son numéro. Sans nom, le serveur affiche le **numéro**
+comme nom ; la personne le changera depuis son profil (`PATCH /me`).
+
+⚠️ **CE COMPTE N'A PAS DE MOT DE PASSE.** `POST /auth/login` lui répondra
+toujours `401 invalid_credentials` : ne proposez pas « se connecter avec un mot
+de passe » à quelqu'un qui s'est inscrit par code, et ne gardez pas d'écran de
+mot de passe oublié pour lui.
+
+⚠️ **RÉSERVÉE AUX CLIENTS.** Un compte chauffeur, livreur, marchand ou de
+direction reçoit `403 otp_not_available` et **aucun code** — six chiffres ne
+remplacent un mot de passe que pour un client. Les applications d'agent gardent
+`POST /auth/login`.
+
+| Refus | Quand | Ce que l'écran fait |
+|---|---|---|
+| `422 validation_failed` (`fields: ["phone"]`) | le `+` manque | souligner le champ ; pré-remplir l'indicatif du pays |
+| `429 otp_too_soon` | un code vient de partir | garder le bouton « renvoyer » grisé jusqu'à `resend_after` |
+| `429 otp_too_many_requests` | plafond horaire de ce numéro | proposer le support, pas un nouvel essai |
+| `503 otp_delivery_failed` | la passerelle n'a rien pris | **redemander tout de suite est légitime** : rien n'a été consommé |
+| `401 otp_invalid` | code faux **ou** aucun code en cours | « code incorrect », garder la saisie |
+| `401 otp_expired` | plus de 5 minutes | « demandez un nouveau code » |
+| `401 otp_too_many_attempts` | 5 essais | le code est **mort** : revenir à l'écran du numéro |
+| `403 otp_not_available` | compte qui se connecte par mot de passe | « ouvrez l'application correspondante » |
+| `403 account_suspended` | compte suspendu | le dire tel quel, ne pas renvoyer vers « mot de passe oublié » |
+
+⚠️ **DITES QUELLE APPLICATION SE CONNECTE — `app`.** À la connexion, envoyez
+`app: "client"`. Le serveur refuse `403 wrong_app` quand le compte n'a pas le
+droit d'entrer ici, et **`error.reason` nomme l'application à ouvrir**
+(`client` · `driver` · `courier` · `merchant` · `console`). Sans ce mot, un
+chauffeur se connectait dans l'application cliente, recevait un jeton
+parfaitement valide, puis voyait chaque écran répondre `403` — et croyait
+l'application cassée.
+
+⚠️ **UN SEUL CARNET D'ADRESSES, ET C'EST VOULU.** « Maison » sert au repas
+comme au taxi. N'entretenez pas deux listes.
+
+⚠️ **UN SEUL SOLDE, DEUX MÉTIERS QUI LE DÉBITENT.** Un écran de solde qui ne
+montrerait que les opérations d'un métier laisserait un client chercher où sont
+passés ses 2 000 F. `GET /wallet/transactions` les rend toutes, des deux
+métiers.
+
+⚠️ **NE CONCLUEZ JAMAIS UN PAIEMENT SUR LA SEULE RÉPONSE HTTP.** Suivez
+`GET /payments/{id}` jusqu'à `succeeded`, ou attendez le passage de l'opération
+à son statut payé. Un écran qui annonce « payé » sur un `202` fait réclamer un
+remboursement pour un paiement qui n'a jamais abouti.
+
 ### 🚪 DIRE QUELLE APPLICATION SE CONNECTE — `app` (v4.26.0)
 
 `POST /auth/login` accepte un champ `app`. **Envoyez `app: "client"` à chaque
@@ -431,6 +511,169 @@ DELETE /me/addresses/{id}
 - `details` — « portail bleu », « 2e étage gauche » — est ce qui fait **trouver la porte**. Proposez-le explicitement : c'est ce que le client répétait au livreur à chaque commande.
 - La **première** adresse devient celle par défaut. Supprimer celle par défaut en **promeut** une autre.
 - 20 au maximum → `409 too_many_addresses`.
+
+---
+
+## 🔒 LE VERROU DE L'APPLICATION — `app_lock` (v4.46.0)
+
+Biométrie ou code secret devant l'application : qui ouvre le téléphone de
+quelqu'un n'ouvre pas pour autant son compte Dira. **Le verrou vit chez vous** —
+le serveur ne peut ni le poser, ni vérifier qu'il y est. Ce qu'il dit, c'est la
+**politique du pays**, réglée depuis la console :
+
+```jsonc
+// à la connexion, à l'inscription, à la vérification d'un code, au rafraîchissement
+"app_lock": {
+  "mode": "optional",      // "off" · "optional" · "required"
+  "biometrics": true,      // false = CODE SEUL
+  "pin_length": 4,         // 4 ou 6
+  "grace_seconds": 120,    // temps hors de l'app avant de redemander ; 0 = à chaque retour
+  "max_attempts": 5        // échecs avant DÉCONNEXION
+}
+```
+
+Et dans `GET /countries`, pour l'application qui change de pays sans se
+reconnecter.
+
+**Ce que chaque mode demande**
+
+| `mode` | Ce que l'application fait |
+|---|---|
+| `off` | ne rien proposer — pas de case dans les réglages ; une case qui ne fait rien est pire que pas de case |
+| `optional` | proposer dans les réglages, **éteint par défaut** |
+| `required` | **exiger** la pose d'un verrou avant le premier écran, et ne pas offrir de le retirer |
+
+⚠️ **LE CODE SECRET EST TOUJOURS POSSIBLE, MÊME AVEC LA BIOMÉTRIE.** Un capteur
+cassé, un doigt mouillé, un visage dans le noir : sans code de secours, le
+verrou enferme dehors quelqu'un qui n'a rien fait. `biometrics: false` veut dire
+« code **seul** », jamais l'inverse.
+
+⚠️ **AU-DELÀ DE `max_attempts`, ON DÉCONNECTE — ON NE BLOQUE PAS.** Jetez le
+jeton de rafraîchissement (`POST /auth/logout`), effacez l'état local, revenez à
+l'écran de connexion. Un téléphone volé qui se *bloque* garde un jeton valide
+**trente jours** ; déconnecté, il ne garde rien. Et la personne légitime
+retrouve son compte avec un code à usage unique (client) ou son mot de passe.
+
+⚠️ **NE VERROUILLEZ JAMAIS UN APPEL DE COURSE NI UN BOUTON D'URGENCE.** Un appel
+dure trente secondes : derrière un code, c'est un appel manqué, et le chauffeur
+désactivera le verrou le jour même. Le verrou garde l'application, pas l'écran
+qui sonne.
+
+⚠️ **`grace_seconds` DÉCIDE SI LE VERROU SERA SUPPORTÉ OU CONTOURNÉ.** Compter
+depuis le passage en arrière-plan, pas depuis la dernière saisie : redemander le
+code parce que quelqu'un est allé lire le SMS de son opérateur fait désinstaller
+l'application. `0` existe et se choisit — pour un parc de téléphones partagés.
+
+⚠️ **CE QUE LE VERROU NE PROTÈGE PAS.** Il arrête l'ami curieux et le téléphone
+laissé sur une table. Il n'arrête pas qui extrait le stockage d'un appareil
+débridé : le jeton est là. Ce qui protège la donnée, c'est **le stockage
+sécurisé** (Keychain `AfterFirstUnlockThisDeviceOnly`, Keystore) et la durée de
+vie du jeton — jamais ce réglage.
+
+⚠️ **NE L'ENVOYEZ PAS AU SERVEUR, NE LE RANGEZ PAS EN CLAIR.** Le code ne quitte
+pas le téléphone ; il se dérive (PBKDF2, Argon2) avec un sel dans le stockage
+sécurisé, ou mieux, il déverrouille le trousseau du système. Le serveur ne le
+connaît pas, et ne doit pas le connaître : il n'aurait aucun moyen de le
+vérifier sans devenir le point de panne de l'ouverture de l'application.
+
+**La politique change sans reconnexion** : relisez-la à chaque réponse qui la
+porte (connexion, inscription, vérification de code, **rafraîchissement**) et
+appliquez-la à chaud. Un pays qui passe à `required` ne doit pas attendre
+l'expiration d'un jeton de trente jours.
+
+---
+
+### 📱 COMBIEN D'APPAREILS — et lequel se déconnecte (v4.46.0)
+
+Votre compte tient **plusieurs appareils** : le téléphone, la tablette, celui
+qu'on vient de changer. Le nombre est réglé **par pays** (trois par défaut) et
+se lit dans `GET /countries` → `max_devices`.
+
+⚠️ **AU-DELÀ, LA SESSION LA PLUS SILENCIEUSE PART** — pas la première ouverte.
+Une session est datée de son **dernier rafraîchissement** : le téléphone dont on
+se sert tous les jours se redate seul, celui qui dort dans un tiroir s'en va le
+premier. L'appareil évincé ne reçoit rien sur le moment : il l'apprend à son
+prochain rafraîchissement, qui répond **`401`**. Traitez-le comme une session
+expirée ordinaire — ramenez à l'écran de connexion, n'affichez pas « erreur ».
+
+⚠️ **ENVOYEZ `device_id` À LA CONNEXION, MÊME SI VOUS ÊTES UNE APPLICATION DE
+CLIENT.** Il ne va pas dans votre jeton et ne vous soumet à aucune règle d'agent ;
+il sert à une seule chose : **reconnaître le même téléphone qui revient**. Sans
+lui, une réinstallation compte pour un appareil de plus et pousse dehors un
+autre de vos appareils. Avec lui, votre session précédente est simplement
+remplacée. Il doit **survivre aux redémarrages** et vivre aussi longtemps que le
+jeton de rafraîchissement, à côté de lui.
+
+---
+
+## 🗑️ SUPPRIMER SON COMPTE — et ce qui reste des courses passées (v4.47.0)
+
+```
+DELETE /me
+{ "password": "…" }      ← compte avec mot de passe
+{ "code": "483920" }     ← compte né par code (demandez-en un par POST /auth/otp)
+   → 200 { "status": "closed", "erase_at": "2026-11-06T18:40:00Z" }
+```
+
+C'est un **droit**, et l'écran qui le porte doit être trouvable depuis le
+profil — pas enterré derrière le support.
+
+**EN DEUX TEMPS, ET IL FAUT DIRE LES DEUX.**
+
+1. **Tout de suite** — le compte est **fermé**. Toutes les sessions tombent, sur
+   **tous** les appareils ; les notifications cessent ; la connexion répond
+   ensuite `403 account_closed`, par mot de passe **comme par code**. Videz le
+   jeton, le stockage sécurisé, les caches et les écrans, et revenez à la
+   connexion.
+2. **À `erase_at`** (trente jours plus tard par défaut) — l'**identité** part :
+   le nom devient « Compte supprimé », le téléphone est brouillé puis
+   **libéré**, l'e-mail, la photo, l'état civil, les préférences et le **carnet
+   d'adresses** sont effacés, la boîte de notifications est purgée, et les
+   messages écrits au chauffeur, au livreur ou au support sont jetés.
+
+⚠️ **LES COURSES ET LES COMMANDES PASSÉES RESTENT — dites-le AVANT le bouton,
+pas après.** Ce sont des **écritures comptables** : prix, commission, date, déjà
+déclarés dans une facturation par pays. Les effacer trouerait un journal en
+partie double. Mais elles ne **désignent plus personne** — aucun service ne
+stocke de nom ni de téléphone, il les demande au compte au moment d'afficher —,
+donc anonymiser le compte anonymise **tout** l'historique d'un seul coup,
+partout, console et support compris. Un écran qui promet « tout sera effacé »
+promet ce qui ne peut pas l'être, et c'est la réclamation qui suivra.
+
+⚠️ **AFFICHEZ `erase_at`.** « Votre compte est fermé. Vos données seront
+effacées le 6 novembre. » se comprend. « Compte supprimé » tout seul ne se
+comprend pas — et la première réclamation arrive le jour où la personne appelle
+le support, qui lit encore son nom à l'écran.
+
+⚠️ **IL FAUT PROUVER QUI ON EST**, et c'est tout le corps de la requête :
+`password` pour un compte qui en a un, `code` pour un compte né par code
+(demandez-en un par `POST /auth/otp` ; il est **consommé** ici). L'opération est
+irréversible depuis l'application : sans cette preuve, un téléphone déverrouillé
+posé sur une table suffirait à faire disparaître le compte de quelqu'un.
+
+⚠️ **VIDEZ LE PORTEFEUILLE D'ABORD.** Un solde, des jetons ou une **dette**
+font refuser `409 wallet_not_empty`, et `error.meta.reason` dit lequel
+(`money` · `tokens` · `debt`). On ne détruit pas de l'argent en silence :
+emmenez la personne vers son solde, ou vers le support pour un remboursement.
+
+⚠️ **PENDANT LES TRENTE JOURS, LE SUPPORT PEUT ANNULER.** C'est le seul recours
+de qui a touché le bouton par erreur, et c'est la raison même du délai : dites-le
+sur l'écran de confirmation, avec le moyen d'écrire au support. Se **réinscrire**
+avec le même numéro pendant ce délai répond `403 account_closed` — pas
+`phone_taken` : le numéro n'est rendu qu'à `erase_at`.
+
+⚠️ **NE SUPPRIMEZ JAMAIS AU PREMIER APPUI.** Un écran de conséquences (ce qui
+part, ce qui reste, la date), puis la preuve d'identité. Deux gestes pour une
+action qu'aucun bouton ne défera.
+
+| Refus | Quand | Ce que l'écran fait |
+|---|---|---|
+| `401 invalid_credentials` | mot de passe faux | souligner le champ, ne pas quitter l'écran |
+| `401 otp_invalid` · `401 otp_expired` | code faux ou périmé | redemander un code |
+| `409 wallet_not_empty` | solde, jetons ou dette (`meta.reason`) | envoyer vers le solde, ou le support |
+| `409 deletion_already_requested` | demande déjà en cours | afficher `erase_at` et proposer le support pour annuler |
+| `403 erasure_not_self_serve` | compte d'agent, de marchand ou de direction | renvoyer vers le support (il porte des versements à solder) |
+| `403 account_closed` | à la connexion, au rafraîchissement ou à l'inscription | « ce compte a été supprimé » + « se réinscrire » ou support |
 
 ---
 
@@ -1473,6 +1716,11 @@ L'écran de portefeuille dérive ce chiffre du **panier moyen réel** du client.
 
 | Code | HTTP | Conduite |
 |---|---|---|
+| `401 otp_invalid` · `401 otp_expired` | code faux ou périmé — garder la saisie, ou proposer d'en redemander un |
+| `401 otp_too_many_attempts` | le code est **mort** : revenir à l'écran du numéro |
+| `429 otp_too_soon` · `429 otp_too_many_requests` | « renvoyer » grisé jusqu'à `resend_after` ; au plafond horaire, proposer le support |
+| `503 otp_delivery_failed` | rien n'a été consommé : redemander tout de suite est légitime |
+| `403 otp_not_available` | ce compte se connecte par mot de passe |
 | `missing_token` · `invalid_token` | 401 | refresh, puis déconnexion au second échec |
 | `invalid_credentials` | 401 | identifiants erronés |
 | `forbidden` | 403 | rôle insuffisant |
@@ -1490,6 +1738,10 @@ L'écran de portefeuille dérive ce chiffre du **panier moyen réel** du client.
 | `too_many_addresses` | 409 | 20 au maximum |
 | `wallet_unavailable` | 409 | paiement au portefeuille indisponible |
 | `phone_taken` | 409 | le numéro a déjà un compte → **proposer la connexion** |
+| `account_closed` | **403** | ce compte a été **supprimé** — à la connexion comme à l'inscription : « se réinscrire », ou le support si c'est une erreur |
+| `wallet_not_empty` | 409 | suppression de compte refusée : solde, jetons ou dette (`meta.reason`) → vider, ou demander un remboursement |
+| `deletion_already_requested` | 409 | suppression déjà demandée — afficher `erase_at`, proposer le support pour annuler |
+| `erasure_not_self_serve` | 403 | ce type de compte se supprime par le **support** |
 | `account_suspended` | 403 | compte suspendu, mot de passe correct → le dire tel quel |
 | `validation_failed` | 422 | **`fields`** nomme les clés JSON fautives ; `reason: unknown_field` = bug de l'app |
 | `payload_too_large` | **413** | la passerelle : corps > 64 MiB — vérifier le poids **avant** d'envoyer |

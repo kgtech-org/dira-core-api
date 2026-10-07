@@ -51,6 +51,11 @@ var global = map[string]string{
 	"finance.FirstEntryAt":      "le balayage d'intégrité cherche le début du journal",
 	"finance.UnbalancedEntries": "le balayage d'intégrité relit toutes les écritures",
 	"equipment.ActiveContracts": "le prélèvement automatique passe sur tous les contrats dus",
+	// Le droit à l'effacement ne s'arrête pas aux frontières : le balayage
+	// efface les comptes dus de TOUS les pays. Les borner au pays du
+	// déploiement laisserait l'identité d'un Guinéen dans la base pour
+	// toujours, parce que le balayage tourne depuis Lomé.
+	"user.AccountsDueForErasure": "le droit à l'effacement n'a pas de pays, et le balayage n'a pas de requête",
 }
 
 // Toute lecture d'une collection bornée par pays porte son pays, ou un

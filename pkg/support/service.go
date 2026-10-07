@@ -2,6 +2,7 @@ package support
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -565,4 +566,22 @@ func CategoryLabel(c string) string {
 	default:
 		return "Autre"
 	}
+}
+
+// PurgeOf jette les fils de support d'une personne effacée — la part de
+// l'effacement d'un compte qui vit au guichet.
+//
+// ⚠️ FACULTATIVE SELON LE DÉPÔT. `Store` est une interface, et un dépôt de
+// test n'a aucune raison de savoir purger : on le dit en ERROR plutôt que de
+// faire échouer un effacement, parce que le compte, lui, est déjà parti.
+func (s *Service) PurgeOf(ctx context.Context, userID primitive.ObjectID) (int64, error) {
+	purger, ok := s.store.(interface {
+		PurgeOf(ctx context.Context, userID primitive.ObjectID) (int64, error)
+	})
+	if !ok {
+		slog.ErrorContext(ctx, "support: this store cannot purge — the threads of an erased account stay",
+			"user_id", userID.Hex())
+		return 0, nil
+	}
+	return purger.PurgeOf(ctx, userID)
 }

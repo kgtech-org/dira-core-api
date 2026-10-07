@@ -24,6 +24,16 @@ const (
 const (
 	StatusActive    = "active"
 	StatusSuspended = "suspended"
+	// StatusClosed : la personne a demandé la suppression de son compte. Il
+	// ne se connecte plus, et son identité part à l'échéance du délai de
+	// grâce — voir `erasure.go`.
+	//
+	// ⚠️ DISTINCT DE `suspended`, et il faut que ça le reste. Une suspension
+	// est une décision de l'exploitation, qui se lève ; une fermeture est la
+	// décision de la personne, et elle ne se lève que par le support. Les
+	// confondre aurait fait « réactiver » des comptes dont quelqu'un a demandé
+	// l'effacement.
+	StatusClosed = "closed"
 )
 
 // User is a platform account. The phone number (E.164) is the primary
@@ -55,11 +65,19 @@ type User struct {
 	// sinon indicatif du téléphone, sinon pays par défaut — et réaligné par
 	// `POST /me/country/resolve` quand l'application situe la personne
 	// ailleurs. Voir `pkg/country`.
-	Country      string    `bson:"country,omitempty"`
-	PasswordHash string    `bson:"password_hash"`
-	Status       string    `bson:"status"` // "active" | "suspended"
-	CreatedAt    time.Time `bson:"created_at"`
-	UpdatedAt    time.Time `bson:"updated_at"`
+	Country      string `bson:"country,omitempty"`
+	PasswordHash string `bson:"password_hash"`
+	Status       string `bson:"status"` // "active" | "suspended" | "closed"
+	// DeletionRequestedAt : la personne a demandé la suppression. Le compte
+	// est fermé tout de suite, l'identité part à l'échéance du délai de grâce
+	// — voir `erasure.go`.
+	DeletionRequestedAt *time.Time `bson:"deletion_requested_at,omitempty"`
+	// AnonymisedAt : l'identité EST partie. La ligne reste pour que les
+	// courses et les commandes gardent une référence valide — elles ne
+	// désignent plus personne.
+	AnonymisedAt *time.Time `bson:"anonymised_at,omitempty"`
+	CreatedAt    time.Time  `bson:"created_at"`
+	UpdatedAt    time.Time  `bson:"updated_at"`
 	// Device est L'APPAREIL COURANT, et il ne concerne QUE les chauffeurs et
 	// les livreurs : eux seuls ne peuvent tenir qu'une session à la fois.
 	// Absent pour les clients, les marchands et le staff — un client a le
@@ -130,6 +148,10 @@ type RefreshToken struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty"`
 	TokenHash string             `bson:"token_hash"` // sha256 hex, unique
 	UserID    primitive.ObjectID `bson:"user_id"`
-	ExpiresAt time.Time          `bson:"expires_at"`
-	CreatedAt time.Time          `bson:"created_at"`
+	// DeviceID est l'INSTALLATION qui tient cette session, quand
+	// l'application l'a déclarée. Vide = inconnue, et la session compte alors
+	// pour un appareil à elle seule — voir `devices.go`.
+	DeviceID  string    `bson:"device_id,omitempty"`
+	ExpiresAt time.Time `bson:"expires_at"`
+	CreatedAt time.Time `bson:"created_at"`
 }

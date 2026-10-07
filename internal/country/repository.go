@@ -102,6 +102,20 @@ func (r *Repository) SetBasemap(ctx context.Context, code, basemap string) error
 	return nil
 }
 
+// SetSecurity enregistre la politique de sécurité d'un pays — le verrou des
+// applications. Le bloc est écrit ENTIER : il est petit, et un `$set` par
+// champ aurait laissé se construire, à force d'écritures partielles, un
+// document dont personne ne sait plus quels champs ont été voulus.
+func (r *Repository) SetSecurity(ctx context.Context, code string, sec Security) error {
+	_, err := r.countries.UpdateOne(ctx, bson.M{"_id": code},
+		bson.M{"$set": bson.M{"security": sec, "updated_at": time.Now().UTC()}},
+		options.Update().SetUpsert(true))
+	if err != nil {
+		return fmt.Errorf("country: set security: %w", err)
+	}
+	return nil
+}
+
 // SetTesting réserve un pays aux essais, ou l'en sort.
 func (r *Repository) SetTesting(ctx context.Context, code string, testing bool) error {
 	update := bson.M{"$set": bson.M{"updated_at": time.Now().UTC()}}

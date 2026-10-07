@@ -270,3 +270,13 @@ func writable(c *Conversation) error {
 	}
 	return nil
 }
+
+// PurgeOf jette tout ce qu'une personne effacée a écrit ici — la part de
+// l'effacement d'un compte qui vit dans les conversations.
+//
+// ⚠️ SES MESSAGES, PAS LES CONVERSATIONS. Un fil appartient à deux personnes :
+// ce que le chauffeur a écrit — « j'ai déposé le sac chez le gardien » — est sa
+// trace à lui, et il peut en avoir besoin. Voir `Repository.PurgeOf`.
+func (s *Service) PurgeOf(ctx context.Context, userID primitive.ObjectID) (int64, error) {
+	return s.repo.PurgeOf(ctx, userID)
+}

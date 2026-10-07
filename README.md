@@ -89,7 +89,7 @@ never reads — so variables nobody knows whether to set.
 
 ```
 cmd/api          HTTP entrypoint
-internal/user    accounts, auth, RBAC, addresses, preferences
+internal/user    accounts, auth (password + ONE-TIME CODE), RBAC, addresses, preferences
 internal/token   token wallets and ledger
 internal/payment mobile money (provider abstraction + mock)
 internal/notify  inbox, push devices, multilingual templates (FCM)
@@ -241,6 +241,101 @@ a repository that does not serve a single ride route.
 > two guarantees that belong nowhere else: **all five specs are present**, and
 > they **share one version** — "a frontend quoting v2.1.0 names a precise
 > contract" only holds if nobody can forget to bump one.
+
+> ⚠️ **UN CLIENT S'INSCRIT PAR CODE, ET LE CODE REVIENT DANS LA RÉPONSE.**
+> `POST /auth/otp` puis `POST /auth/otp/verify` (voir `internal/user/otp.go`) :
+> six chiffres, pas de mot de passe. **Aucune passerelle n'est câblée** —
+> `OTP_SENDER=echo`, le défaut, ne remet rien et rend le code en clair dans
+> `dev_code`. Tant que c'est le cas, **quiconque connaît un numéro entre dans le
+> compte** : le démarrage le dit en ERROR, et brancher WhatsApp ou le SMS
+> consiste à écrire un `OTPSender` et à le nommer dans `otpSender()`
+> (`cmd/api/main.go`) — rien d'autre ne bouge.
+>
+> ⚠️ **La porte est RÉSERVÉE AUX CLIENTS.** Six chiffres remplacent un mot de
+> passe : l'ouvrir à un chauffeur, un marchand ou la direction ferait du numéro
+> de téléphone — qui s'affiche sur une plaque — le seul secret protégeant un
+> compte qui débite des portefeuilles. Un compte qui n'est pas `client` ne
+> reçoit aucun code.
+>
+> ⚠️ **COMBIEN D'APPAREILS UN COMPTE TIENT se règle par PAYS** —
+> `max_devices` dans le même bloc (défaut **3**). Les comptes ordinaires
+> n'avaient aucune borne : vingt sessions vivantes, chacune avec trente jours de
+> jeton de rafraîchissement, et rien pour le voir. Au-delà, la session la plus
+> SILENCIEUSE part (une session se redate à chaque rafraîchissement). ⚠️ **Les
+> chauffeurs et livreurs gardent UN appareil, et ce n'est pas réglable** : deux
+> téléphones en ligne pour un véhicule, ce sont deux flux de positions et un
+> appel qui part vers le mauvais — voir `internal/user/device.go`.
+>
+> ⚠️ **LE VERROU DES APPLICATIONS se règle par PAYS** —
+> `GET · PUT /admin/countries/{code}/security` (`internal/country/security.go`),
+> servi aux applications dans `app_lock` à la connexion, à l'inscription, à la
+> vérification d'un code **et au rafraîchissement**, comme le fond de carte.
+> C'est une POLITIQUE, pas un contrôle d'accès : le verrou vit dans le
+> téléphone, le serveur ne peut ni le poser ni vérifier qu'il y est. Ce qui
+> protège une donnée reste le jeton en stockage sécurisé et sa durée de vie.
+>
+> ⚠️ **Un compte né par code n'a pas d'empreinte de mot de passe**, et
+> `POST /auth/login` lui répond `401 invalid_credentials` — jamais un code qui
+> dirait « ce compte se connecte autrement », ce qui révélerait quels numéros
+> existent. Avant cette version, cette connexion répondait **500** : l'empreinte
+> vide faisait échouer la vérification.
+
+> ⚠️ **ON EFFACE LA PERSONNE, PAS L'OPÉRATION** — `DELETE /me` et
+> `DELETE /admin/users/{id}` (voir `internal/user/erasure.go`).
+>
+> Une suppression de compte se heurte à deux droits qui ne se sacrifient pas :
+> la personne a le droit de ne plus être dans nos bases, et les courses qu'elle
+> a payées sont des **écritures comptables** — les effacer trouerait le journal
+> en partie double, ferait échouer le balayage d'intégrité et retirerait d'une
+> facturation par pays des montants déjà déclarés. On anonymise donc le COMPTE
+> et on garde l'opération.
+>
+> ⚠️ **ET CELA SUFFIT À ANONYMISER TOUT L'HISTORIQUE** : aucune verticale ne
+> stocke de nom ni de téléphone — une course porte un identifiant et demande
+> l'identité au socle au moment d'afficher (`UserNames`, `ContactOf`). C'est le
+> socle commun qui rend cette fonction tenable ; avec un nom recopié dans chaque
+> verticale, il aurait fallu les parcourir toutes, et en oublier une.
+>
+> **DEUX TEMPS.** La **fermeture** est immédiate (sessions coupées, appareils de
+> notification oubliés, `403 account_closed` ensuite — par mot de passe comme par
+> code) ; l'**effacement** vient après un **délai de grâce**
+> (`ACCOUNT_ERASURE_GRACE`, trente jours), balayé toutes les heures. Ce délai
+> résout deux problèmes d'un coup : une personne qui a touché le bouton par
+> erreur a le temps d'écrire au support, et une course en cours se termine
+> normalement — le chauffeur voit encore le nom de qui est dans sa voiture.
+> Réactiver le compte pendant le délai **annule** l'effacement.
+>
+> ⚠️ **LE SOCLE NE DEMANDE RIEN AUX VERTICALES**, ici comme ailleurs : il ne
+> leur demande pas « puis-je effacer ? », il leur DIT que le compte est effacé
+> (`core:account_erased`, file Asynq), et chacune purge ce qu'elle seule détient.
+> Un socle qui interrogerait deux verticales avant d'accepter une suppression ne
+> pourrait plus être déployé seul, et une verticale indisponible rendrait le
+> droit à l'effacement indisponible avec elle.
+>
+> ⚠️ **L'ANNONCE PORTE LE TÉLÉPHONE, À CONTRECŒUR.** Une verticale garde des
+> traces classées par NUMÉRO et non par compte — la conversation du robot
+> WhatsApp, qui porte le numéro de la personne et tout ce qu'elle a écrit pour
+> commander. Sans ce champ, elles resteraient là **pour toujours** et rien, nulle
+> part, ne dirait comment les retrouver : l'identifiant de compte n'y apparaît
+> pas. Trois jours dans une file contre toujours dans un journal de
+> conversations : le choix se fait tout seul. C'est pour cela que cette tâche
+> est retenue **une heure** (`jobs.AccountErasedRetention`) et non les 72 h des
+> autres annonces. Ni nom ni adresse, en revanche — rien qui ne serve de CLÉ
+> quelque part.
+>
+> ⚠️ **TROIS DÉFAUTS CORRIGÉS AU PASSAGE.** `DELETE /admin/users/{id}` détruisait
+> la ligne du compte — des milliers de références de courses, commandes et
+> écritures pointaient alors vers un compte introuvable ; il recopiait **nom et
+> téléphone** dans le journal d'audit, conservé sept ans, à l'instant même où il
+> prétendait les effacer ; et la porte par **code** rouvrait un compte fermé, car
+> son numéro reçoit encore les codes pendant tout le délai de grâce.
+>
+> ⚠️ **CLIENTS SEULEMENT en libre-service** (`403 erasure_not_self_serve`). Un
+> chauffeur, un livreur ou un marchand porte des versements et parfois une dette
+> que le socle ne sait pas lire — ils vivent dans la verticale. Et un solde, des
+> jetons ou une dette font refuser `409 wallet_not_empty` : on ne détruit pas de
+> l'argent en silence, et « supprimer mon compte » ne doit pas devenir la sortie
+> de secours d'une commission impayée.
 
 ## Status
 

@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 4.45.2** · 7 octobre 2026
+> **Version 4.47.0** · 7 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -317,6 +317,135 @@ clair sur chaque requête de tuile — Google l'exige. Restreignez-la (empreinte
 bundle, référent), plafonnez son quota, et ne la recopiez pas dans un journal ni
 dans un rapport de plantage : ces fichiers partent chez un tiers et se gardent
 des mois.
+
+---
+
+> 🔑 **LA PORTE PAR CODE N'EST PAS POUR VOUS (v4.46.0).** Les clients
+> s'inscrivent et se connectent désormais avec leur téléphone et six chiffres
+> (`POST /auth/otp`, `POST /auth/otp/verify`). **Votre application garde
+> `POST /auth/login`** : un compte qui n'est pas client reçoit
+> `403 otp_not_available` et aucun code n'est envoyé. Ce n'est pas un oubli —
+> six chiffres remplacent un mot de passe, et un numéro de téléphone s'affiche
+> sur une plaque, se donne à un passager, se lit dans un annuaire. Protéger
+> avec cela un compte qui tient un portefeuille et une dette serait le
+> protéger avec rien.
+
+## 🔒 LE VERROU DE L'APPLICATION — `app_lock` (v4.46.0)
+
+Biométrie ou code secret devant l'application : qui ouvre le téléphone de
+quelqu'un n'ouvre pas pour autant son compte Dira. **Le verrou vit chez vous** —
+le serveur ne peut ni le poser, ni vérifier qu'il y est. Ce qu'il dit, c'est la
+**politique du pays**, réglée depuis la console :
+
+```jsonc
+// à la connexion, à l'inscription, à la vérification d'un code, au rafraîchissement
+"app_lock": {
+  "mode": "optional",      // "off" · "optional" · "required"
+  "biometrics": true,      // false = CODE SEUL
+  "pin_length": 4,         // 4 ou 6
+  "grace_seconds": 120,    // temps hors de l'app avant de redemander ; 0 = à chaque retour
+  "max_attempts": 5        // échecs avant DÉCONNEXION
+}
+```
+
+Et dans `GET /countries`, pour l'application qui change de pays sans se
+reconnecter.
+
+**Ce que chaque mode demande**
+
+| `mode` | Ce que l'application fait |
+|---|---|
+| `off` | ne rien proposer — pas de case dans les réglages ; une case qui ne fait rien est pire que pas de case |
+| `optional` | proposer dans les réglages, **éteint par défaut** |
+| `required` | **exiger** la pose d'un verrou avant le premier écran, et ne pas offrir de le retirer |
+
+⚠️ **LE CODE SECRET EST TOUJOURS POSSIBLE, MÊME AVEC LA BIOMÉTRIE.** Un capteur
+cassé, un doigt mouillé, un visage dans le noir : sans code de secours, le
+verrou enferme dehors quelqu'un qui n'a rien fait. `biometrics: false` veut dire
+« code **seul** », jamais l'inverse.
+
+⚠️ **AU-DELÀ DE `max_attempts`, ON DÉCONNECTE — ON NE BLOQUE PAS.** Jetez le
+jeton de rafraîchissement (`POST /auth/logout`), effacez l'état local, revenez à
+l'écran de connexion. Un téléphone volé qui se *bloque* garde un jeton valide
+**trente jours** ; déconnecté, il ne garde rien. Et la personne légitime
+retrouve son compte avec un code à usage unique (client) ou son mot de passe.
+
+⚠️ **NE VERROUILLEZ JAMAIS UN APPEL DE COURSE NI UN BOUTON D'URGENCE.** Un appel
+dure trente secondes : derrière un code, c'est un appel manqué, et le chauffeur
+désactivera le verrou le jour même. Le verrou garde l'application, pas l'écran
+qui sonne.
+
+⚠️ **`grace_seconds` DÉCIDE SI LE VERROU SERA SUPPORTÉ OU CONTOURNÉ.** Compter
+depuis le passage en arrière-plan, pas depuis la dernière saisie : redemander le
+code parce que quelqu'un est allé lire le SMS de son opérateur fait désinstaller
+l'application. `0` existe et se choisit — pour un parc de téléphones partagés.
+
+⚠️ **CE QUE LE VERROU NE PROTÈGE PAS.** Il arrête l'ami curieux et le téléphone
+laissé sur une table. Il n'arrête pas qui extrait le stockage d'un appareil
+débridé : le jeton est là. Ce qui protège la donnée, c'est **le stockage
+sécurisé** (Keychain `AfterFirstUnlockThisDeviceOnly`, Keystore) et la durée de
+vie du jeton — jamais ce réglage.
+
+⚠️ **NE L'ENVOYEZ PAS AU SERVEUR, NE LE RANGEZ PAS EN CLAIR.** Le code ne quitte
+pas le téléphone ; il se dérive (PBKDF2, Argon2) avec un sel dans le stockage
+sécurisé, ou mieux, il déverrouille le trousseau du système. Le serveur ne le
+connaît pas, et ne doit pas le connaître : il n'aurait aucun moyen de le
+vérifier sans devenir le point de panne de l'ouverture de l'application.
+
+**La politique change sans reconnexion** : relisez-la à chaque réponse qui la
+porte (connexion, inscription, vérification de code, **rafraîchissement**) et
+appliquez-la à chaud. Un pays qui passe à `required` ne doit pas attendre
+l'expiration d'un jeton de trente jours.
+
+---
+
+### 📱 COMBIEN D'APPAREILS — et lequel se déconnecte (v4.46.0)
+
+Votre compte tient **plusieurs appareils** : le téléphone, la tablette, celui
+qu'on vient de changer. Le nombre est réglé **par pays** (trois par défaut) et
+se lit dans `GET /countries` → `max_devices`.
+
+⚠️ **AU-DELÀ, LA SESSION LA PLUS SILENCIEUSE PART** — pas la première ouverte.
+Une session est datée de son **dernier rafraîchissement** : le téléphone dont on
+se sert tous les jours se redate seul, celui qui dort dans un tiroir s'en va le
+premier. L'appareil évincé ne reçoit rien sur le moment : il l'apprend à son
+prochain rafraîchissement, qui répond **`401`**. Traitez-le comme une session
+expirée ordinaire — ramenez à l'écran de connexion, n'affichez pas « erreur ».
+
+⚠️ **ENVOYEZ `device_id` À LA CONNEXION, MÊME SI VOUS ÊTES UNE APPLICATION DE
+CLIENT.** Il ne va pas dans votre jeton et ne vous soumet à aucune règle d'agent ;
+il sert à une seule chose : **reconnaître le même téléphone qui revient**. Sans
+lui, une réinstallation compte pour un appareil de plus et pousse dehors un
+autre de vos appareils. Avec lui, votre session précédente est simplement
+remplacée. Il doit **survivre aux redémarrages** et vivre aussi longtemps que le
+jeton de rafraîchissement, à côté de lui.
+
+---
+
+## 🗑️ SUPPRIMER UN COMPTE — pas depuis cette application (v4.47.0)
+
+`DELETE /me` existe au socle, mais il répond **`403 erasure_not_self_serve`** à
+un compte de marchand. **N'affichez pas de bouton « supprimer mon compte » qui mène à
+un refus** : mettez « **Fermer mon compte — écrire au support** ».
+
+⚠️ **POURQUOI CE COMPTE N'EST PAS LIBRE DE PARTIR.** Il porte des
+**versements**, parfois une **dette**, le produit de ses ventes en attente de retrait et un solde de jetons — et tout cela vit dans la
+verticale, pas dans le compte. Le support solde d'abord et supprime ensuite, le
+grand livre sous les yeux. Un bouton dans l'application laisserait une dette
+sans débiteur et des versements sans destinataire.
+
+⚠️ **CE QU'IL FAUT QUAND MÊME TRAITER : `403 account_closed`.** Quand le support
+ferme un compte, **les sessions tombent immédiatement** et la connexion le refuse
+ensuite — par mot de passe **comme par code**. Traitez-le comme une fin de
+session **définitive** : videz le jeton et le stockage sécurisé, fermez le socket des commandes, et
+affichez le message tel quel plutôt que de renvoyer vers « mot de passe
+oublié ». Ce n'est pas `account_suspended` : une suspension se lève, une
+fermeture ne se lève que par le support, et seulement pendant trente jours.
+
+⚠️ **TRENTE JOURS PLUS TARD, L'IDENTITÉ PART** : le nom devient « Compte
+supprimé » partout où les commandes passées le nommaient encore. Les commandes, elles,
+**restent** — ce sont des écritures comptables, avec leur prix, leur commission
+et leur date.
 
 ---
 
@@ -1045,6 +1174,8 @@ Inchangé depuis la v1.3.0, et toujours présent dans le prototype (`urgentCd: 3
 | `video_too_long` · `video_unreadable` | 422 | vidéo de feed > 60 s, ou conteneur illisible → réexporter en MP4 (H.264) |
 | `payload_too_large` | **413** | la passerelle : corps > 64 MiB — vérifier le poids **avant** d'envoyer |
 | `storage_unavailable` | 503 | le stockage de fichiers n'a pas démarré → réessayer, ne pas perdre la saisie |
+| `account_closed` | **403** | le support a **fermé** ce compte — fin de session définitive : vider le jeton, afficher le message tel quel |
+| `erasure_not_self_serve` | 403 | `DELETE /me` n'est pas pour un marchand → renvoyer vers le support |
 
 ---
 

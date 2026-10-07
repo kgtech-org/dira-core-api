@@ -35,6 +35,35 @@ other = "Ce compte est suspendu"
 [errors.wrong_app]
 other = "Ce compte n'est pas un compte de cette application. Ouvrez celle qui lui correspond — votre mot de passe est correct."
 
+# --- LA PORTE PAR CODE (voir internal/user/otp.go) ---
+# ⚠️ Ces phrases s'affichent sur l'écran de saisie des six chiffres, et elles
+# disent QUOI FAIRE : « redemandez un code » vaut mieux que « code invalide »
+# devant quelqu'un qui attend depuis six minutes.
+
+[errors.otp_invalid]
+other = "Code incorrect. Vérifiez les six chiffres, ou demandez-en un nouveau."
+
+[errors.otp_expired]
+other = "Ce code a expiré. Demandez-en un nouveau."
+
+[errors.otp_too_many_attempts]
+other = "Trop d'essais. Demandez un nouveau code."
+
+[errors.otp_too_soon]
+other = "Un code vient de vous être envoyé. Patientez avant d'en redemander un."
+
+[errors.otp_too_many_requests]
+other = "Trop de codes demandés pour ce numéro. Réessayez dans un moment."
+
+# ⚠️ Elle ne dit PAS « ce compte n'est pas un compte client » : ce serait
+# confirmer qu'il existe à qui essaie des numéros.
+[errors.otp_not_available]
+other = "Ce compte se connecte avec un mot de passe."
+
+[errors.otp_delivery_failed]
+other = "Le code n'a pas pu être envoyé. Réessayez."
+
+
 # UN SEUL APPAREIL PAR CHAUFFEUR. ⚠️ La phrase ne nomme PAS l'appareil : le
 # libellé voyage dans `error.reason`, et un gabarit qui l'insérerait ici
 # afficherait « <no value> » les fois où l'application ne l'a pas envoyé.
@@ -340,3 +369,27 @@ other = "La vidéo est trop longue"
 
 [errors.video_unreadable]
 other = "La vidéo n'a pas pu être lue"
+
+# --- LA SUPPRESSION D'UN COMPTE (voir internal/user/erasure.go) ---
+# ⚠️ Ces phrases s'affichent devant quelqu'un qui vient de toucher « supprimer
+# mon compte », donc elles disent TOUJOURS la suite : vider son solde, écrire
+# au support, se réinscrire. « Opération impossible » laisserait sans recours
+# quelqu'un qui exerce un droit.
+
+[errors.account_closed]
+other = "Ce compte a été supprimé. Vous pouvez vous réinscrire avec ce même numéro, ou écrire au support si c'était une erreur."
+
+[errors.deletion_already_requested]
+other = "La suppression de ce compte est déjà demandée. Écrivez au support pour l'annuler."
+
+[errors.wallet_not_empty]
+other = "Ce compte détient encore de l'argent, des jetons ou une dette. Videz votre solde, ou demandez un remboursement au support avant de supprimer."
+
+[errors.erasure_not_self_serve]
+other = "Ce type de compte se supprime par le support, pas depuis l'application : il porte des versements et parfois une dette qu'il faut solder avant."
+
+[errors.account_already_erased]
+other = "Les données de ce compte sont déjà effacées : il ne peut plus être réactivé."
+
+[errors.erasure_unavailable]
+other = "La suppression de compte n'est pas disponible sur ce déploiement. Prévenez l'équipe technique."

@@ -51,11 +51,25 @@ type AccountRow struct {
 	// QU'IL NE VOIT PAS. Le geste existe (`DELETE /admin/users/{id}/agent-app`)
 	// ; sans ce champ sur la fiche, l'opérateur devrait le déclencher à
 	// l'aveugle sur un compte dont il ignore s'il appartient à quelque chose.
-	AgentApp  string    `bson:"agent_app,omitempty" json:"agent_app,omitempty"`
-	Status    string    `bson:"status" json:"status"`
-	Country   string    `bson:"country,omitempty" json:"country,omitempty"`
-	CreatedAt time.Time `bson:"created_at" json:"created_at"`
-	UpdatedAt time.Time `bson:"updated_at" json:"updated_at"`
+	AgentApp string `bson:"agent_app,omitempty" json:"agent_app,omitempty"`
+	Status   string `bson:"status" json:"status"`
+	Country  string `bson:"country,omitempty" json:"country,omitempty"`
+	// DeletionRequestedAt : quand la personne (ou le support) a demandé la
+	// suppression de ce compte. Présent uniquement sur un compte `closed`.
+	//
+	// ⚠️ LA DATE DE LA DEMANDE, PAS CELLE DE L'EFFACEMENT, et c'est volontaire
+	// ici : cette ligne traverse les verticales, qui ne connaissent pas le
+	// délai de grâce du déploiement. Leur servir une échéance calculée les
+	// obligerait à recopier un réglage du socle — et à dériver le jour où il
+	// change. La console lit l'échéance sur `GET /admin/users/{id}` du socle,
+	// qui, lui, la connaît (`erase_at`).
+	DeletionRequestedAt *time.Time `bson:"deletion_requested_at,omitempty" json:"deletion_requested_at,omitempty"`
+	// AnonymisedAt : l'identité EST partie. Ce compte ne se rouvre plus, et son
+	// nom n'est plus un nom — c'est ce qui permet à un écran de ne pas proposer
+	// « réactiver » sur une coquille vide.
+	AnonymisedAt *time.Time `bson:"anonymised_at,omitempty" json:"anonymised_at,omitempty"`
+	CreatedAt    time.Time  `bson:"created_at" json:"created_at"`
+	UpdatedAt    time.Time  `bson:"updated_at" json:"updated_at"`
 }
 
 func (a *AccountRow) fill() { a.ID = a.OID.Hex() }
@@ -255,10 +269,19 @@ func (r *Repository) SetAccountStatus(ctx context.Context, id, status string) (*
 	if err != nil {
 		return nil, errAccountNotFound.WithCause(err)
 	}
+	update := bson.M{"$set": bson.M{"status": status, "updated_at": time.Now().UTC()}}
+	if status == StatusActive {
+		// ⚠️ RÉACTIVER UN COMPTE FERMÉ ANNULE SON EFFACEMENT. Sans cette
+		// ligne, le compte redevenait actif en gardant sa date de demande :
+		// il se reconnectait, commandait, et le balayage effaçait son
+		// identité trois semaines plus tard, sans que personne ne comprenne
+		// pourquoi un client actif venait de perdre son nom.
+		update["$unset"] = bson.M{"deletion_requested_at": ""}
+	}
 	var before AccountRow
 	err = r.users.FindOneAndUpdate(ctx,
 		bson.M{"_id": oid},
-		bson.M{"$set": bson.M{"status": status, "updated_at": time.Now().UTC()}},
+		update,
 		options.FindOneAndUpdate().SetReturnDocument(options.Before),
 	).Decode(&before)
 	if err != nil {

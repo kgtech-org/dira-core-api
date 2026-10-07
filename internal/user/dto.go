@@ -218,6 +218,18 @@ type UserResponse struct {
 	// démarrage, et un appel séparé pour quatre interrupteurs serait un
 	// aller-retour de plus sur un réseau mobile.
 	Preferences *Preferences `json:"preferences,omitempty"`
+	// EraseAt est la date à laquelle l'identité d'un compte FERMÉ s'en va —
+	// absente pour tout autre compte. Voir `erasure.go`.
+	//
+	// ⚠️ À AFFICHER PARTOUT OÙ `status: closed` APPARAÎT, application comme
+	// console. « Fermé » tout seul ne dit pas si c'est réversible ; « fermé,
+	// effacement le 6 novembre » dit à la fois ce qui va se passer et de
+	// combien de temps dispose le support pour l'annuler.
+	EraseAt *time.Time `json:"erase_at,omitempty"`
+	// AnonymisedAt dit que l'identité EST partie : ce compte ne se rouvre plus,
+	// et son nom n'est plus un nom. Sans ce champ, un écran proposerait
+	// « réactiver » sur une coquille vide, et le refus arriverait après le clic.
+	AnonymisedAt *time.Time `json:"anonymised_at,omitempty"`
 }
 
 func newUserResponse(u *User) UserResponse {
@@ -236,6 +248,10 @@ func newUserResponse(u *User) UserResponse {
 		Status:      u.Status,
 		Country:     u.Country,
 		CreatedAt:   u.CreatedAt,
+		// `anonymised_at` ne demande aucun réglage : c'est une date écrite sur
+		// la ligne. `erase_at`, lui, est CALCULÉ depuis le délai de grâce du
+		// déploiement — voir `Service.userResponse`.
+		AnonymisedAt: u.AnonymisedAt,
 	}
 }
 
@@ -253,6 +269,91 @@ type AuthResponse struct {
 	// plateforme quand le pays en a configuré une. ABSENT quand la plateforme
 	// ne s'est pas nommée — l'application garde alors notre fond.
 	Maps *MapsResponse `json:"maps,omitempty"`
+	// AppLock est la politique de VERROU du pays — biométrie ou code secret
+	// devant l'application. ABSENTE quand le pays n'est pas connu ou que le
+	// module n'est pas branché : l'application garde alors son réglage.
+	AppLock *AppLockResponse `json:"app_lock,omitempty"`
+	// Created : ce compte VIENT DE NAÎTRE, à la vérification d'un code.
+	//
+	// ⚠️ C'EST LE SEUL SIGNAL QUI DIT À L'APPLICATION DE DEMANDER LE NOM. La
+	// demande de code, elle, ne dit jamais si le numéro est connu — ce serait
+	// un annuaire (voir `otp.go`) —, donc l'écran « comment vous
+	// appelez-vous ? » ne peut se décider qu'ici, une fois la personne
+	// authentifiée.
+	Created bool `json:"created,omitempty"`
+}
+
+// ErasureRequest demande la suppression de SON compte.
+//
+// ⚠️ ELLE REDEMANDE DE PROUVER QUI ON EST, et c'est le seul champ qu'elle
+// porte : l'opération est irréversible, et un téléphone déverrouillé posé sur
+// une table suffirait sinon à faire disparaître le compte de quelqu'un.
+type ErasureRequest struct {
+	// Password : pour un compte qui en a un.
+	Password string `json:"password,omitempty" validate:"omitempty,max=128"`
+	// Code : pour un compte né par code — il en redemande un
+	// (`POST /auth/otp`), et celui-ci est consommé.
+	Code string `json:"code,omitempty" validate:"omitempty,min=4,max=12"`
+}
+
+// ErasureResponse dit ce qui a été fait, et quand l'identité partira.
+type ErasureResponse struct {
+	// Status vaut `closed` : le compte ne se connecte plus dès maintenant.
+	Status string `json:"status"`
+	// EraseAt est la date à laquelle le nom, le téléphone et les adresses
+	// s'en vont. ⚠️ À AFFICHER : « votre compte est fermé, vos données seront
+	// effacées le 6 novembre » est une phrase qui se comprend ; « compte
+	// supprimé » suivi d'un historique encore lisible chez le support ne se
+	// comprend pas.
+	EraseAt time.Time `json:"erase_at"`
+}
+
+// OTPRequest demande un code à usage unique pour ce numéro.
+type OTPRequest struct {
+	Phone string `json:"phone" validate:"required,e164"`
+	// Channel : `whatsapp` (défaut) ou `sms`. Le serveur rend le canal qui a
+	// RÉELLEMENT servi — un fournisseur peut basculer.
+	Channel string `json:"channel,omitempty" validate:"omitempty,oneof=whatsapp sms"`
+	// App : seules les applications de CLIENT ouvrent cette porte. Vide =
+	// toléré, comme ailleurs, pour une application pas encore à jour.
+	App    string `json:"app,omitempty" validate:"omitempty,oneof=client driver courier merchant console"`
+	Locale string `json:"locale,omitempty" validate:"omitempty,oneof=fr en"`
+}
+
+// OTPRequestResponse dit ce qui est parti, et quand on pourra redemander.
+type OTPRequestResponse struct {
+	Sent    bool   `json:"sent"`
+	Channel string `json:"channel"`
+	// ExpiresAt : le compte à rebours de l'écran se rend DEPUIS CETTE DATE,
+	// jamais depuis l'horloge du téléphone.
+	ExpiresAt time.Time `json:"expires_at"`
+	// ResendAfter est le nombre de secondes avant qu'un nouveau code puisse
+	// être demandé (`429 otp_too_soon` avant).
+	ResendAfter int `json:"resend_after"`
+	// DevCode est le code EN CLAIR, et il n'existe que tant qu'aucune
+	// passerelle n'est câblée (`channel: "echo"`). Il disparaîtra sans
+	// préavis : une application qui le lit doit le traiter comme un bonus de
+	// développement, jamais comme un dû.
+	DevCode string `json:"dev_code,omitempty"`
+}
+
+// OTPVerifyRequest consomme le code : elle inscrit ou connecte.
+type OTPVerifyRequest struct {
+	Phone string `json:"phone" validate:"required,e164"`
+	Code  string `json:"code" validate:"required,min=4,max=12"`
+	// Name, FirstName, LastName : FACULTATIFS, et lus seulement si le compte
+	// naît ici. Sans nom, le numéro fait office de nom d'affichage et la
+	// personne le changera depuis son profil.
+	Name       string `json:"name,omitempty" validate:"omitempty,max=120"`
+	FirstName  string `json:"first_name,omitempty" validate:"omitempty,max=80"`
+	LastName   string `json:"last_name,omitempty" validate:"omitempty,max=80"`
+	App        string `json:"app,omitempty" validate:"omitempty,oneof=client driver courier merchant console"`
+	DeviceID   string `json:"device_id,omitempty" validate:"omitempty,max=128"`
+	DeviceName string `json:"device_name,omitempty" validate:"omitempty,max=120"`
+	// Platform : acceptée et ignorée, comme à l'inscription — voir
+	// `RegisterRequest.Platform`. La retirer ferait un `422 unknown_field`
+	// chez toutes les applications qui l'envoient déjà.
+	Platform string `json:"platform,omitempty" validate:"omitempty,oneof=web android ios"`
 }
 
 // SessionResponse dit à l'application où sa session est ouverte.
@@ -282,6 +383,35 @@ type TokenPairResponse struct {
 	// Maps : le fond de carte À JOUR. C'est ici que la rotation d'une clé
 	// atteint une application déjà connectée, sans attendre sa reconnexion.
 	Maps *MapsResponse `json:"maps,omitempty"`
+	// AppLock : la politique de VERROU à jour, pour la même raison.
+	AppLock *AppLockResponse `json:"app_lock,omitempty"`
+}
+
+// AppLockResponse est la politique de verrou servie à une application.
+//
+// ⚠️ ELLE DIT CE QU'IL FAUT PROPOSER OU IMPOSER, PAS CE QUI EST POSÉ. Le
+// verrou vit dans le téléphone ; le serveur ne peut pas vérifier qu'il y est,
+// et une application qui l'ignorerait ne serait pas refusée. C'est une
+// politique d'exploitation, pas un contrôle d'accès — ne jamais faire reposer
+// la sécurité d'une donnée sur elle : ce qui protège vraiment, c'est le jeton
+// en stockage sécurisé et sa durée de vie.
+type AppLockResponse struct {
+	// Mode : `off` (ne rien proposer), `optional` (la personne choisit),
+	// `required` (l'application exige un verrou avant son premier écran).
+	Mode string `json:"mode"`
+	// Biometrics : la biométrie est-elle admise ? Faux = code secret SEUL.
+	// ⚠️ Le code secret reste TOUJOURS possible à côté de la biométrie :
+	// un capteur cassé ne doit pas enfermer quelqu'un dehors.
+	Biometrics bool `json:"biometrics"`
+	// PINLength : 4 ou 6 chiffres.
+	PINLength int `json:"pin_length"`
+	// GraceSeconds : temps en arrière-plan avant de redemander. Zéro =
+	// redemander à chaque retour.
+	GraceSeconds int `json:"grace_seconds"`
+	// MaxAttempts : essais ratés avant que l'application ne DÉCONNECTE —
+	// elle ne bloque pas. Un téléphone volé qui se bloque garde un jeton de
+	// rafraîchissement valide trente jours ; déconnecté, il ne garde rien.
+	MaxAttempts int `json:"max_attempts"`
 }
 
 // MapsResponse est le fond de carte servi à une application : UN SEUL CHAMP.

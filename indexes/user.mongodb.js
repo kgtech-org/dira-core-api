@@ -10,9 +10,19 @@ db.users.createIndex({ role: 1 });
 // La borne PAYS des listes de la console — voir pkg/country.
 db.users.createIndex({ country: 1, role: 1, _id: 1 });
 
+// Les comptes dont la suppression est demandée — le balayage de l'effacement
+// (voir internal/user/erasure.go). PARTIEL : les comptes fermés sont une
+// poignée, un index complet aurait indexé toute la base pour eux.
+db.users.createIndex(
+  { deletion_requested_at: 1 },
+  { partialFilterExpression: { deletion_requested_at: { $exists: true } } },
+);
+
 // Refresh tokens are stored as sha256 hashes and rotated on every refresh.
 db.refresh_tokens.createIndex({ token_hash: 1 }, { unique: true });
-db.refresh_tokens.createIndex({ user_id: 1 });
+// Les sessions d'un compte, la plus récemment active en tête — l'ordre dans
+// lequel la borne d'appareils évince la plus silencieuse.
+db.refresh_tokens.createIndex({ user_id: 1, created_at: -1 });
 // TTL: expired refresh tokens are purged automatically.
 db.refresh_tokens.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
 

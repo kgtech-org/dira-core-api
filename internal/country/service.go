@@ -142,6 +142,7 @@ func (s *Service) respond(info country.Info, enabled bool) Response {
 		Info: info, Enabled: enabled, Default: info.Code == s.defaultCode,
 		Testing:      s.Testing(info.Code),
 		Basemap:      s.BasemapOf(info.Code),
+		AppLock:      s.appLockOf(info.Code),
 		CurrencyName: cur.Name, CurrencySymbol: cur.Symbol, CurrencyDecimals: cur.Decimals,
 	}
 }

@@ -309,6 +309,173 @@ paths:
             l'application Dira Livreur. » Le mot de passe était juste — envoyer
             la personne en changer un qui fonctionne ne mène nulle part, et
             c'est un appel au support pour rien.
+  /auth/otp:
+    post:
+      tags: [auth]
+      summary: Ask for a one-time code (clients)
+      description: >-
+        **S'inscrire et se connecter avec son téléphone, sans mot de passe.**
+        Le socle envoie six chiffres par WhatsApp ou par SMS ; `POST
+        /auth/otp/verify` les consomme, inscrit le compte s'il n'existait pas
+        et ouvre la session.
+
+
+        ⚠️ **LA PASSERELLE N'EST PAS ENCORE CÂBLÉE.** Tant que `OTP_SENDER`
+        vaut `echo` — c'est le défaut —, **rien n'est remis** : la réponse
+        porte `channel: "echo"` et **`dev_code`, le code EN CLAIR**. C'est ce
+        qui permet de câbler les applications dès maintenant, et c'est une
+        faille assumée et temporaire : quiconque connaît un numéro entre dans
+        le compte. `dev_code` **disparaîtra sans préavis** le jour où un canal
+        réel est branché — une application qui le lit doit le traiter comme un
+        bonus de développement, jamais comme un dû, et toujours offrir la
+        saisie manuelle.
+
+
+        ⚠️ **RÉSERVÉ AUX CLIENTS, et c'est une règle de sécurité.** Six
+        chiffres remplacent un mot de passe : l'ouvrir aux chauffeurs, aux
+        marchands ou à la direction ferait du numéro de téléphone — qui
+        s'affiche sur une plaque et se donne à un passager — le seul secret
+        protégeant un compte qui débite des portefeuilles. Un compte qui n'est
+        pas `client` ne reçoit **aucun** code (`403 otp_not_available`), et une
+        application d'agent se voit refuser la porte.
+
+
+        ⚠️ **ELLE NE DIT JAMAIS SI LE NUMÉRO EST CONNU.** Rendre « compte
+        existant » ferait de cette route un annuaire : qui veut savoir si
+        quelqu'un est client de Dira n'aurait qu'à poster son numéro. C'est
+        `created` dans la réponse de la vérification qui dit à l'application de
+        demander le nom, une fois la personne authentifiée.
+
+
+        **Cadence** : un code par minute et par numéro (`429 otp_too_soon`),
+        cinq par heure (`429 otp_too_many_requests`). Le code vit **5 minutes**
+        et meurt après **5 essais**. Une nouvelle demande REMPLACE le code
+        précédent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: {type: string, description: E.164 avec le +}
+                channel:
+                  type: string
+                  enum: [whatsapp, sms]
+                  description: >-
+                    Le canal souhaité, `whatsapp` par défaut — il coûte moins
+                    cher qu'un SMS et c'est déjà celui par lequel la livraison
+                    parle aux clients. Le serveur rend le canal qui a
+                    RÉELLEMENT servi : un fournisseur peut basculer.
+                app:
+                  type: string
+                  enum: [client, driver, courier, merchant, console]
+                  description: >-
+                    Seul `client` ouvre cette porte (les deux applications de
+                    clients partagent ce mot). Omis = toléré, comme ailleurs,
+                    pour une application pas encore à jour ; le rôle du compte
+                    est de toute façon vérifié à la vérification.
+                locale: {type: string, enum: [fr, en]}
+      responses:
+        "200":
+          description: >-
+            `{sent, channel, expires_at, resend_after}` — et `dev_code` tant
+            que `channel` vaut `echo`.
+
+
+            ⚠️ **Le compte à rebours de l'écran se rend depuis `expires_at`**,
+            jamais depuis l'horloge du téléphone, et le bouton « renvoyer » se
+            rouvre après `resend_after` secondes.
+        "403":
+          description: >-
+            `otp_not_available` — ce compte se connecte avec un mot de passe
+            (chauffeur, livreur, marchand, direction), ou l'application n'est
+            pas une application de client. Aucun code n'a été envoyé.
+        "422":
+          description: >-
+            `validation_failed` — `fields: ["phone"]` si le `+` manque : le
+            socle ne devine pas d'indicatif.
+        "429":
+          description: >-
+            `otp_too_soon` (un code vient de partir) ou
+            `otp_too_many_requests` (plafond horaire de ce numéro).
+        "503":
+          description: >-
+            `otp_delivery_failed` — la passerelle n'a pas pris le message.
+            **Rien n'est écrit** : ni la cadence ni le plafond ne sont
+            consommés, redemander tout de suite est légitime.
+  /auth/otp/verify:
+    post:
+      tags: [auth]
+      summary: Verify a one-time code — signs up or signs in (clients)
+      description: >-
+        Consomme le code : **inscrit** le compte s'il n'existait pas
+        (`201`, `created: true`), **connecte** sinon (`200`). La réponse est
+        celle de `POST /auth/login`, augmentée de `created`.
+
+
+        ⚠️ **LE CODE EST CONSOMMÉ AVANT TOUTE AUTRE VÉRIFICATION** — compte
+        suspendu, mauvaise application. Un code qui survivrait à un refus
+        resterait valide pour être rejoué ailleurs.
+
+
+        ⚠️ **LE NOM EST FACULTATIF.** Sans lui, le numéro fait office de nom
+        d'affichage, et la personne le changera depuis son profil (`PATCH /me`)
+        — c'est la convention déjà en vigueur : « nom égal au téléphone » se lit
+        « nom non posé ». Exiger un nom ajouterait un écran entre le code et la
+        première course. L'application qui veut le demander le fait **après**
+        la vérification, quand `created` vaut `true`.
+
+
+        ⚠️ **LE COMPTE NÉ ICI N'A PAS DE MOT DE PASSE**, et `POST /auth/login`
+        lui répond `401 invalid_credentials` — jamais un code qui dirait « ce
+        compte se connecte autrement », ce qui révélerait quels numéros
+        existent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: {type: string, description: E.164 avec le +}
+                code: {type: string, minLength: 4, maxLength: 12}
+                name:
+                  type: string
+                  maxLength: 120
+                  description: >-
+                    Facultatif, et lu **seulement si le compte naît ici**.
+                first_name: {type: string, maxLength: 80}
+                last_name: {type: string, maxLength: 80}
+                app:
+                  type: string
+                  enum: [client, driver, courier, merchant, console]
+                device_id: {type: string, maxLength: 128}
+                device_name: {type: string, maxLength: 120}
+                platform:
+                  type: string
+                  enum: [web, android, ios]
+                  description: Acceptée et ignorée, comme à l'inscription.
+      responses:
+        "200":
+          description: Connexion — même corps que `POST /auth/login`.
+        "201":
+          description: >-
+            Inscription — même corps, plus **`created: true`**. C'est le signal
+            qui autorise l'écran « comment vous appelez-vous ? ».
+        "401":
+          description: >-
+            `otp_invalid` (code faux, ou aucun code en cours — les deux
+            répondent pareil, sans quoi on saurait quels numéros sont en train
+            de se connecter), `otp_expired` (le code a plus de 5 minutes) ou
+            `otp_too_many_attempts` (cinq essais : le code est **mort**, il
+            faut en redemander un).
+        "403":
+          description: >-
+            `otp_not_available` (ce compte se connecte avec un mot de passe),
+            `account_suspended`, ou `wrong_app`.
   /auth/refresh:
     post:
       tags: [auth]
@@ -384,6 +551,79 @@ paths:
       summary: Update own profile
       responses:
         "200": {description: Profile}
+    delete:
+      tags: [users]
+      summary: "Supprimer son compte (v4.47.0)"
+      description: >-
+        RGPD, en DEUX TEMPS. Le compte est FERMÉ immédiatement — sessions
+        coupées sur tous les appareils, notifications arrêtées, connexion
+        refusée ensuite (403 `account_closed`, par mot de passe comme par
+        code) — et son IDENTITÉ part à l'échéance du délai de grâce, rendu dans
+        `erase_at` : le nom devient « Compte supprimé », le téléphone est
+        brouillé puis LIBÉRÉ (on peut se réinscrire avec le même numéro),
+        l'e-mail, la photo, l'état civil, les préférences et le carnet
+        d'adresses s'en vont, la boîte de notifications est purgée, et les
+        verticales sont prévenues pour jeter ce qu'elles seules détiennent
+        (messages de conversation, fils de support, pièces de conformité).
+
+
+        ⚠️ LES COURSES ET LES COMMANDES PASSÉES RESTENT, et c'est volontaire :
+        ce sont des écritures COMPTABLES — prix, commission, date. Les effacer
+        trouerait le journal en partie double et retirerait d'une facturation
+        déjà déclarée des montants réels. Elles ne désignent plus personne :
+        aucune verticale ne stocke de nom ni de téléphone, donc anonymiser le
+        compte anonymise tout l'historique, partout, console comprise.
+
+
+        ⚠️ IL FAUT PROUVER QUI ON EST — `password`, ou `code` pour un compte né
+        par code (demandez-en un par `POST /auth/otp`, il est consommé ici).
+        L'opération est irréversible : sans cette preuve, un téléphone
+        déverrouillé posé sur une table suffirait à faire disparaître le compte
+        de quelqu'un.
+
+
+        ⚠️ AFFICHEZ `erase_at`. « Votre compte est fermé, vos données seront
+        effacées le 6 novembre » se comprend ; « compte supprimé » suivi d'un
+        historique encore lisible chez le support ne se comprend pas. Pendant
+        ce délai, le support peut ANNULER la suppression — c'est le seul
+        recours de quelqu'un qui a touché le bouton par erreur.
+
+
+        ⚠️ CLIENTS SEULEMENT (403 `erasure_not_self_serve`). Un chauffeur, un
+        livreur ou un marchand porte des versements et parfois une dette qui
+        vivent dans la verticale, et un compte de staff n'est pas à soi : pour
+        eux, la suppression passe par le support, qui a le grand livre sous les
+        yeux avant de décider.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password: {type: string, description: Pour un compte qui en a un}
+                code:
+                  type: string
+                  description: >-
+                    Pour un compte né par code — les six chiffres d'un
+                    `POST /auth/otp`, consommés ici.
+      responses:
+        "200":
+          description: Closed, erasure scheduled
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, erase_at]
+                properties:
+                  status: {type: string, enum: [closed]}
+                  erase_at:
+                    type: string
+                    format: date-time
+                    description: Quand le nom, le téléphone et les adresses s'en vont.
+        "401": {description: invalid_credentials}
+        "403": {description: erasure_not_self_serve}
+        "409": {description: wallet_not_empty, deletion_already_requested}
+        "422": {description: otp_invalid, ou aucune preuve fournie}
   /countries:
     get:
       tags: [countries]
@@ -549,6 +789,138 @@ paths:
         "200": {description: "Le fond par défaut du pays : {basemap}"}
         "404": {description: country_unknown — not in the catalog}
         "422": {description: nothing to update — send basemap}
+  /admin/countries/{code}/security:
+    get:
+      tags: [admin, countries]
+      summary: The country's app-lock policy
+      description: >-
+        **Le VERROU des applications** — biométrie ou code secret devant
+        l'application. ⚠️ **C'est une POLITIQUE, pas un contrôle d'accès** : le
+        verrou vit dans le téléphone, le serveur ne peut ni le poser, ni
+        vérifier qu'il y est, ni savoir si l'appareil resté à la maison est
+        verrouillé. Ce réglage dit ce que les applications doivent **proposer**
+        ou **imposer** dans ce pays. Ne jamais faire reposer la protection
+        d'une donnée dessus : ce qui protège, c'est le jeton en stockage
+        sécurisé et sa durée de vie.
+
+
+        La réponse est toujours **complète** — tous les champs posés, aucun à
+        deviner : un pays jamais réglé rend les défauts (`optional`, biométrie
+        admise, code à 4 chiffres, 120 s de grâce, 5 essais).
+      parameters:
+        - {name: code, in: path, required: true, schema: {type: string, example: GN}}
+      responses:
+        "200":
+          description: App-lock policy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app_lock:
+                    type: object
+                    properties:
+                      mode: {type: string, enum: [off, optional, required]}
+                      biometrics: {type: boolean}
+                      pin_length: {type: integer, enum: [4, 6]}
+                      grace_seconds: {type: integer}
+                      max_attempts: {type: integer}
+                  sessions:
+                    type: object
+                    properties:
+                      max_devices:
+                        type: integer
+                        description: >-
+                          Appareils simultanés d'un compte ORDINAIRE — client,
+                          marchand, staff. Défaut **3**. Au-delà, la session la
+                          plus silencieuse est déconnectée.
+                      agent_max_devices:
+                        type: integer
+                        description: >-
+                          Toujours **1**, et rendu pour être AFFICHÉ, pas réglé.
+                          ⚠️ Un chauffeur ou un livreur connecté sur deux
+                          téléphones pousse deux flux de positions pour un seul
+                          véhicule : le vivier voit la voiture à deux endroits
+                          et l'appel part vers le téléphone resté à la maison.
+                          Ce n'est pas un réglage de sécurité, c'est le
+                          dispatch.
+        "404": {description: country_unknown — not in the catalog}
+    put:
+      tags: [admin, countries]
+      summary: Set the country's app-lock and device policy
+      description: >-
+        Tout est facultatif : on change un champ sans réécrire les autres.
+
+
+        ⚠️ **`required` N'EST PAS ANODIN.** Quelqu'un dont le capteur est cassé
+        et qui oublie son code se retrouve dehors, et sa seule sortie est de se
+        reconnecter — c'est pour cela que le code secret reste **toujours**
+        possible à côté de la biométrie, et que les échecs **déconnectent** au
+        lieu de bloquer : un téléphone volé qui se bloque garde un jeton de
+        rafraîchissement valide trente jours ; déconnecté, il ne garde rien.
+
+
+        ⚠️ **`grace_seconds` décide si le verrou sera supporté ou contourné.**
+        Redemander à chaque retour d'arrière-plan — pour lire un SMS, pour
+        ouvrir une carte — fait désactiver le verrou ou désinstaller
+        l'application. Zéro reste possible, et se choisit pour un parc de
+        téléphones partagés.
+
+
+        La politique atteint les applications **avec le jeton** (`app_lock`
+        dans la réponse de connexion, d'inscription et de vérification de code)
+        **et au rafraîchissement** — sans quoi un pays qui vient d'imposer le
+        verrou n'atteindrait une application déjà connectée que trente jours
+        plus tard. `GET /countries` la porte aussi, pour l'application qui
+        change de pays sans se reconnecter.
+      parameters:
+        - {name: code, in: path, required: true, schema: {type: string, example: GN}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode: {type: string, enum: [off, optional, required]}
+                biometrics:
+                  type: boolean
+                  description: >-
+                    Faux = **code secret seul**. Le code reste toujours
+                    possible à côté de la biométrie : un capteur cassé ne doit
+                    enfermer personne dehors.
+                pin_length: {type: integer, enum: [4, 6]}
+                grace_seconds: {type: integer, minimum: 0, maximum: 3600}
+                max_attempts: {type: integer, minimum: 3, maximum: 10}
+                max_devices:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                  description: >-
+                    **Appareils simultanés d'un compte ordinaire** — client,
+                    marchand, staff. Défaut **3** : le téléphone, la tablette,
+                    et celui qu'on vient de changer sans penser à se
+                    déconnecter de l'ancien.
+
+
+                    Au-delà, la session **la plus silencieuse** est
+                    déconnectée — pas la première ouverte : une session est
+                    datée de son dernier rafraîchissement, donc le téléphone
+                    dont on se sert tous les jours se redate seul et celui qui
+                    dort dans un tiroir part le premier. L'appareil évincé voit
+                    sa session expirer au prochain rafraîchissement.
+
+
+                    ⚠️ **Sans effet sur les chauffeurs et les livreurs** : eux
+                    gardent **un** appareil, pour le dispatch, et cela ne se
+                    règle pas. ⚠️ **Une installation qui revient ne consomme
+                    pas de place** quand l'application déclare son `device_id` :
+                    c'est le même téléphone, sa session précédente est
+                    remplacée.
+      responses:
+        "200": {description: "La politique du pays, complète"}
+        "404": {description: country_unknown — not in the catalog}
+        "422": {description: nothing to update — send at least one field}
   /map-markers:
     get:
       tags: [map-markers]
@@ -757,7 +1129,13 @@ paths:
         socle et non dans une verticale : une même société possède des motos
         qui livrent et des voitures qui font des courses.
       parameters:
-        - {name: status, in: query, schema: {type: string, enum: [active, suspended]}}
+        - name: status
+          in: query
+          schema: {type: string, enum: [active, suspended, closed]}
+          description: >-
+            `closed` = suppression demandée (v4.47.0) : le compte ne se
+            reconnecte plus et son identité part à l'échéance du délai de grâce.
+            Distinct de `suspended`, qui se lève.
         - {name: q, in: query, schema: {type: string}}
         - {name: limit, in: query, schema: {type: integer}}
         - {name: cursor, in: query, schema: {type: string}}
@@ -1766,17 +2144,50 @@ paths:
         "404": {description: user_not_found}
     delete:
       tags: [admin]
-      summary: Delete an account
+      summary: "Fermer un compte et programmer l'effacement de son identité (v4.47.0)"
       description: >-
-        Définitif. Les écritures qui le citent — commandes, courses,
-        portefeuilles — restent pour la comptabilité. On ne se supprime pas
-        soi-même (409 `cannot_delete_self`) ; suspendre est le geste
-        réversible qui répond au même besoin.
-      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+        ⚠️ NE SUPPRIME PLUS LA LIGNE. Elle était détruite jusqu'ici, et c'était
+        un défaut : chaque course, commande, écriture de portefeuille et entrée
+        de grand livre porte un `user_id`, et les détruire laissait des
+        milliers de références vers un compte introuvable.
+
+
+        Le compte est FERMÉ tout de suite — sessions coupées, notifications
+        arrêtées, connexion refusée (403 `account_closed`) — puis son IDENTITÉ
+        part à l'échéance du délai de grâce (trente jours,
+        `ACCOUNT_ERASURE_GRACE`) : le nom devient « Compte supprimé », le
+        téléphone est brouillé et libéré, l'e-mail, la photo, l'état civil et
+        le carnet d'adresses s'en vont, et les verticales sont prévenues pour
+        purger ce qu'elles seules détiennent.
+
+
+        Les OPÉRATIONS restent intactes — prix, commission, date — et comme
+        aucune verticale ne stocke de nom ni de téléphone, toutes les courses
+        et commandes passées deviennent anonymes du même coup.
+
+
+        Pendant le délai, `PATCH /admin/users/{id}/status` à `active` ANNULE
+        l'effacement : c'est le recours de quelqu'un qui a touché le bouton par
+        erreur. Après, c'est 409 `account_already_erased`.
+
+
+        Refus : 409 `cannot_delete_self`, 409 `wallet_not_empty` (solde, jetons
+        ou dette — on ne détruit pas de l'argent en silence), 409
+        `deletion_already_requested`.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - name: immediate
+          in: query
+          schema: {type: boolean}
+          description: >-
+            `true` efface SANS attendre le délai de grâce — demande légale,
+            compte frauduleux. Jamais le défaut : une suppression immédiate ne
+            se rattrape pas.
       responses:
-        "204": {description: Deleted}
+        "204": {description: Closed, erasure scheduled}
         "404": {description: user_not_found}
-        "409": {description: cannot_delete_self}
+        "409": {description: cannot_delete_self, wallet_not_empty, deletion_already_requested}
+        "503": {description: erasure_unavailable}
   /admin/users/{id}/status:
     patch:
       tags: [admin]
@@ -1787,6 +2198,14 @@ paths:
         cours : les verticales vérifient le jeton localement, sans appeler le
         socle. Le rafraîchissement est refusé, donc la porte se referme au plus
         tard à l'expiration de l'accès.
+
+
+        ⚠️ `closed` NE S'ÉCRIT PAS D'ICI (422) : une fermeture n'est pas une
+        sanction, c'est une demande de suppression — elle passe par
+        `DELETE /admin/users/{id}`. En revanche `active` sur un compte fermé
+        ANNULE son effacement programmé : c'est à cela que sert le délai de
+        grâce. Un compte déjà effacé, lui, ne se rouvre pas
+        (409 `account_already_erased`).
       parameters: [{name: id, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Previous state and new status}

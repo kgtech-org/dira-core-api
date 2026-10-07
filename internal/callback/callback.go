@@ -27,9 +27,21 @@ import (
 
 // Client appelle une verticale.
 type Client struct {
+	// target nomme la verticale (`food`, `vtc`) — l'étiquette des mesures, et
+	// le mot qui apparaît dans un journal quand une annonce échoue. Sans lui,
+	// « la verticale a refusé » ne dirait pas laquelle.
+	target  string
 	baseURL string
 	token   string
 	http    *http.Client
+}
+
+// Target nomme la verticale appelée.
+func (c *Client) Target() string {
+	if c == nil {
+		return ""
+	}
+	return c.target
 }
 
 // Registry résout la verticale à prévenir pour un OBJET payé.
@@ -75,6 +87,42 @@ func (r *Registry) Purposes() []string {
 	return out
 }
 
+// All liste les verticales branchées, UNE FOIS CHACUNE.
+//
+// ⚠️ DÉDOUBLONNÉE PAR ADRESSE, parce que la table est indexée par OBJET payé
+// et qu'une même verticale y apparaît plusieurs fois — les courses y sont
+// sous `ride` et sous `ride_subscription`. Un fait qui concerne la verticale
+// entière, et non un objet, doit lui parvenir une fois : annoncer deux fois le
+// même compte effacé ferait purger deux fois, et compter deux fois dans les
+// mesures.
+//
+// Triée sur le nom, pour qu'un journal se relise d'une exécution à l'autre.
+func (r *Registry) All() []*Client {
+	if r == nil {
+		return nil
+	}
+	seen := map[string]*Client{}
+	for _, c := range r.byPurpose {
+		if c == nil || !c.Enabled() {
+			continue
+		}
+		if _, dup := seen[c.baseURL]; !dup {
+			seen[c.baseURL] = c
+		}
+	}
+	out := make([]*Client, 0, len(seen))
+	for _, c := range seen {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].target != out[j].target {
+			return out[i].target < out[j].target
+		}
+		return out[i].baseURL < out[j].baseURL
+	})
+	return out
+}
+
 // New builds the client. baseURL vide = client INERTE : chaque appel échoue
 // avec une erreur nommée plutôt que d'atteindre une adresse vide.
 //
@@ -83,6 +131,7 @@ func (r *Registry) Purposes() []string {
 // courbe — celle qui ne dit rien.
 func New(target, baseURL, token string) *Client {
 	return &Client{
+		target:  target,
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
 		// Plus long que le sens inverse : ce rappel n'est pas dans le chemin
@@ -121,6 +170,34 @@ var ErrNotConfigured = errors.New("callback: vertical not configured")
 func (c *Client) RefPaid(ctx context.Context, purpose, refID, paymentID string) error {
 	return c.post(ctx, "/api/v1/internal/payments/ref-paid", map[string]string{
 		"purpose": purpose, "ref_id": refID, "payment_id": paymentID,
+	})
+}
+
+// AccountErased dit à une verticale qu'un compte vient d'être EFFACÉ, pour
+// qu'elle purge ce qu'elle seule détient de cette personne : les messages
+// qu'elle a écrits dans une conversation, ses fils de support, les pièces
+// qu'elle a déposées.
+//
+// ⚠️ UN FAIT, PAS UNE PERMISSION. Le socle n'a pas demandé « puis-je
+// effacer ? » : l'identité est DÉJÀ partie de ses bases quand cet appel sort.
+// Un socle qui attendrait l'accord de deux verticales avant d'accepter une
+// suppression ne pourrait plus être déployé seul — et une verticale
+// indisponible rendrait le droit à l'effacement indisponible avec elle.
+//
+// ⚠️ LA VERTICALE N'A RIEN À ANONYMISER DE SON CÔTÉ : elle ne stocke ni nom ni
+// téléphone, elle les demande au socle au moment d'afficher
+// (`UserNames`/`ContactOf`). Ses courses et ses commandes sont donc déjà
+// anonymes. Ce qu'on lui demande ici, c'est de jeter le TEXTE écrit par la
+// personne, que le socle ne connaît pas.
+// ⚠️ LE TÉLÉPHONE PART AVEC, et c'est le seul moment où il le fait. Une
+// verticale garde des traces classées par NUMÉRO et non par compte — la
+// conversation du robot WhatsApp porte le numéro de la personne et tout ce
+// qu'elle a écrit pour commander. Sans lui, elles resteraient là pour toujours
+// et rien ne dirait comment les retrouver : l'identifiant de compte n'y
+// apparaît pas.
+func (c *Client) AccountErased(ctx context.Context, userID, phone string) error {
+	return c.post(ctx, "/api/v1/internal/accounts/erased", map[string]string{
+		"user_id": userID, "phone": phone,
 	})
 }
 

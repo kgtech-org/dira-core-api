@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.45.2** · 7 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.47.0** · 7 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -253,6 +253,10 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] Pays : `POST /me/country/resolve` au démarrage (position de l'appareil si possible), `GET /countries` avant l'inscription, **`POST /auth/refresh` quand `updated: true`**, message « pas encore disponible » quand `supported: false` — sans bloquer
 - [ ] ⚠️ Un **seul** jeton pour les deux bases : ne dupliquez pas la session
 - [ ] Auth : stockage sécurisé, refresh **sérialisé**, déconnexion au second échec
+- [ ] 🔑 **Porte par code** (v4.46.0, applications de CLIENT) : compte à rebours rendu depuis `expires_at`, bouton « renvoyer » gouverné par `resend_after`, nom demandé **seulement** si `created: true`, et l'écran fonctionne **sans** `dev_code` — il disparaîtra. Les applications d'agent et de marchand gardent `POST /auth/login` (`403 otp_not_available` sinon)
+- [ ] 📱 **Appareils** : `device_id` envoyé à la connexion **par toutes les applications** (il ne va pas dans le jeton d'un client, il reconnaît le même téléphone qui revient) ; un `401` au rafraîchissement se traite comme une session expirée, sans message d'erreur technique
+- [ ] 🗑️ **Suppression de compte** (v4.47.0) : `DELETE /me` dans les applications de **CLIENT** — écran de conséquences **avant** la preuve d'identité (`password` ou `code`), **`erase_at` affiché**, « les courses et les commandes passées restent, anonymes » dit **avant** le bouton, `409 wallet_not_empty` renvoyé vers le solde. Les applications d'**agent** et de **marchand** n'affichent **pas** de bouton (`403 erasure_not_self_serve`) mais mettent « écrire au support ». **Toutes** traitent `403 account_closed` comme une fin de session **définitive** — pas comme une suspension
+- [ ] 🔒 **Verrou de l'application** (v4.46.0) : `app_lock` relu à **chaque** réponse qui le porte, y compris le **rafraîchissement**, et appliqué à chaud ; code de secours toujours possible à côté de la biométrie ; au-delà de `max_attempts`, **déconnexion** (jamais blocage) ; **jamais de verrou sur un écran d'appel ni sur l'urgence**
 - [ ] Pagination par curseur générique (`items` / `next_cursor`)
 - [ ] Montants en **entiers** — aucun flottant, formatage XOF à l'affichage seulement
 - [ ] Rôles : masquer les parcours non autorisés **avant** l'appel
@@ -320,6 +324,134 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.47.0 — 7 octobre 2026
+
+🗑️ **SUPPRIMER SON COMPTE — `DELETE /me`, en DEUX TEMPS, et les opérations
+passées RESTENT.**
+
+1. **Tout de suite** : le compte est **fermé**. Les sessions tombent sur **tous**
+   les appareils, les notifications cessent, et la connexion répond ensuite
+   `403 account_closed` — par mot de passe **comme par code**.
+2. **À `erase_at`** (trente jours, réglable au déploiement) : l'**identité**
+   part. Nom → « Compte supprimé », téléphone brouillé puis **libéré**, e-mail,
+   photo, état civil, préférences et **carnet d'adresses** effacés, boîte de
+   notifications purgée, et les verticales prévenues pour jeter les messages de
+   conversation, les fils de support et les pièces de conformité.
+
+⚠️ **ON EFFACE LA PERSONNE, PAS L'OPÉRATION.** Une course et une commande sont
+des **écritures comptables** — prix, commission, date, déjà déclarés dans une
+facturation par pays : les effacer trouerait le journal en partie double. Elles
+ne **désignent plus personne**, et c'est le socle commun qui rend cela tenable :
+aucune verticale ne stocke de nom ni de téléphone (elles les demandent au
+compte au moment d'afficher), donc anonymiser le compte anonymise **tout**
+l'historique d'un seul coup, partout, console et support compris. Un écran mobile
+qui promet « tout sera effacé » promet ce qui ne peut pas l'être.
+
+⚠️ **IL FAUT PROUVER QUI ON EST** — `password`, ou `code` pour un compte né par
+code (demandé par `POST /auth/otp`, **consommé** ici). Irréversible depuis
+l'application : sans preuve, un téléphone déverrouillé posé sur une table
+suffirait.
+
+⚠️ **PORTEFEUILLE VIDE EXIGÉ** : `409 wallet_not_empty`, et `meta.reason` dit
+`money` · `tokens` · `debt`. On ne détruit pas de l'argent en silence — et une
+suppression n'efface pas une dette.
+
+⚠️ **CLIENTS SEULEMENT** : `403 erasure_not_self_serve` pour un chauffeur, un
+livreur, un marchand ou un compte de direction. Ils portent des versements et
+parfois une dette qui vivent dans la verticale ; le support solde d'abord, le
+grand livre sous les yeux.
+
+⚠️ **`account_closed` N'EST PAS `account_suspended`.** Une suspension se lève ;
+une fermeture ne se lève que par le support, et seulement pendant le délai de
+grâce. Le message dit « ce compte a été supprimé » et propose de se réinscrire —
+pas « mot de passe oublié ».
+
+⚠️ **LE NUMÉRO N'EST RENDU QU'À `erase_at`.** Se réinscrire avant répond
+`403 account_closed`, pas `phone_taken` : « ce numéro est déjà enregistré »
+aurait fait croire que la suppression n'avait pas marché.
+
+### 4.46.0 — 7 octobre 2026
+
+📱 **COMBIEN D'APPAREILS UN COMPTE PEUT TENIR — réglable par PAYS, trois par
+défaut.** Les comptes ordinaires (client, marchand, staff) n'avaient jusqu'ici
+**aucune borne** : un compte pouvait accumuler vingt sessions vivantes, chacune
+avec un jeton de rafraîchissement de trente jours, sans que rien ne le montre.
+Au-delà de `max_devices` (`GET /countries`, réglé depuis la console), la session
+**la plus silencieuse** est déconnectée.
+
+⚠️ **« LA PLUS SILENCIEUSE », PAS « LA PREMIÈRE OUVERTE ».** Une session est
+datée de son dernier rafraîchissement : le téléphone du quotidien se redate
+seul, celui du tiroir part le premier. L'appareil évincé l'apprend à son
+prochain rafraîchissement — un `401` ordinaire, à traiter comme une session
+expirée.
+
+⚠️ **ENVOYEZ `device_id`, MÊME CÔTÉ CLIENT.** Il ne va pas dans le jeton et ne
+soumet à aucune règle d'agent ; il sert à reconnaître **le même téléphone qui
+revient**, pour qu'une réinstallation ne pousse pas un autre appareil dehors.
+
+⚠️ **LES CHAUFFEURS ET LIVREURS GARDENT UN SEUL APPAREIL**, et cela ne se règle
+pas : deux téléphones en ligne pour un véhicule, ce sont deux flux de positions
+et un appel qui part vers le mauvais. Leur refus reste `session_superseded`,
+avec le libellé de l'appareil qui a pris la place.
+
+🔒 **LE VERROU DE L'APPLICATION — biométrie ou code secret, réglé par PAYS
+depuis la console.** Ajout rétrocompatible : `app_lock` voyage avec le jeton
+(connexion, inscription, vérification de code) **et au rafraîchissement**, et
+`GET /countries` le porte aussi pour l'application qui change de pays sans se
+reconnecter. `{mode: off|optional|required, biometrics, pin_length,
+grace_seconds, max_attempts}`.
+
+⚠️ **C'EST UNE POLITIQUE, PAS UN CONTRÔLE D'ACCÈS.** Le verrou vit dans le
+téléphone : le serveur ne peut ni le poser, ni vérifier qu'il y est. Ce qu'il
+protège, c'est un téléphone laissé sur une table — pas une donnée. Ce qui
+protège la donnée reste le jeton en stockage sécurisé et sa durée de vie.
+
+⚠️ **TROIS RÈGLES À NE PAS MANQUER**, détaillées dans chaque spec : le **code
+secret reste toujours possible** à côté de la biométrie (un capteur cassé ne
+doit enfermer personne dehors) ; au-delà de `max_attempts` on **déconnecte**, on
+ne bloque pas (un téléphone volé qui se bloque garde un jeton valide trente
+jours) ; et **ni l'écran d'appel ni l'urgence ne se verrouillent** — un appel
+dure trente secondes, derrière un code c'est un appel manqué.
+
+🆕 **S'INSCRIRE ET SE CONNECTER PAR CODE — le téléphone, et rien d'autre.**
+Ajout rétrocompatible : `POST /auth/otp` envoie six chiffres,
+`POST /auth/otp/verify` les consomme et rend **exactement** le corps de
+`POST /auth/login`, augmenté de **`created`** — le compte vient de naître, ou
+non. Rien ne change pour `POST /auth/register` ni `POST /auth/login`, qui
+restent la porte des **agents** et des **marchands**.
+
+⚠️ **LA PASSERELLE N'EST PAS ENCORE CÂBLÉE.** Tant que la réponse porte
+`channel: "echo"`, **rien n'est envoyé** : le code est rendu en clair dans
+**`dev_code`**, pour que les applications se câblent dès maintenant. C'est une
+faille assumée et temporaire — quiconque connaît un numéro entre dans le
+compte —, et **`dev_code` disparaîtra sans préavis** : l'écran doit fonctionner
+à l'identique sans lui.
+
+⚠️ **RÉSERVÉE AUX CLIENTS, et c'est une règle de sécurité.** Six chiffres
+remplacent un mot de passe : l'ouvrir aux chauffeurs, aux livreurs, aux
+marchands ou à la direction ferait du numéro de téléphone — qui s'affiche sur
+une plaque et se donne à un passager — le seul secret protégeant un compte qui
+débite des portefeuilles. Un compte qui n'est pas client reçoit
+`403 otp_not_available` et **aucun code**.
+
+⚠️ **LA DEMANDE DE CODE NE DIT JAMAIS SI LE NUMÉRO EST CONNU** — ce serait un
+annuaire. C'est `created` qui autorise l'écran « comment vous appelez-vous ? »,
+une fois la personne authentifiée ; le nom est **facultatif**, et le numéro fait
+office de nom d'affichage tant qu'il n'est pas donné.
+
+⚠️ **UN COMPTE NÉ PAR CODE N'A PAS DE MOT DE PASSE**, et `POST /auth/login` lui
+répond `401 invalid_credentials` — jamais un code qui dirait « ce compte se
+connecte autrement », ce qui révélerait quels numéros existent. Ne lui proposez
+ni mot de passe, ni « mot de passe oublié ». *(Au passage : cette connexion
+répondait `500` avant d'être corrigée — un compte sans empreinte faisait échouer
+la vérification.)*
+
+Cadence : un code par minute et par numéro (`429 otp_too_soon`), cinq par heure
+(`429 otp_too_many_requests`), le code vit **5 minutes** et meurt après **5
+essais** (`401 otp_too_many_attempts`). Un échec de remise
+(`503 otp_delivery_failed`) ne consomme **rien**. Détail et table des refus :
+`DIRA-CLIENT.md` §6 bis.
 
 ### 4.45.2 — 7 octobre 2026
 

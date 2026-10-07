@@ -41,6 +41,11 @@ func Indexes(collection string) []db.Index {
 		{Collection: collection, Keys: db.K("assigned_to", 1)},
 		{Collection: collection, Keys: db.K("user_id", 1)},
 		{Collection: collection, Keys: db.K("counterpart_id", 1)},
+		// L'EFFACEMENT D'UN COMPTE retire ses messages des fils d'AUTRUI —
+		// l'objet perdu dans sa voiture, où il a répondu. Sans cet index, la
+		// purge balaie toute la collection des tickets pour trouver, le plus
+		// souvent, un seul fil. Voir `PurgeOf`.
+		{Collection: collection, Keys: db.K("messages.author_id", 1)},
 	}
 }
 
@@ -190,4 +195,39 @@ func (r *Repository) findAndSet(ctx context.Context, ticketID primitive.ObjectID
 		return nil, fmt.Errorf("support: update ticket: %w", err)
 	}
 	return &t, nil
+}
+
+// PurgeOf jette les fils de support de cette personne — la part de
+// l'effacement d'un compte qui vit ici.
+//
+// Deux gestes, parce qu'une personne est présente de deux façons :
+//
+//  1. LES FILS QU'ELLE A OUVERTS partent entièrement. Un ticket est fait de ce
+//     qu'elle a écrit : « le livreur ne répond pas », « j'ai oublié mon sac ».
+//     L'anonymiser laisserait sa plainte lisible sous un nom vide, ce qui
+//     n'efface rien de ce qui compte.
+//  2. LES FILS D'AUTRUI OÙ ELLE A RÉPONDU — l'objet perdu dans sa voiture, où
+//     le chauffeur est partie au ticket — gardent le fil et perdent SES
+//     messages. Le ticket appartient à quelqu'un d'autre, qui a le droit de le
+//     relire.
+//
+// ⚠️ `counterpart_id` RESTE. Il désigne une ligne de compte qui existe toujours,
+// anonymisée : la lecture y trouvera « Compte supprimé », ce qui est exactement
+// ce qu'il faut lire. Le retirer ferait croire à un ticket sans contrepartie —
+// une donnée manquante au lieu d'un compte supprimé.
+//
+// ⚠️ IDEMPOTENTE : l'annonce du socle arrive « au moins une fois ».
+func (r *Repository) PurgeOf(ctx context.Context, userID primitive.ObjectID) (int64, error) {
+	del, err := r.tickets.DeleteMany(ctx, bson.M{"user_id": userID})
+	if err != nil {
+		return 0, fmt.Errorf("support: purge tickets of %s: %w", userID.Hex(), err)
+	}
+	upd, err := r.tickets.UpdateMany(ctx,
+		bson.M{"messages.author_id": userID},
+		bson.M{"$pull": bson.M{"messages": bson.M{"author_id": userID}}},
+	)
+	if err != nil {
+		return del.DeletedCount, fmt.Errorf("support: purge messages of %s: %w", userID.Hex(), err)
+	}
+	return del.DeletedCount + upd.ModifiedCount, nil
 }

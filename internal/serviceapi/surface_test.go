@@ -61,6 +61,14 @@ var declaredSurface = []string{
 	// contrat, et si la personne est bloquée par un retard.
 	"/internal/equipment/collect",
 	"/internal/equipment/standing",
+	// OUBLIER DES FICHIERS — la part de l'effacement d'un compte que seule une
+	// verticale sait nommer et que seul le socle sait exécuter : le bucket
+	// n'est ouvert qu'ici. Une photo de permis ou de carte d'identité vit dans
+	// une collection de conformité que le socle ne connaît pas.
+	//
+	// ⚠️ CE N'EST PAS UN POUVOIR DE SUPPRESSION GÉNÉRALE : une URL étrangère
+	// au bucket de la plateforme est ignorée en silence.
+	"/internal/files/forget",
 	// LA FACTURATION par pays (jetons ou commission, quand débiter le
 	// client) que chaque verticale applique, et le JOURNAL comptable où
 	// elle déclare ce qui bouge chez elle (le grand livre des chauffeurs).

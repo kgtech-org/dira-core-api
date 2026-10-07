@@ -234,6 +234,25 @@ func run(logger *slog.Logger) error {
 	// plus tard, et la rotation — seule raison de servir la clé depuis le
 	// serveur — ne servirait à rien.
 	userSvc.SetBasemaps(countrySvc)
+	// CE QUE LE PAYS DÉCIDE pour les applications, réglé depuis la console
+	// (`PUT /admin/countries/{code}/security`) : le VERROU — proposé, imposé
+	// ou rien, servi avec le jeton et au rafraîchissement — et le NOMBRE
+	// D'APPAREILS qu'un compte ordinaire peut tenir, au-delà duquel la
+	// session la plus silencieuse est déconnectée.
+	userSvc.SetCountryPolicies(countrySvc)
+	// LA PORTE PAR CODE — un client s'inscrit avec son téléphone et six
+	// chiffres, sans mot de passe à choisir ni à retrouver.
+	//
+	// ⚠️ LE POIVRE EST LE SECRET JWT, et ce n'est pas un raccourci : il ne
+	// doit pas vivre dans la base qu'il protège (voir `OTPCode.Hash`), et le
+	// socle n'a pas d'autre secret déjà déployé partout. Un secret dédié
+	// (`OTP_PEPPER`) se branchera ici sans rien changer d'autre.
+	userSvc.EnableOTP(otpSender(logger, cfg.OTPSender), cfg.JWTSecret, user.OTPPolicy{
+		TTL:          cfg.OTPTTL,
+		Resend:       cfg.OTPResend,
+		MaxAttempts:  cfg.OTPMaxAttempts,
+		MaxPerWindow: cfg.OTPMaxPerHour,
+	})
 	// La résolution « dans quel pays suis-je ? » aligne le compte ; le repli
 	// par adresse IP passe par un fournisseur HTTP réglable, mis en cache.
 	countrySvc.SetAccounts(userSvc)
@@ -477,6 +496,49 @@ func run(logger *slog.Logger) error {
 	userSvc.SetAuditor(auditRec)
 	countrySvc.SetAuditor(auditRec)
 
+	// LA SUPPRESSION D'UN COMPTE — fermeture immédiate, effacement de
+	// l'identité après le délai de grâce. Voir `internal/user/erasure.go`.
+	//
+	// ⚠️ LE PORTEFEUILLE EST BRANCHÉ EN PREMIER, et il n'est pas facultatif en
+	// pratique : sans lui, un client supprimerait son compte avec son solde
+	// Dira Cash dedans, et cet argent serait détruit sans écriture.
+	userSvc.SetBalances(tokenSvc)
+	userSvc.SetInbox(notifySvc)
+	// ⚠️ LA PHOTO DE PROFIL EST UN FICHIER, pas un champ : sans ce câblage, le
+	// visage d'une personne effacée reste dans le bucket et plus rien ne le
+	// désigne.
+	if media != nil {
+		userSvc.SetFiles(media)
+	}
+	userSvc.SetPushDevices(notifySvc)
+	userSvc.SetErasureAnnouncer(erasureAnnouncer{client: asynqClient})
+	userSvc.SetErasureGrace(cfg.AccountErasureGrace)
+	// Le balayage qui efface ce qui est arrivé à terme. À cadence lente :
+	// personne n'attend à la minute un effacement prévu trente jours plus tôt.
+	//
+	// ⚠️ IL TOURNE SUR CHAQUE INSTANCE, et c'est sans danger : `erase` ne fait
+	// rien d'un compte déjà anonymisé, et la liste des comptes dus est bornée.
+	// Deux instances qui balaient en même temps font le même travail deux
+	// fois, pas deux fois le travail.
+	go func() {
+		t := time.NewTicker(cfg.AccountErasureSweep)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				tctx, cancel := context.WithTimeout(ctx, time.Minute)
+				if n, err := userSvc.EraseDue(tctx, 200); err != nil {
+					logger.Error("core: the erasure sweep failed — closed accounts keep their identity", "error", err)
+				} else if n > 0 {
+					logger.Info("core: accounts erased", "count", n)
+				}
+				cancel()
+			}
+		}
+	}()
+
 	router.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 			httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -500,6 +562,11 @@ func run(logger *slog.Logger) error {
 		// relecture, comme une route qui existe.
 		adminUsers := user.NewAdminUsers(userRepo, tokenSvc, auditRec)
 		adminUsers.SetDefaultCountry(cfg.CountryDefault)
+		// ⚠️ `DELETE /admin/users/{id}` NE DÉTRUIT PLUS LA LIGNE : il ferme le
+		// compte et programme l'effacement de l'identité, comme la demande de
+		// la personne elle-même. Détruire la ligne cassait toutes les courses
+		// et commandes qui la désignent — voir `internal/user/erasure.go`.
+		adminUsers.SetErasure(userSvc)
 		adminUsers.Mount(r, authMW)
 		// LE JOURNAL D'AUDIT de toute la plateforme, lu ici et nulle part
 		// ailleurs : les verticales y écrivent par la surface de service.
@@ -560,6 +627,13 @@ func run(logger *slog.Logger) error {
 		internalAPI.SetStaff(staffSvc)
 		internalAPI.SetJournal(auditRec)
 		internalAPI.SetEquipment(equipmentSvc)
+		// ⚠️ LE BUCKET N'EST OUVERT QU'ICI. Quand un compte est effacé, la
+		// photo de son permis vit chez les COURSES et chez la LIVRAISON, dans
+		// des collections que le socle ne connaît pas : c'est à elles de dire
+		// quelles images, et à nous de les retirer.
+		if media != nil {
+			internalAPI.SetFiles(media)
+		}
 		internalAPI.Mount(r, middleware.Service(cfg.ServiceToken))
 	})
 
@@ -575,7 +649,9 @@ func run(logger *slog.Logger) error {
 		Logger:      asynqSlog{},
 	})
 	mux := asynq.NewServeMux()
-	mux.HandleFunc(jobs.TypeRefPaid, callback.NewWorker(verticals).HandleRefPaid)
+	cbWorker := callback.NewWorker(verticals)
+	mux.HandleFunc(jobs.TypeRefPaid, cbWorker.HandleRefPaid)
+	mux.HandleFunc(jobs.TypeAccountErased, cbWorker.HandleAccountErased)
 	if err := asynqSrv.Start(mux); err != nil {
 		logger.Error("core: payment callbacks will NOT be delivered — job queue unavailable",
 			"error", err, "hint", "check REDIS_URI")
@@ -732,6 +808,49 @@ func enqueueRefPaid(ctx context.Context, client *asynq.Client, purpose, refID, p
 	return nil
 }
 
+// erasureAnnouncer met en file le fait qu'un compte est effacé, pour que
+// chaque verticale purge ce qu'elle seule détient.
+//
+// ⚠️ EN FILE, ET SANS JAMAIS FAIRE ÉCHOUER L'EFFACEMENT. Quand cette méthode
+// est appelée, l'identité est DÉJÀ partie du socle : rendre une erreur ne la
+// ramènerait pas, et refuser l'effacement parce qu'une file est indisponible
+// rendrait le droit à l'effacement dépendant de Redis.
+type erasureAnnouncer struct{ client *asynq.Client }
+
+func (a erasureAnnouncer) AccountErased(ctx context.Context, userID, phone string) {
+	if a.client == nil {
+		slog.ErrorContext(ctx, "core: no job queue — the verticals will NOT purge this erased account",
+			"user_id", userID, "hint", "check REDIS_URI")
+		return
+	}
+	task, err := jobs.NewTask(jobs.TypeAccountErased,
+		jobs.AccountErasedPayload{UserID: userID, Phone: phone})
+	if err != nil {
+		slog.ErrorContext(ctx, "core: account-erased task not built", "user_id", userID, "error", err)
+		return
+	}
+	// ⚠️ L'identifiant de tâche est DÉRIVÉ DU COMPTE, et la reprise est
+	// longue : un compte effacé le reste, et la purge chez les verticales peut
+	// attendre la fin d'un redéploiement.
+	//
+	// ⚠️ MAIS LA RÉTENTION EST COURTE — une heure, pas les 72 h des autres
+	// annonces. Cette charge porte un NUMÉRO DE TÉLÉPHONE, parce qu'une
+	// verticale garde des traces classées dessus ; le laisser dormir trois
+	// jours dans Redis après avoir promis de l'effacer serait contredire la
+	// promesse dans la file qui l'exécute.
+	if _, err := a.client.EnqueueContext(ctx, task,
+		asynq.TaskID("account-erased:"+userID),
+		asynq.MaxRetry(20),
+		asynq.Retention(jobs.AccountErasedRetention),
+	); err != nil {
+		if errors.Is(err, asynq.ErrTaskIDConflict) {
+			return
+		}
+		slog.ErrorContext(ctx, "core: account-erased not queued — the verticals keep what this person wrote",
+			"user_id", userID, "error", err)
+	}
+}
+
 // retainFailedCallbacks garde les tâches abouties assez longtemps pour qu'on
 // puisse répondre à « ce paiement a-t-il bien été annoncé ? » le lendemain.
 const retainFailedCallbacks = 72 * time.Hour
@@ -798,5 +917,28 @@ func (a staffAlerts) AlertStaff(ctx context.Context, scope, country, key string,
 	}
 	for _, id := range ids {
 		a.notify.Notify(ctx, id, key, vars, data)
+	}
+}
+
+// otpSender choisit le canal de remise du code à usage unique.
+//
+// ⚠️ UN SEUL EXPÉDITEUR EXISTE AUJOURD'HUI — `echo` —, et il ne remet rien :
+// il rend le code dans la réponse HTTP pour que les applications se câblent
+// avant la passerelle. Tant que c'est lui qui sert, N'IMPORTE QUI CONNAISSANT
+// UN NUMÉRO ENTRE DANS LE COMPTE : le démarrage le dit en ERROR, et non en
+// WARN, parce qu'une ligne d'avertissement dans un journal de production ne
+// réveille personne.
+//
+// `whatsapp` et `sms` sont refusés plutôt que silencieusement rabattus sur
+// `echo` : régler une variable et croire les codes partis serait pire que
+// l'absence de canal.
+func otpSender(logger *slog.Logger, kind string) user.OTPSender {
+	switch kind {
+	case "echo":
+		logger.Error("auth: OTP en mode ECHO — le code est rendu EN CLAIR dans la réponse ; aucune passerelle n'est câblée")
+		return user.EchoSender{}
+	default:
+		logger.Error("auth: OTP_SENDER non implémenté, la porte par code reste FERMÉE", "sender", kind)
+		return nil
 	}
 }

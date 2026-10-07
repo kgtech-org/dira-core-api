@@ -147,3 +147,21 @@ func (r *Repository) DisableDevice(ctx context.Context, token, reason string) er
 	}
 	return nil
 }
+
+// ForgetUser efface tout ce que ce module garde d'un compte : sa boîte et ses
+// appareils de notification.
+//
+// ⚠️ APPELÉE PAR LA SUPPRESSION D'UN COMPTE (`internal/user/erasure.go`), et
+// par elle seule. La boîte porte le TEXTE des messages reçus — « votre course
+// avec Kodjo est terminée », une adresse de livraison dans un rappel : la
+// laisser derrière aurait gardé lisible, en clair, une bonne partie de ce que
+// l'effacement vient de retirer ailleurs.
+func (r *Repository) ForgetUser(ctx context.Context, userID primitive.ObjectID) error {
+	if _, err := r.inbox.DeleteMany(ctx, bson.M{"user_id": userID}); err != nil {
+		return fmt.Errorf("notify: delete inbox: %w", err)
+	}
+	if _, err := r.devices.DeleteMany(ctx, bson.M{"user_id": userID}); err != nil {
+		return fmt.Errorf("notify: delete devices: %w", err)
+	}
+	return nil
+}

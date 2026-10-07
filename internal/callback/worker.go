@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/hibiken/asynq"
 
@@ -68,5 +69,56 @@ func (w *Worker) HandleRefPaid(ctx context.Context, t *asynq.Task) error {
 	}
 	slog.InfoContext(ctx, "callback: vertical notified of the payment",
 		"purpose", p.Purpose, "ref_id", p.RefID, "payment_id", p.PaymentID)
+	return nil
+}
+
+// HandleAccountErased prévient TOUTES les verticales qu'un compte est effacé.
+//
+// ⚠️ UNE SEULE TÂCHE POUR LES DEUX, et non une par verticale. La table des
+// rappels est indexée par objet payé — « commande », « course », « abonnement
+// de courses » — alors que ce fait ne concerne aucun objet : il concerne la
+// personne, et chaque verticale qui existe. Router sur un `purpose` aurait
+// obligé à inventer un objet qui n'existe pas.
+//
+// ⚠️ TOUT ÉCHEC FAIT REVENIR LA TÂCHE ENTIÈRE, donc une verticale peut être
+// prévenue deux fois. C'est assumé : une purge est idempotente par nature —
+// jeter des messages déjà jetés ne jette rien. L'inverse ne l'est pas : une
+// verticale oubliée garderait pour toujours le texte d'une personne effacée,
+// et personne ne saurait où regarder.
+func (w *Worker) HandleAccountErased(ctx context.Context, t *asynq.Task) error {
+	var p jobs.AccountErasedPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		slog.ErrorContext(ctx, "callback: unreadable account-erased payload, dropping",
+			"error", err, "payload", string(t.Payload()))
+		return fmt.Errorf("callback: unmarshal account-erased: %w: %w", err, asynq.SkipRetry)
+	}
+	if p.UserID == "" {
+		return fmt.Errorf("callback: account-erased without a user id: %w", asynq.SkipRetry)
+	}
+	targets := w.verticals.All()
+	if len(targets) == 0 {
+		// ⚠️ PAS DE REPRISE, MAIS UN CRI. Aucune verticale branchée, c'est le
+		// développement — ou une configuration cassée en production, et alors
+		// le texte écrit par une personne effacée reste chez elles.
+		slog.ErrorContext(ctx, "callback: no vertical configured, nothing purged for this erased account",
+			"user_id", p.UserID,
+			"hint", "set FOOD_BASE_URL / VTC_BASE_URL and their callback tokens")
+		return fmt.Errorf("callback: no vertical to tell about an erased account: %w", asynq.SkipRetry)
+	}
+	var failed []string
+	for _, v := range targets {
+		if err := v.AccountErased(ctx, p.UserID, p.Phone); err != nil {
+			retried, _ := asynq.GetRetryCount(ctx)
+			slog.WarnContext(ctx, "callback: vertical did not purge the erased account, will retry",
+				"target", v.Target(), "user_id", p.UserID, "attempt", retried+1, "error", err)
+			failed = append(failed, v.Target())
+			continue
+		}
+		slog.InfoContext(ctx, "callback: vertical purged the erased account",
+			"target", v.Target(), "user_id", p.UserID)
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("callback: account-erased refused by %s", strings.Join(failed, ", "))
+	}
 	return nil
 }

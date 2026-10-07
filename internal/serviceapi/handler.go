@@ -156,7 +156,27 @@ type Handler struct {
 	staff      StaffDirectory
 	journal    Journal
 	equipment  Equipment
+	files      Files
 }
+
+// Files est le STOCKAGE D'OBJETS, et le socle est le seul à l'ouvrir.
+//
+// ⚠️ C'EST POURQUOI CETTE ROUTE EXISTE. Un envoi de fichier passe par
+// `POST /uploads`, ici, et le bucket n'est câblé nulle part ailleurs : une
+// verticale ne peut pas retirer une image, même celle qu'elle a fait déposer.
+// Quand un compte est effacé, la photo de son permis et celle de sa carte
+// d'identité vivent chez les COURSES et chez la LIVRAISON, dans des
+// collections que le socle ne connaît pas — c'est donc à la verticale de dire
+// QUELLES images, et au socle de les retirer. Sans cette porte, un compte
+// « effacé » laissait une photo de carte d'identité dans un bucket, que plus
+// rien ne désignait : impossible à retrouver pour la supprimer, impossible à
+// justifier si on la trouve.
+type Files interface {
+	Remove(ctx context.Context, publicURL string) error
+}
+
+// SetFiles branche le stockage d'objets (câblage).
+func (h *Handler) SetFiles(f Files) { h.files = f }
 
 // Equipment est le guichet du MATÉRIEL : ce qu'une verticale retient sur un
 // gain (ou rend), et où en est une personne avant de la laisser en ligne.
@@ -191,6 +211,47 @@ func (h *Handler) SetJournal(j Journal) { h.journal = j }
 
 // SetEquipment branche le guichet du matériel (câblage).
 func (h *Handler) SetEquipment(e Equipment) { h.equipment = e }
+
+// forgetFiles retire des objets du stockage, nommés par leur URL publique.
+//
+// ⚠️ AU MIEUX, ET SANS JAMAIS FAIRE ÉCHOUER L'EFFACEMENT QUI L'APPELLE. Quand
+// cette route est appelée, l'identité est déjà partie du socle et la verticale
+// est en train de jeter ses lignes : rendre une erreur ne ramènerait rien et
+// bloquerait une purge pour un bucket indisponible. On journalise fort — c'est
+// le seul endroit où « il reste une image » peut se savoir — et on rend le
+// compte de ce qui est parti.
+//
+// ⚠️ UNE URL ÉTRANGÈRE AU BUCKET EST IGNORÉE EN SILENCE (`storage.Store`). La
+// route n'est donc pas un pouvoir de suppression générale : elle ne peut rien
+// toucher en dehors des fichiers de la plateforme.
+func (h *Handler) forgetFiles(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		URLs []string `json:"urls" validate:"required,min=1,max=100,dive,required"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if h.files == nil {
+		slog.ErrorContext(r.Context(), "serviceapi: no object store wired — these files stay in the bucket",
+			"files", len(req.URLs))
+		httpx.JSON(w, http.StatusOK, map[string]any{"forgotten": 0})
+		return
+	}
+	forgotten := 0
+	for _, u := range req.URLs {
+		if err := h.files.Remove(r.Context(), u); err != nil {
+			slog.ErrorContext(r.Context(), "serviceapi: a file survived an erasure", "url", u, "error", err)
+			continue
+		}
+		forgotten++
+	}
+	if forgotten < len(req.URLs) {
+		slog.ErrorContext(r.Context(), "serviceapi: files left behind by an erasure",
+			"asked", len(req.URLs), "forgotten", forgotten)
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"forgotten": forgotten})
+}
 
 // Mount registers the routes under a middleware that checks the service token.
 func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler) {
@@ -232,6 +293,9 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		g.Post("/internal/equipment/collect", h.equipmentCollect)
 		g.Post("/internal/equipment/standing", h.equipmentStanding)
 		g.Post("/internal/push/data", h.signal)
+		// OUBLIER DES FICHIERS — la part de l'effacement d'un compte que seule
+		// une verticale sait nommer et que seul le socle sait exécuter.
+		g.Post("/internal/files/forget", h.forgetFiles)
 		g.Post("/internal/payments/initiate", h.initiatePayment)
 
 		g.Post("/internal/backoffice/wallets", h.listWallets)

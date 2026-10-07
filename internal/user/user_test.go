@@ -25,6 +25,7 @@ type fakeUserRepo struct {
 	users         map[primitive.ObjectID]*User
 	refreshTokens map[string]*RefreshToken // by token hash
 	addresses     map[primitive.ObjectID]*Address
+	otpCodes      map[string]*OTPCode
 }
 
 func newFakeUserRepo() *fakeUserRepo {
@@ -32,6 +33,7 @@ func newFakeUserRepo() *fakeUserRepo {
 		addresses:     make(map[primitive.ObjectID]*Address),
 		users:         make(map[primitive.ObjectID]*User),
 		refreshTokens: make(map[string]*RefreshToken),
+		otpCodes:      make(map[string]*OTPCode),
 	}
 }
 
@@ -128,14 +130,16 @@ func (f *fakeUserRepo) InsertRefreshToken(_ context.Context, t *RefreshToken) er
 	return nil
 }
 
-func (f *fakeUserRepo) DeleteRefreshTokenByHash(_ context.Context, tokenHash string) (bool, error) {
+func (f *fakeUserRepo) DeleteRefreshTokenByHash(_ context.Context, tokenHash string) (string, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if _, ok := f.refreshTokens[tokenHash]; !ok {
-		return false, nil
+	row, ok := f.refreshTokens[tokenHash]
+	if !ok {
+		return "", false, nil
 	}
 	delete(f.refreshTokens, tokenHash)
-	return true, nil
+	// L'appareil de la session effacée : c'est lui qui survit à la rotation.
+	return row.DeviceID, true, nil
 }
 
 func (f *fakeUserRepo) DeleteRefreshTokensOfUser(_ context.Context, userID primitive.ObjectID) (int64, error) {
@@ -189,6 +193,50 @@ func (f *fakeUserRepo) userCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.users)
+}
+
+// mustFind rend la ligne d'un compte — y compris anonymisée : c'est tout
+// l'objet de la plupart des tests de suppression.
+func (f *fakeUserRepo) mustFind(t *testing.T, id string) *User {
+	t.Helper()
+	oid, err := primitive.ObjectIDFromHex(id)
+	require.NoError(t, err)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[oid]
+	require.True(t, ok, "le compte %s doit exister : la ligne ne se supprime jamais", id)
+	clone := *u
+	return &clone
+}
+
+// backdateClosure recule la date de demande, pour que le délai de grâce soit
+// écoulé sans attendre trente jours.
+func (f *fakeUserRepo) backdateClosure(t *testing.T, id string, by time.Duration) {
+	t.Helper()
+	oid, err := primitive.ObjectIDFromHex(id)
+	require.NoError(t, err)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[oid]
+	require.True(t, ok)
+	require.NotNil(t, u.DeletionRequestedAt, "le compte doit d'abord être fermé")
+	when := u.DeletionRequestedAt.Add(-by)
+	u.DeletionRequestedAt = &when
+}
+
+// forceClosureDate pose une date de demande ÉCHUE sur un compte quel que soit
+// son état — la base incohérente qu'aucun chemin ne produit, et dont le second
+// verrou de `erase` doit protéger.
+func (f *fakeUserRepo) forceClosureDate(t *testing.T, id string, at time.Time) {
+	t.Helper()
+	oid, err := primitive.ObjectIDFromHex(id)
+	require.NoError(t, err)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[oid]
+	require.True(t, ok)
+	when := at
+	u.DeletionRequestedAt = &when
 }
 
 func (f *fakeUserRepo) setStatus(t *testing.T, phone, status string) {
@@ -662,6 +710,10 @@ func (f *fakeUserRepo) SetAccountStatus(_ context.Context, id, status string) (*
 	}
 	before := f.toRow(u)
 	u.Status = status
+	if status == StatusActive {
+		// Comme le vrai dépôt : réactiver ANNULE l'effacement programmé.
+		u.DeletionRequestedAt = nil
+	}
 	u.UpdatedAt = time.Now().UTC()
 	return &before, nil
 }
@@ -823,3 +875,162 @@ func TestEnsureAccountNeverOverwritesAnExistingEmail(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "first@dira.llc", row.Email, "l'adresse en place ne bouge pas")
 }
+
+// --- LA PORTE PAR CODE (voir otp.go) ---------------------------------------
+//
+// Un code vivant par numéro, comme l'index unique de `auth_otp_codes`.
+
+func (f *fakeUserRepo) SaveOTP(_ context.Context, c *OTPCode) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.otpCodes == nil {
+		f.otpCodes = make(map[string]*OTPCode)
+	}
+	clone := *c
+	f.otpCodes[c.Phone] = &clone
+	return nil
+}
+
+func (f *fakeUserRepo) FindOTP(_ context.Context, phone string) (*OTPCode, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c, ok := f.otpCodes[phone]
+	if !ok {
+		return nil, nil
+	}
+	clone := *c
+	return &clone, nil
+}
+
+func (f *fakeUserRepo) IncOTPAttempts(_ context.Context, phone string) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c, ok := f.otpCodes[phone]
+	if !ok {
+		return 0, nil
+	}
+	c.Attempts++
+	return c.Attempts, nil
+}
+
+func (f *fakeUserRepo) DeleteOTP(_ context.Context, phone string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.otpCodes, phone)
+	return nil
+}
+
+// --- COMBIEN D'APPAREILS (voir devices.go) ---------------------------------
+//
+// La fausse base reproduit l'ordre du vrai tri : les sessions les plus
+// RÉCEMMENT datées d'abord — une session est datée de son dernier
+// rafraîchissement.
+
+func (f *fakeUserRepo) TrimRefreshTokens(_ context.Context, userID primitive.ObjectID, keepHash, deviceID string, max int) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if max < 1 {
+		max = 1
+	}
+	rows := make([]*RefreshToken, 0, len(f.refreshTokens))
+	for _, t := range f.refreshTokens {
+		if t.UserID == userID {
+			rows = append(rows, t)
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].CreatedAt.After(rows[j].CreatedAt) })
+
+	evicted, kept := 0, 0
+	for _, row := range rows {
+		switch {
+		case row.TokenHash == keepHash:
+			kept++
+		case deviceID != "" && row.DeviceID == deviceID:
+			delete(f.refreshTokens, row.TokenHash)
+			evicted++
+		case kept < max:
+			kept++
+		default:
+			delete(f.refreshTokens, row.TokenHash)
+			evicted++
+		}
+	}
+	return evicted, nil
+}
+
+// --- LA SUPPRESSION D'UN COMPTE (voir erasure.go) --------------------------
+
+func (f *fakeUserRepo) CloseAccount(_ context.Context, id primitive.ObjectID, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[id]
+	if !ok {
+		return nil
+	}
+	u.Status = StatusClosed
+	when := at
+	u.DeletionRequestedAt = &when
+	u.UpdatedAt = at
+	return nil
+}
+
+func (f *fakeUserRepo) AccountsDueForErasure(_ context.Context, before time.Time, limit int) ([]*User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if limit <= 0 {
+		limit = 100
+	}
+	var out []*User
+	for _, u := range f.users {
+		if u.DeletionRequestedAt == nil || u.AnonymisedAt != nil {
+			continue
+		}
+		if u.DeletionRequestedAt.After(before) {
+			continue
+		}
+		clone := *u
+		out = append(out, &clone)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeUserRepo) AnonymiseUser(_ context.Context, id primitive.ObjectID, scrambledPhone, name string, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[id]
+	if !ok {
+		return nil
+	}
+	u.Phone = scrambledPhone
+	u.Name = name
+	u.Status = StatusClosed
+	u.PasswordHash = ""
+	u.Email, u.FirstName, u.LastName, u.AvatarURL, u.Gender = "", "", "", "", ""
+	u.BirthDate, u.Device, u.Preferences = nil, nil, nil
+	when := at
+	u.AnonymisedAt = &when
+	u.UpdatedAt = at
+	return nil
+}
+
+func (f *fakeUserRepo) DeleteAddressesOf(_ context.Context, userID primitive.ObjectID) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for id, a := range f.addresses {
+		if a.UserID == userID {
+			delete(f.addresses, id)
+		}
+	}
+	return nil
+}
+
+// fakePolicies : ce qu'un pays décide, en mémoire.
+type fakePolicies struct{ maxDevices int }
+
+func (fakePolicies) AppLockOf(context.Context, string) (string, bool, int, int, int, bool) {
+	return "optional", true, 4, 120, 5, true
+}
+func (p fakePolicies) MaxDevicesOf(context.Context, string) int { return p.maxDevices }

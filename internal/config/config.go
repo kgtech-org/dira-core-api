@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kgtech-org/dira-core-api/internal/country"
+	"github.com/kgtech-org/dira-core-api/internal/user"
 	core "github.com/kgtech-org/dira-core-api/pkg/config"
 )
 
@@ -54,6 +55,22 @@ type Config struct {
 	VTCBaseURL       string
 	VTCCallbackToken string
 
+	// OTPSender nomme le canal de remise du code à usage unique :
+	// `echo` (défaut), `whatsapp` ou `sms`.
+	//
+	// ⚠️ `echo` NE REMET RIEN : il rend le code dans la réponse HTTP. C'est
+	// ce qui permet de câbler les applications avant qu'une passerelle
+	// n'existe, et c'est une faille — quiconque connaît un numéro entre dans
+	// le compte. Le démarrage le crie ; voir `internal/user/otp.go`.
+	OTPSender string
+	// OTPTTL, OTPResend, OTPMaxAttempts, OTPMaxPerHour : la vie du code et sa
+	// cadence. Réglables parce qu'un marché lent sur les SMS demande une
+	// durée plus longue, et qu'on ne redéploie pas pour ça.
+	OTPTTL         time.Duration
+	OTPResend      time.Duration
+	OTPMaxAttempts int
+	OTPMaxPerHour  int
+
 	// CountryIPLookupURL et CountryIPLookupField : le fournisseur qui situe
 	// une adresse IP, repli de la résolution de pays quand l'application n'a
 	// pas de position. `{ip}` est remplacé dans l'URL ; le champ est celui
@@ -68,6 +85,24 @@ type Config struct {
 	// écriture comptable — la mise en service du journal. Un mouvement plus
 	// ancien sans écriture n'est pas un écart.
 	FinanceJournalSince time.Time
+
+	// AccountErasureGrace : le délai entre la FERMETURE d'un compte et
+	// l'EFFACEMENT de son identité. Trente jours par défaut.
+	//
+	// ⚠️ RÉGLABLE PARCE QUE C'EST UN ARBITRAGE JURIDIQUE, pas une constante
+	// technique : un pays peut exiger plus court, un contrat de licence plus
+	// long. On ne redéploie pas pour un délai.
+	//
+	// ⚠️ ET IL NE DOIT PAS ÊTRE MIS À ZÉRO EN PRODUCTION. C'est lui qui
+	// laisse une course en cours se terminer — le chauffeur voit encore le nom
+	// de qui est dans sa voiture — et qui laisse à une personne le temps
+	// d'écrire au support après avoir touché le bouton par erreur. Voir
+	// `internal/user/erasure.go`.
+	AccountErasureGrace time.Duration
+	// AccountErasureSweep : la cadence du balayage qui efface les comptes
+	// arrivés à terme. Une heure par défaut — personne n'attend à la minute un
+	// effacement prévu trente jours plus tôt.
+	AccountErasureSweep time.Duration
 }
 
 // Load reads the environment, applies defaults and validates.
@@ -90,12 +125,36 @@ func Load() (*Config, error) {
 		FoodCallbackToken:     core.Env("FOOD_CALLBACK_TOKEN", ""),
 		VTCBaseURL:            core.Env("VTC_BASE_URL", ""),
 		VTCCallbackToken:      core.Env("VTC_CALLBACK_TOKEN", ""),
+		OTPSender:             core.Env("OTP_SENDER", "echo"),
 		CountryIPLookupURL:    core.Env("COUNTRY_IP_LOOKUP_URL", country.DefaultIPLookupURL),
 		CountryIPLookupField:  core.Env("COUNTRY_IP_LOOKUP_FIELD", country.DefaultIPLookupField),
 	}
 
 	if cfg.FinanceIntegrityInterval, err = core.Duration("FINANCE_INTEGRITY_INTERVAL", 15*time.Minute); err != nil {
 		return nil, err
+	}
+	if cfg.OTPTTL, err = core.Duration("OTP_TTL", 5*time.Minute); err != nil {
+		return nil, err
+	}
+	if cfg.OTPResend, err = core.Duration("OTP_RESEND", time.Minute); err != nil {
+		return nil, err
+	}
+	if cfg.OTPMaxAttempts, err = core.Int("OTP_MAX_ATTEMPTS", 5); err != nil {
+		return nil, err
+	}
+	if cfg.OTPMaxPerHour, err = core.Int("OTP_MAX_PER_HOUR", 5); err != nil {
+		return nil, err
+	}
+	if cfg.AccountErasureGrace, err = core.Duration("ACCOUNT_ERASURE_GRACE", user.DefaultErasureGrace); err != nil {
+		return nil, err
+	}
+	if cfg.AccountErasureSweep, err = core.Duration("ACCOUNT_ERASURE_SWEEP", time.Hour); err != nil {
+		return nil, err
+	}
+	switch cfg.OTPSender {
+	case "echo", "whatsapp", "sms":
+	default:
+		return nil, fmt.Errorf("config: invalid OTP_SENDER %q (want echo|whatsapp|sms)", cfg.OTPSender)
 	}
 	// La mise en service du journal : le 21 septembre 2026. Réglable pour
 	// une base qui aurait été reprise plus tard.

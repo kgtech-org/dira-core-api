@@ -44,8 +44,38 @@ var applicationIndexes = []db.Index{
 		Unique:        true,
 		PartialFilter: bson.D{{Key: "email", Value: bson.D{{Key: "$gt", Value: ""}}}},
 	},
+	// LES COMPTES À EFFACER — le balayage de la suppression (voir
+	// `internal/user/erasure.go`). Il tourne toutes les heures sur la
+	// collection la plus lue de la plateforme ; sans index, il la parcourt
+	// entièrement vingt-quatre fois par jour pour trouver, le plus souvent,
+	// zéro ligne.
+	//
+	// ⚠️ PARTIEL SUR `deletion_requested_at`, pas sur `anonymised_at`. Les
+	// comptes fermés sont une poignée face à des centaines de milliers de
+	// comptes actifs : un index complet aurait indexé toute la base pour
+	// servir une requête qui ne regarde qu'elle. Le second critère
+	// (`anonymised_at` absent) se filtre après, sur les quelques lignes que
+	// l'index rend.
+	{
+		Collection:    "users",
+		Keys:          db.K("deletion_requested_at", 1),
+		PartialFilter: bson.D{{Key: "deletion_requested_at", Value: bson.D{{Key: "$exists", Value: true}}}},
+	},
+	// LA PORTE PAR CODE — un seul code vivant par numéro (voir
+	// `internal/user/otp.go`). L'unicité n'est pas décorative : c'est elle
+	// qui fait qu'une demande REMPLACE la précédente au lieu d'empiler des
+	// codes valides, et donc de multiplier les chances d'en deviner un.
+	{Collection: "auth_otp_codes", Keys: db.K("phone", 1), Unique: true},
+	// La purge suit la FENÊTRE de cadence, pas l'échéance du code : effacer
+	// à l'expiration du code remettrait le compteur horaire à zéro toutes
+	// les cinq minutes, et le plafond de demandes ne plafonnerait rien.
+	{Collection: "auth_otp_codes", Keys: db.K("purge_at", 1), TTLSeconds: db.TTL(0)},
 	{Collection: "refresh_tokens", Keys: db.K("token_hash", 1), Unique: true},
-	{Collection: "refresh_tokens", Keys: db.K("user_id", 1)},
+	// Les sessions d'un compte, la plus récemment active en tête : c'est
+	// l'ordre exact dans lequel la borne d'appareils les lit pour évincer la
+	// plus silencieuse (`internal/user/devices.go`). Sans le `created_at`,
+	// chaque connexion triait en mémoire toutes les sessions du compte.
+	{Collection: "refresh_tokens", Keys: db.K("user_id", 1, "created_at", -1)},
 	{Collection: "refresh_tokens", Keys: db.K("expires_at", 1), TTLSeconds: db.TTL(0)},
 	// --- user (carnet d'adresses) ---
 	// Le carnet d'un compte, l'adresse par défaut en tête — c'est celle que
