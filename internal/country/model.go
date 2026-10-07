@@ -53,6 +53,9 @@ type Installation struct {
 	// Maps est le FOND DE CARTE du pays : celui qu'on sert par défaut, et la
 	// clé Google de chaque plateforme quand l'exploitation en a configuré une.
 	Maps Maps `bson:"maps,omitempty"`
+	// Security : ce que ce pays décide de la sécurité des APPLICATIONS — le
+	// verrou (biométrie ou code) aujourd'hui. Voir `security.go`.
+	Security Security `bson:"security,omitempty"`
 }
 
 // Les deux fonds de carte possibles.
@@ -122,6 +125,11 @@ type Response struct {
 	// bascule d'un clic — et elle relit ce catalogue à chaque ouverture. Sans ce
 	// champ, elle garderait le fond de la veille, dans le mauvais pays.
 	Basemap string `json:"basemap"`
+	// AppLock est la politique de VERROU de ce pays — même raison que
+	// `basemap` juste au-dessus : le bloc servi avec le jeton dit la politique
+	// du pays où l'on s'est connecté, une fois ; ce catalogue-ci est relu à
+	// chaque ouverture, et c'est lui qui rattrape un changement de pays.
+	AppLock AppLockResponse `json:"app_lock"`
 }
 
 // UpdateRequest règle un pays : ouvert ou fermé, et sa monnaie. Les deux

@@ -116,6 +116,9 @@ type Service struct {
 	otpSender OTPSender
 	otpPepper string
 	otpPolicy OTPPolicy
+	// LE VERROU DES APPLICATIONS — la politique du pays, servie avec le
+	// jeton. FACULTATIF : sans lui, l'application garde son réglage.
+	locks AppLocks
 }
 
 // Entitlements est ce qu'une fiche de staff accorde à un compte `admin`.
@@ -256,6 +259,7 @@ func (s *Service) register(ctx context.Context, req RegisterRequest, role string
 		RefreshToken: pair.RefreshToken,
 		Session:      sessionResponse(u, deviceID, false),
 		Maps:         s.basemap(ctx, u),
+		AppLock:      s.appLock(ctx, u),
 	}, nil
 }
 
@@ -342,6 +346,7 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 		RefreshToken: pair.RefreshToken,
 		Session:      sessionResponse(u, deviceID, chased),
 		Maps:         s.basemap(ctx, u),
+		AppLock:      s.appLock(ctx, u),
 	}, nil
 }
 
@@ -500,6 +505,10 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, platform string) (T
 	// Le fond de carte À JOUR : c'est ici que la rotation d'une clé atteint une
 	// application déjà connectée depuis des semaines.
 	pair.Maps = s.basemap(ctx, u)
+	// Le VERROU à jour, pour la même raison que le fond de carte : un pays
+	// qui vient de l'imposer n'atteindrait sinon une application déjà
+	// connectée qu'à l'expiration de son jeton de rafraîchissement.
+	pair.AppLock = s.appLock(ctx, u)
 	return pair, nil
 }
 

@@ -35,6 +35,10 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		// relire : on la remplace, on ne la consulte pas.
 		g.With(admin).Get("/admin/countries/{code}/maps", h.maps)
 		g.With(admin).Put("/admin/countries/{code}/maps", h.updateMaps)
+		// LE VERROU DES APPLICATIONS — biométrie ou code, par pays. Voir
+		// `security.go`.
+		g.With(admin).Get("/admin/countries/{code}/security", h.security)
+		g.With(admin).Put("/admin/countries/{code}/security", h.updateSecurity)
 	})
 }
 
@@ -68,6 +72,31 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := h.svc.Update(r.Context(), chi.URLParam(r, "code"), req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// GET /admin/countries/{code}/security
+func (h *Handler) security(w http.ResponseWriter, r *http.Request) {
+	out, err := h.svc.Security(r.Context(), chi.URLParam(r, "code"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// PUT /admin/countries/{code}/security {mode?, biometrics?, pin_length?, grace_seconds?, max_attempts?}
+func (h *Handler) updateSecurity(w http.ResponseWriter, r *http.Request) {
+	var req SecurityUpdateRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := h.svc.UpdateSecurity(r.Context(), chi.URLParam(r, "code"), req)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

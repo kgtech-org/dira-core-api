@@ -253,6 +253,8 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] Pays : `POST /me/country/resolve` au démarrage (position de l'appareil si possible), `GET /countries` avant l'inscription, **`POST /auth/refresh` quand `updated: true`**, message « pas encore disponible » quand `supported: false` — sans bloquer
 - [ ] ⚠️ Un **seul** jeton pour les deux bases : ne dupliquez pas la session
 - [ ] Auth : stockage sécurisé, refresh **sérialisé**, déconnexion au second échec
+- [ ] 🔑 **Porte par code** (v4.46.0, applications de CLIENT) : compte à rebours rendu depuis `expires_at`, bouton « renvoyer » gouverné par `resend_after`, nom demandé **seulement** si `created: true`, et l'écran fonctionne **sans** `dev_code` — il disparaîtra. Les applications d'agent et de marchand gardent `POST /auth/login` (`403 otp_not_available` sinon)
+- [ ] 🔒 **Verrou de l'application** (v4.46.0) : `app_lock` relu à **chaque** réponse qui le porte, y compris le **rafraîchissement**, et appliqué à chaud ; code de secours toujours possible à côté de la biométrie ; au-delà de `max_attempts`, **déconnexion** (jamais blocage) ; **jamais de verrou sur un écran d'appel ni sur l'urgence**
 - [ ] Pagination par curseur générique (`items` / `next_cursor`)
 - [ ] Montants en **entiers** — aucun flottant, formatage XOF à l'affichage seulement
 - [ ] Rôles : masquer les parcours non autorisés **avant** l'appel
@@ -322,6 +324,25 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 ## Journal
 
 ### 4.46.0 — 7 octobre 2026
+
+🔒 **LE VERROU DE L'APPLICATION — biométrie ou code secret, réglé par PAYS
+depuis la console.** Ajout rétrocompatible : `app_lock` voyage avec le jeton
+(connexion, inscription, vérification de code) **et au rafraîchissement**, et
+`GET /countries` le porte aussi pour l'application qui change de pays sans se
+reconnecter. `{mode: off|optional|required, biometrics, pin_length,
+grace_seconds, max_attempts}`.
+
+⚠️ **C'EST UNE POLITIQUE, PAS UN CONTRÔLE D'ACCÈS.** Le verrou vit dans le
+téléphone : le serveur ne peut ni le poser, ni vérifier qu'il y est. Ce qu'il
+protège, c'est un téléphone laissé sur une table — pas une donnée. Ce qui
+protège la donnée reste le jeton en stockage sécurisé et sa durée de vie.
+
+⚠️ **TROIS RÈGLES À NE PAS MANQUER**, détaillées dans chaque spec : le **code
+secret reste toujours possible** à côté de la biométrie (un capteur cassé ne
+doit enfermer personne dehors) ; au-delà de `max_attempts` on **déconnecte**, on
+ne bloque pas (un téléphone volé qui se bloque garde un jeton valide trente
+jours) ; et **ni l'écran d'appel ni l'urgence ne se verrouillent** — un appel
+dure trente secondes, derrière un code c'est un appel manqué.
 
 🆕 **S'INSCRIRE ET SE CONNECTER PAR CODE — le téléphone, et rien d'autre.**
 Ajout rétrocompatible : `POST /auth/otp` envoie six chiffres,

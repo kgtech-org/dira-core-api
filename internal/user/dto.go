@@ -253,6 +253,10 @@ type AuthResponse struct {
 	// plateforme quand le pays en a configuré une. ABSENT quand la plateforme
 	// ne s'est pas nommée — l'application garde alors notre fond.
 	Maps *MapsResponse `json:"maps,omitempty"`
+	// AppLock est la politique de VERROU du pays — biométrie ou code secret
+	// devant l'application. ABSENTE quand le pays n'est pas connu ou que le
+	// module n'est pas branché : l'application garde alors son réglage.
+	AppLock *AppLockResponse `json:"app_lock,omitempty"`
 	// Created : ce compte VIENT DE NAÎTRE, à la vérification d'un code.
 	//
 	// ⚠️ C'EST LE SEUL SIGNAL QUI DIT À L'APPLICATION DE DEMANDER LE NOM. La
@@ -338,6 +342,35 @@ type TokenPairResponse struct {
 	// Maps : le fond de carte À JOUR. C'est ici que la rotation d'une clé
 	// atteint une application déjà connectée, sans attendre sa reconnexion.
 	Maps *MapsResponse `json:"maps,omitempty"`
+	// AppLock : la politique de VERROU à jour, pour la même raison.
+	AppLock *AppLockResponse `json:"app_lock,omitempty"`
+}
+
+// AppLockResponse est la politique de verrou servie à une application.
+//
+// ⚠️ ELLE DIT CE QU'IL FAUT PROPOSER OU IMPOSER, PAS CE QUI EST POSÉ. Le
+// verrou vit dans le téléphone ; le serveur ne peut pas vérifier qu'il y est,
+// et une application qui l'ignorerait ne serait pas refusée. C'est une
+// politique d'exploitation, pas un contrôle d'accès — ne jamais faire reposer
+// la sécurité d'une donnée sur elle : ce qui protège vraiment, c'est le jeton
+// en stockage sécurisé et sa durée de vie.
+type AppLockResponse struct {
+	// Mode : `off` (ne rien proposer), `optional` (la personne choisit),
+	// `required` (l'application exige un verrou avant son premier écran).
+	Mode string `json:"mode"`
+	// Biometrics : la biométrie est-elle admise ? Faux = code secret SEUL.
+	// ⚠️ Le code secret reste TOUJOURS possible à côté de la biométrie :
+	// un capteur cassé ne doit pas enfermer quelqu'un dehors.
+	Biometrics bool `json:"biometrics"`
+	// PINLength : 4 ou 6 chiffres.
+	PINLength int `json:"pin_length"`
+	// GraceSeconds : temps en arrière-plan avant de redemander. Zéro =
+	// redemander à chaque retour.
+	GraceSeconds int `json:"grace_seconds"`
+	// MaxAttempts : essais ratés avant que l'application ne DÉCONNECTE —
+	// elle ne bloque pas. Un téléphone volé qui se bloque garde un jeton de
+	// rafraîchissement valide trente jours ; déconnecté, il ne garde rien.
+	MaxAttempts int `json:"max_attempts"`
 }
 
 // MapsResponse est le fond de carte servi à une application : UN SEUL CHAMP.

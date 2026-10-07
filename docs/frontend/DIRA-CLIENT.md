@@ -166,6 +166,75 @@ l'autre.
 
 ---
 
+## 5 bis. 🔒 LE VERROU DE L'APPLICATION — `app_lock` (v4.46.0)
+
+Biométrie ou code secret devant l'application : qui ouvre le téléphone de
+quelqu'un n'ouvre pas pour autant son compte Dira. **Le verrou vit chez vous** —
+le serveur ne peut ni le poser, ni vérifier qu'il y est. Ce qu'il dit, c'est la
+**politique du pays**, réglée depuis la console :
+
+```jsonc
+// à la connexion, à l'inscription, à la vérification d'un code, au rafraîchissement
+"app_lock": {
+  "mode": "optional",      // "off" · "optional" · "required"
+  "biometrics": true,      // false = CODE SEUL
+  "pin_length": 4,         // 4 ou 6
+  "grace_seconds": 120,    // temps hors de l'app avant de redemander ; 0 = à chaque retour
+  "max_attempts": 5        // échecs avant DÉCONNEXION
+}
+```
+
+Et dans `GET /countries`, pour l'application qui change de pays sans se
+reconnecter.
+
+**Ce que chaque mode demande**
+
+| `mode` | Ce que l'application fait |
+|---|---|
+| `off` | ne rien proposer — pas de case dans les réglages ; une case qui ne fait rien est pire que pas de case |
+| `optional` | proposer dans les réglages, **éteint par défaut** |
+| `required` | **exiger** la pose d'un verrou avant le premier écran, et ne pas offrir de le retirer |
+
+⚠️ **LE CODE SECRET EST TOUJOURS POSSIBLE, MÊME AVEC LA BIOMÉTRIE.** Un capteur
+cassé, un doigt mouillé, un visage dans le noir : sans code de secours, le
+verrou enferme dehors quelqu'un qui n'a rien fait. `biometrics: false` veut dire
+« code **seul** », jamais l'inverse.
+
+⚠️ **AU-DELÀ DE `max_attempts`, ON DÉCONNECTE — ON NE BLOQUE PAS.** Jetez le
+jeton de rafraîchissement (`POST /auth/logout`), effacez l'état local, revenez à
+l'écran de connexion. Un téléphone volé qui se *bloque* garde un jeton valide
+**trente jours** ; déconnecté, il ne garde rien. Et la personne légitime
+retrouve son compte avec un code à usage unique (client) ou son mot de passe.
+
+⚠️ **NE VERROUILLEZ JAMAIS UN APPEL DE COURSE NI UN BOUTON D'URGENCE.** Un appel
+dure trente secondes : derrière un code, c'est un appel manqué, et le chauffeur
+désactivera le verrou le jour même. Le verrou garde l'application, pas l'écran
+qui sonne.
+
+⚠️ **`grace_seconds` DÉCIDE SI LE VERROU SERA SUPPORTÉ OU CONTOURNÉ.** Compter
+depuis le passage en arrière-plan, pas depuis la dernière saisie : redemander le
+code parce que quelqu'un est allé lire le SMS de son opérateur fait désinstaller
+l'application. `0` existe et se choisit — pour un parc de téléphones partagés.
+
+⚠️ **CE QUE LE VERROU NE PROTÈGE PAS.** Il arrête l'ami curieux et le téléphone
+laissé sur une table. Il n'arrête pas qui extrait le stockage d'un appareil
+débridé : le jeton est là. Ce qui protège la donnée, c'est **le stockage
+sécurisé** (Keychain `AfterFirstUnlockThisDeviceOnly`, Keystore) et la durée de
+vie du jeton — jamais ce réglage.
+
+⚠️ **NE L'ENVOYEZ PAS AU SERVEUR, NE LE RANGEZ PAS EN CLAIR.** Le code ne quitte
+pas le téléphone ; il se dérive (PBKDF2, Argon2) avec un sel dans le stockage
+sécurisé, ou mieux, il déverrouille le trousseau du système. Le serveur ne le
+connaît pas, et ne doit pas le connaître : il n'aurait aucun moyen de le
+vérifier sans devenir le point de panne de l'ouverture de l'application.
+
+**La politique change sans reconnexion** : relisez-la à chaque réponse qui la
+porte (connexion, inscription, vérification de code, **rafraîchissement**) et
+appliquez-la à chaud. Un pays qui passe à `required` ne doit pas attendre
+l'expiration d'un jeton de trente jours.
+
+---
+
 ## 6. L'identité et l'argent — **PARTAGÉS** (socle, sans préfixe)
 
 C'est tout l'intérêt d'une application unifiée : **une** inscription, **un**
@@ -596,6 +665,17 @@ commande ou une course. Ne devinez pas le métier d'après la clé ; lisez
 | `429 rate_limited` | réessayer plus tard, sans boucler |
 | `422 validation_failed` | souligner `fields` |
 
+**La porte par code (§6 bis)**
+
+| Code | Geste |
+|---|---|
+| `401 otp_invalid` | « code incorrect » — garder la saisie |
+| `401 otp_expired` | « demandez un nouveau code » |
+| `401 otp_too_many_attempts` | le code est **mort** : revenir à l'écran du numéro |
+| `429 otp_too_soon` · `429 otp_too_many_requests` | « renvoyer » grisé jusqu'à `resend_after` ; au plafond horaire, proposer le support |
+| `503 otp_delivery_failed` | **rien n'a été consommé** : redemander tout de suite est légitime |
+| `403 otp_not_available` | ce compte se connecte par mot de passe — nommer l'application à ouvrir |
+
 **Le combiné (§8, §9)**
 
 | Code | Geste |
@@ -615,6 +695,8 @@ du métier.
 
 - [ ] **Quatre** bases configurées, et une vérification à la construction que chaque route part de la bonne.
 - [ ] `app: "client"` à la connexion ; `403 wrong_app` traité avec `error.reason`.
+- [ ] Porte par code : compte à rebours rendu depuis `expires_at`, « renvoyer » gouverné par `resend_after`, nom demandé **seulement** si `created: true`, `dev_code` jamais nécessaire au fonctionnement.
+- [ ] Verrou : `app_lock` relu à **chaque** réponse qui le porte (y compris le rafraîchissement) et appliqué à chaud ; code de secours toujours possible ; au-delà de `max_attempts`, **déconnexion** — jamais blocage.
 - [ ] `X-Dira-Country` sur **chaque** requête ; monnaie formatée depuis le pays de l'**opération**.
 - [ ] `X-Request-ID` affiché sur les écrans d'erreur et joint aux rapports.
 - [ ] Fond de carte : choix de la personne → pays où elle opère → `dira` ; la carte **renaît** au changement.

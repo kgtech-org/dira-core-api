@@ -257,6 +257,14 @@ a repository that does not serve a single ride route.
 > compte qui débite des portefeuilles. Un compte qui n'est pas `client` ne
 > reçoit aucun code.
 >
+> ⚠️ **LE VERROU DES APPLICATIONS se règle par PAYS** —
+> `GET · PUT /admin/countries/{code}/security` (`internal/country/security.go`),
+> servi aux applications dans `app_lock` à la connexion, à l'inscription, à la
+> vérification d'un code **et au rafraîchissement**, comme le fond de carte.
+> C'est une POLITIQUE, pas un contrôle d'accès : le verrou vit dans le
+> téléphone, le serveur ne peut ni le poser ni vérifier qu'il y est. Ce qui
+> protège une donnée reste le jeton en stockage sécurisé et sa durée de vie.
+>
 > ⚠️ **Un compte né par code n'a pas d'empreinte de mot de passe**, et
 > `POST /auth/login` lui répond `401 invalid_credentials` — jamais un code qui
 > dirait « ce compte se connecte autrement », ce qui révélerait quels numéros

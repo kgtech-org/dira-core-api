@@ -378,6 +378,7 @@ func (s *Service) VerifyOTP(ctx context.Context, req OTPVerifyRequest) (AuthResp
 		RefreshToken: pair.RefreshToken,
 		Session:      sessionResponse(u, deviceID, chased),
 		Maps:         s.basemap(ctx, u),
+		AppLock:      s.appLock(ctx, u),
 		Created:      created,
 	}, nil
 }

@@ -514,6 +514,75 @@ DELETE /me/addresses/{id}
 
 ---
 
+## 🔒 LE VERROU DE L'APPLICATION — `app_lock` (v4.46.0)
+
+Biométrie ou code secret devant l'application : qui ouvre le téléphone de
+quelqu'un n'ouvre pas pour autant son compte Dira. **Le verrou vit chez vous** —
+le serveur ne peut ni le poser, ni vérifier qu'il y est. Ce qu'il dit, c'est la
+**politique du pays**, réglée depuis la console :
+
+```jsonc
+// à la connexion, à l'inscription, à la vérification d'un code, au rafraîchissement
+"app_lock": {
+  "mode": "optional",      // "off" · "optional" · "required"
+  "biometrics": true,      // false = CODE SEUL
+  "pin_length": 4,         // 4 ou 6
+  "grace_seconds": 120,    // temps hors de l'app avant de redemander ; 0 = à chaque retour
+  "max_attempts": 5        // échecs avant DÉCONNEXION
+}
+```
+
+Et dans `GET /countries`, pour l'application qui change de pays sans se
+reconnecter.
+
+**Ce que chaque mode demande**
+
+| `mode` | Ce que l'application fait |
+|---|---|
+| `off` | ne rien proposer — pas de case dans les réglages ; une case qui ne fait rien est pire que pas de case |
+| `optional` | proposer dans les réglages, **éteint par défaut** |
+| `required` | **exiger** la pose d'un verrou avant le premier écran, et ne pas offrir de le retirer |
+
+⚠️ **LE CODE SECRET EST TOUJOURS POSSIBLE, MÊME AVEC LA BIOMÉTRIE.** Un capteur
+cassé, un doigt mouillé, un visage dans le noir : sans code de secours, le
+verrou enferme dehors quelqu'un qui n'a rien fait. `biometrics: false` veut dire
+« code **seul** », jamais l'inverse.
+
+⚠️ **AU-DELÀ DE `max_attempts`, ON DÉCONNECTE — ON NE BLOQUE PAS.** Jetez le
+jeton de rafraîchissement (`POST /auth/logout`), effacez l'état local, revenez à
+l'écran de connexion. Un téléphone volé qui se *bloque* garde un jeton valide
+**trente jours** ; déconnecté, il ne garde rien. Et la personne légitime
+retrouve son compte avec un code à usage unique (client) ou son mot de passe.
+
+⚠️ **NE VERROUILLEZ JAMAIS UN APPEL DE COURSE NI UN BOUTON D'URGENCE.** Un appel
+dure trente secondes : derrière un code, c'est un appel manqué, et le chauffeur
+désactivera le verrou le jour même. Le verrou garde l'application, pas l'écran
+qui sonne.
+
+⚠️ **`grace_seconds` DÉCIDE SI LE VERROU SERA SUPPORTÉ OU CONTOURNÉ.** Compter
+depuis le passage en arrière-plan, pas depuis la dernière saisie : redemander le
+code parce que quelqu'un est allé lire le SMS de son opérateur fait désinstaller
+l'application. `0` existe et se choisit — pour un parc de téléphones partagés.
+
+⚠️ **CE QUE LE VERROU NE PROTÈGE PAS.** Il arrête l'ami curieux et le téléphone
+laissé sur une table. Il n'arrête pas qui extrait le stockage d'un appareil
+débridé : le jeton est là. Ce qui protège la donnée, c'est **le stockage
+sécurisé** (Keychain `AfterFirstUnlockThisDeviceOnly`, Keystore) et la durée de
+vie du jeton — jamais ce réglage.
+
+⚠️ **NE L'ENVOYEZ PAS AU SERVEUR, NE LE RANGEZ PAS EN CLAIR.** Le code ne quitte
+pas le téléphone ; il se dérive (PBKDF2, Argon2) avec un sel dans le stockage
+sécurisé, ou mieux, il déverrouille le trousseau du système. Le serveur ne le
+connaît pas, et ne doit pas le connaître : il n'aurait aucun moyen de le
+vérifier sans devenir le point de panne de l'ouverture de l'application.
+
+**La politique change sans reconnexion** : relisez-la à chaque réponse qui la
+porte (connexion, inscription, vérification de code, **rafraîchissement**) et
+appliquez-la à chaud. Un pays qui passe à `required` ne doit pas attendre
+l'expiration d'un jeton de trente jours.
+
+---
+
 ## 3. Découverte
 
 ```
@@ -1553,6 +1622,11 @@ L'écran de portefeuille dérive ce chiffre du **panier moyen réel** du client.
 
 | Code | HTTP | Conduite |
 |---|---|---|
+| `401 otp_invalid` · `401 otp_expired` | code faux ou périmé — garder la saisie, ou proposer d'en redemander un |
+| `401 otp_too_many_attempts` | le code est **mort** : revenir à l'écran du numéro |
+| `429 otp_too_soon` · `429 otp_too_many_requests` | « renvoyer » grisé jusqu'à `resend_after` ; au plafond horaire, proposer le support |
+| `503 otp_delivery_failed` | rien n'a été consommé : redemander tout de suite est légitime |
+| `403 otp_not_available` | ce compte se connecte par mot de passe |
 | `missing_token` · `invalid_token` | 401 | refresh, puis déconnexion au second échec |
 | `invalid_credentials` | 401 | identifiants erronés |
 | `forbidden` | 403 | rôle insuffisant |

@@ -716,6 +716,94 @@ paths:
         "200": {description: "Le fond par défaut du pays : {basemap}"}
         "404": {description: country_unknown — not in the catalog}
         "422": {description: nothing to update — send basemap}
+  /admin/countries/{code}/security:
+    get:
+      tags: [admin, countries]
+      summary: The country's app-lock policy
+      description: >-
+        **Le VERROU des applications** — biométrie ou code secret devant
+        l'application. ⚠️ **C'est une POLITIQUE, pas un contrôle d'accès** : le
+        verrou vit dans le téléphone, le serveur ne peut ni le poser, ni
+        vérifier qu'il y est, ni savoir si l'appareil resté à la maison est
+        verrouillé. Ce réglage dit ce que les applications doivent **proposer**
+        ou **imposer** dans ce pays. Ne jamais faire reposer la protection
+        d'une donnée dessus : ce qui protège, c'est le jeton en stockage
+        sécurisé et sa durée de vie.
+
+
+        La réponse est toujours **complète** — tous les champs posés, aucun à
+        deviner : un pays jamais réglé rend les défauts (`optional`, biométrie
+        admise, code à 4 chiffres, 120 s de grâce, 5 essais).
+      parameters:
+        - {name: code, in: path, required: true, schema: {type: string, example: GN}}
+      responses:
+        "200":
+          description: App-lock policy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  app_lock:
+                    type: object
+                    properties:
+                      mode: {type: string, enum: [off, optional, required]}
+                      biometrics: {type: boolean}
+                      pin_length: {type: integer, enum: [4, 6]}
+                      grace_seconds: {type: integer}
+                      max_attempts: {type: integer}
+        "404": {description: country_unknown — not in the catalog}
+    put:
+      tags: [admin, countries]
+      summary: Set the country's app-lock policy
+      description: >-
+        Tout est facultatif : on change un champ sans réécrire les autres.
+
+
+        ⚠️ **`required` N'EST PAS ANODIN.** Quelqu'un dont le capteur est cassé
+        et qui oublie son code se retrouve dehors, et sa seule sortie est de se
+        reconnecter — c'est pour cela que le code secret reste **toujours**
+        possible à côté de la biométrie, et que les échecs **déconnectent** au
+        lieu de bloquer : un téléphone volé qui se bloque garde un jeton de
+        rafraîchissement valide trente jours ; déconnecté, il ne garde rien.
+
+
+        ⚠️ **`grace_seconds` décide si le verrou sera supporté ou contourné.**
+        Redemander à chaque retour d'arrière-plan — pour lire un SMS, pour
+        ouvrir une carte — fait désactiver le verrou ou désinstaller
+        l'application. Zéro reste possible, et se choisit pour un parc de
+        téléphones partagés.
+
+
+        La politique atteint les applications **avec le jeton** (`app_lock`
+        dans la réponse de connexion, d'inscription et de vérification de code)
+        **et au rafraîchissement** — sans quoi un pays qui vient d'imposer le
+        verrou n'atteindrait une application déjà connectée que trente jours
+        plus tard. `GET /countries` la porte aussi, pour l'application qui
+        change de pays sans se reconnecter.
+      parameters:
+        - {name: code, in: path, required: true, schema: {type: string, example: GN}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode: {type: string, enum: [off, optional, required]}
+                biometrics:
+                  type: boolean
+                  description: >-
+                    Faux = **code secret seul**. Le code reste toujours
+                    possible à côté de la biométrie : un capteur cassé ne doit
+                    enfermer personne dehors.
+                pin_length: {type: integer, enum: [4, 6]}
+                grace_seconds: {type: integer, minimum: 0, maximum: 3600}
+                max_attempts: {type: integer, minimum: 3, maximum: 10}
+      responses:
+        "200": {description: "La politique du pays, complète"}
+        "404": {description: country_unknown — not in the catalog}
+        "422": {description: nothing to update — send at least one field}
   /map-markers:
     get:
       tags: [map-markers]
