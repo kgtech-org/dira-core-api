@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.44.0** · 6 octobre 2026
+> **Version 4.45.0** · 7 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -85,7 +85,7 @@ ignorée** : c'est un bug de l'application) ou `invalid_json`.
 
 ⚠️ **L'ENVELOPPE NE REND QUE `code`, `message`, `fields` ET `reason` — il n'y a
 pas de `meta` sur le fil.** Quand un refus porte des chiffres (« ce trajet fait
-2 100 m, la course partagée commence à 5 000 m »), ils sont **dans la phrase**,
+2 100 m, la course partagée commence à 3 000 m »), ils sont **dans la phrase**,
 déjà traduite. Affichez-la telle quelle, ou recomposez-la depuis les réglages
 que vous avez déjà lus.
 

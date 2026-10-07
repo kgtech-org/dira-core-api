@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.44.0** · 6 octobre 2026
+> **Version 4.45.0** · 7 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -1349,7 +1349,7 @@ elle rappelle une voiture (`calling`). La réponse dit lequel.
 | Refus | Ce que vous affichez |
 |---|---|
 | `409 pool_off` | ne montrez pas le mode du tout (lisez `settings.pool.enabled`) |
-| `409 pool_too_short` | **la phrase du serveur, telle quelle** : « Ce trajet fait 2 100 m : la course partagée commence à 5 000 m » |
+| `409 pool_too_short` | **la phrase du serveur, telle quelle** : « Ce trajet fait 2 100 m : la course partagée commence à 3 000 m » |
 | `409 pool_direct_only` | « une course partagée va d'un point à un autre » — retirez les arrêts intermédiaires |
 | `409 pool_no_class` | aucune voiture ne le propose ici pour le moment |
 
@@ -1365,6 +1365,11 @@ n'arrive pas.
 donne tout pour le savoir avant d'appeler : `enabled`, et `min_distance_m` à
 comparer au `distance_m` du devis ordinaire. Un bouton qu'on refuse est pire
 qu'un bouton absent.
+
+⚠️ **N'ÉCRIVEZ JAMAIS LE MINIMUM EN DUR.** Il valait 5 km jusqu'à la v4.44.0,
+3 km depuis la v4.45.0, et **un pays peut régler autre chose** : « à partir de
+3 km » codé dans l'application mentirait chez le voisin. Lisez
+`min_distance_m`, et composez la phrase avec lui.
 
 ⚠️ **PAS D'ARRÊT INTERMÉDIAIRE.** Le partage n'accepte que **deux** étapes, un
 départ et une arrivée : l'itinéraire du groupe en contient déjà quatre, et une

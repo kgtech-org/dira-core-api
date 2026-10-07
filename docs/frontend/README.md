@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.44.0** · 6 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.45.0** · 7 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -321,6 +321,30 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 
 ## Journal
 
+### 4.45.0 — 7 octobre 2026
+
+📏 **LE TRAJET MINIMUM D'UNE COURSE PARTAGÉE PASSE À 3 km** par défaut
+(`settings.modes.pool.min_distance_m`, 5 km jusqu'à la v4.44.0).
+
+⚠️ **À 5 km, le mode ne se proposait presque jamais en ville** : la plupart des
+courses urbaines d'ici sont plus courtes, et un mode qui n'apparaît pas ne se
+vend pas. Trois kilomètres laissent encore de la place à une remise qui vaut le
+détour.
+
+⚠️ **C'est un DÉFAUT, pas une valeur en dur.** Lisez-le dans
+`GET /settings/modes?near= → pool.min_distance_m` et comparez-le au
+`distance_m` du devis ordinaire pour savoir si vous pouvez **proposer** le
+mode : un pays peut régler autre chose, et une application qui écrirait « à
+partir de 3 km » en dur mentirait chez le voisin. Le refus `pool_too_short`
+porte les deux nombres **dans sa phrase**, déjà traduite.
+
+🇹🇬 **La course partagée est ouverte au Togo** — la politique du pays l'était
+déjà, mais aucun véhicule ne la proposait, donc rien ne se vendait. Les trois
+classes togolaises l'offrent désormais. ⚠️ Rappel : **deux conditions, pas
+une** — le pays ouvre le mode (`settings.modes.pool.enabled`) **et** chaque
+voiture dit si elle le sert (`classes[].modes.pool`). Une clé `pool` présente
+dans `modes` veut dire que les deux sont vraies : vous n'avez pas à recouper.
+
 ### 4.44.0 — 6 octobre 2026
 
 💸 **LE PRIX D'UNE COURSE PARTAGÉE EST UNE *PART* DU TARIF ORDINAIRE** —
@@ -483,10 +507,11 @@ minutes.
 - **Refus du devis** : `pool_off`, `pool_too_short`, `pool_direct_only` (pas
   d'arrêt intermédiaire), `pool_no_class`. ⚠️ **Les chiffres sont DANS la
   phrase** — « Ce trajet fait 2 100 m : la course partagée commence à
-  5 000 m » —, pas dans un `meta` : l'enveloppe ne rend que `code`, `message`,
+  3 000 m » —, pas dans un `meta` : l'enveloppe ne rend que `code`, `message`,
   `fields` et `reason`, et c'est la règle depuis le début.
 - **Réglé par pays** (`GET /settings/modes → pool`) : 2,5 km entre les départs,
-  2,5 km entre les arrivées, 5 km de trajet minimum, 5 min de recherche, 2
+  2,5 km entre les arrivées, 3 km de trajet minimum (⚠️ 5 km jusqu'à la
+  v4.44.0 — voir la 4.45.0), 5 min de recherche, 2
   passagers. ⚠️ **Allumé par défaut**, contrairement aux deux autres modes : il
   n'ajoute qu'une option au passager, ne retire rien, et ne se déclenche que
   s'il la choisit.
@@ -509,7 +534,7 @@ un seul écran.
 
 ⚠️ **Passez `near` sur les DEUX routes, avec le point de départ.** C'était
 invisible jusqu'ici parce que les prix venaient du bon pays ; avec le partage,
-cela devenait faux à l'affichage — « à partir de 5 km » là où le pays d'accueil
+cela devenait faux à l'affichage — « à partir de 3 km » là où le pays d'accueil
 en demande trois. Un `near` illisible est **ignoré**, pas refusé.
 
 ### 4.41.0 — 30 septembre 2026
