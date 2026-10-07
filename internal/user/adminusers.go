@@ -28,6 +28,10 @@ type AdminUsers struct {
 	// defaultCountry : le pays d'un compte créé sans en-tête ni indicatif
 	// reconnu — le même défaut que l'inscription.
 	defaultCountry string
+	// erasure est le service des comptes : lui seul sait fermer et effacer,
+	// et il doit rester le SEUL chemin — deux façons d'effacer un compte
+	// auraient fini par en laisser une sans la purge des verticales.
+	erasure *Service
 }
 
 func NewAdminUsers(repo *Repository, wallets WalletCreator, auditor *audit.Recorder) *AdminUsers {
@@ -147,10 +151,24 @@ func (a *AdminUsers) Update(ctx context.Context, id string, req AdminUpdateUserR
 	return newUserResponse(u), nil
 }
 
-// Delete removes an account. Business records referencing the user (orders,
-// deliveries, wallets) are kept for accounting — ⚠️ retention policy to
-// validate with the team (a soft-delete may be preferable in production).
-func (a *AdminUsers) Delete(ctx context.Context, id string) error {
+// Delete ferme un compte et programme son effacement — il ne SUPPRIME plus la
+// ligne.
+//
+// ⚠️ IL LA SUPPRIMAIT, ET C'ÉTAIT UN DÉFAUT. Chaque course, commande, écriture
+// de portefeuille et entrée de grand livre porte un `user_id` : effacer la
+// ligne laissait des milliers de références vers un compte introuvable, un
+// journal comptable troué, et des écrans affichant « compte inconnu ». Le
+// commentaire qui tenait ici disait d'ailleurs que la politique restait « à
+// valider avec l'équipe » — elle l'est : on efface la PERSONNE, jamais
+// l'opération (voir `erasure.go`).
+//
+// ⚠️ ET LE JOURNAL D'AUDIT NE RECOPIE PLUS NI NOM NI TÉLÉPHONE. Il est conservé
+// sept ans : y inscrire l'identité à l'instant où on l'efface annulait
+// l'effacement, dans le seul endroit que personne ne pense à relire.
+//
+// `immediate` efface sans attendre le délai de grâce — pour une demande légale
+// ou un compte frauduleux, par quelqu'un qui a le grand livre sous les yeux.
+func (a *AdminUsers) Delete(ctx context.Context, id string, immediate bool) error {
 	oid, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return errUserNotFound.WithCause(err)
@@ -165,14 +183,17 @@ func (a *AdminUsers) Delete(ctx context.Context, id string) error {
 	if actorID, _ := auth.UserFromContext(ctx); actorID == id {
 		return apperr.Conflict("cannot_delete_self", "you cannot delete your own account")
 	}
-	if err := a.repo.DeleteUser(ctx, oid); err != nil {
-		return apperr.Internal(err)
+	if a.erasure == nil {
+		return apperr.New("erasure_unavailable",
+			"account erasure is not wired on this deployment", 503)
 	}
-	if a.auditor != nil {
-		a.auditor.Record(ctx, "user.delete", "user", id,
-			map[string]any{"role": u.Role, "phone": u.Phone, "name": u.Name}, nil)
+	if immediate {
+		return a.erasure.EraseNow(ctx, id)
 	}
-	return nil
+	if u.DeletionRequestedAt != nil {
+		return errAlreadyClosing
+	}
+	return a.erasure.closeAccount(ctx, u, "admin")
 }
 
 // Mount registers the admin account-management routes.
@@ -214,8 +235,15 @@ func (a *AdminUsers) update(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, resp)
 }
 
+// SetErasure branche le service des comptes — voir `erasure.go`.
+func (a *AdminUsers) SetErasure(s *Service) { a.erasure = s }
+
 func (a *AdminUsers) delete(w http.ResponseWriter, r *http.Request) {
-	if err := a.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
+	// `?immediate=true` saute le délai de grâce : demande légale, compte
+	// frauduleux. Jamais le défaut — une suppression immédiate ne se rattrape
+	// pas, et la plupart sont des erreurs de manipulation.
+	immediate := r.URL.Query().Get("immediate") == "true"
+	if err := a.Delete(r.Context(), chi.URLParam(r, "id"), immediate); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}

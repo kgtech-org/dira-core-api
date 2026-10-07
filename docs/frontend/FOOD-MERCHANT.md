@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 4.46.0** · 7 octobre 2026
+> **Version 4.47.0** · 7 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -419,6 +419,33 @@ lui, une réinstallation compte pour un appareil de plus et pousse dehors un
 autre de vos appareils. Avec lui, votre session précédente est simplement
 remplacée. Il doit **survivre aux redémarrages** et vivre aussi longtemps que le
 jeton de rafraîchissement, à côté de lui.
+
+---
+
+## 🗑️ SUPPRIMER UN COMPTE — pas depuis cette application (v4.47.0)
+
+`DELETE /me` existe au socle, mais il répond **`403 erasure_not_self_serve`** à
+un compte de marchand. **N'affichez pas de bouton « supprimer mon compte » qui mène à
+un refus** : mettez « **Fermer mon compte — écrire au support** ».
+
+⚠️ **POURQUOI CE COMPTE N'EST PAS LIBRE DE PARTIR.** Il porte des
+**versements**, parfois une **dette**, le produit de ses ventes en attente de retrait et un solde de jetons — et tout cela vit dans la
+verticale, pas dans le compte. Le support solde d'abord et supprime ensuite, le
+grand livre sous les yeux. Un bouton dans l'application laisserait une dette
+sans débiteur et des versements sans destinataire.
+
+⚠️ **CE QU'IL FAUT QUAND MÊME TRAITER : `403 account_closed`.** Quand le support
+ferme un compte, **les sessions tombent immédiatement** et la connexion le refuse
+ensuite — par mot de passe **comme par code**. Traitez-le comme une fin de
+session **définitive** : videz le jeton et le stockage sécurisé, fermez le socket des commandes, et
+affichez le message tel quel plutôt que de renvoyer vers « mot de passe
+oublié ». Ce n'est pas `account_suspended` : une suspension se lève, une
+fermeture ne se lève que par le support, et seulement pendant trente jours.
+
+⚠️ **TRENTE JOURS PLUS TARD, L'IDENTITÉ PART** : le nom devient « Compte
+supprimé » partout où les commandes passées le nommaient encore. Les commandes, elles,
+**restent** — ce sont des écritures comptables, avec leur prix, leur commission
+et leur date.
 
 ---
 
@@ -1147,6 +1174,8 @@ Inchangé depuis la v1.3.0, et toujours présent dans le prototype (`urgentCd: 3
 | `video_too_long` · `video_unreadable` | 422 | vidéo de feed > 60 s, ou conteneur illisible → réexporter en MP4 (H.264) |
 | `payload_too_large` | **413** | la passerelle : corps > 64 MiB — vérifier le poids **avant** d'envoyer |
 | `storage_unavailable` | 503 | le stockage de fichiers n'a pas démarré → réessayer, ne pas perdre la saisie |
+| `account_closed` | **403** | le support a **fermé** ce compte — fin de session définitive : vider le jeton, afficher le message tel quel |
+| `erasure_not_self_serve` | 403 | `DELETE /me` n'est pas pour un marchand → renvoyer vers le support |
 
 ---
 

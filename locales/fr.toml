@@ -369,3 +369,27 @@ other = "La vidéo est trop longue"
 
 [errors.video_unreadable]
 other = "La vidéo n'a pas pu être lue"
+
+# --- LA SUPPRESSION D'UN COMPTE (voir internal/user/erasure.go) ---
+# ⚠️ Ces phrases s'affichent devant quelqu'un qui vient de toucher « supprimer
+# mon compte », donc elles disent TOUJOURS la suite : vider son solde, écrire
+# au support, se réinscrire. « Opération impossible » laisserait sans recours
+# quelqu'un qui exerce un droit.
+
+[errors.account_closed]
+other = "Ce compte a été supprimé. Vous pouvez vous réinscrire avec ce même numéro, ou écrire au support si c'était une erreur."
+
+[errors.deletion_already_requested]
+other = "La suppression de ce compte est déjà demandée. Écrivez au support pour l'annuler."
+
+[errors.wallet_not_empty]
+other = "Ce compte détient encore de l'argent, des jetons ou une dette. Videz votre solde, ou demandez un remboursement au support avant de supprimer."
+
+[errors.erasure_not_self_serve]
+other = "Ce type de compte se supprime par le support, pas depuis l'application : il porte des versements et parfois une dette qu'il faut solder avant."
+
+[errors.account_already_erased]
+other = "Les données de ce compte sont déjà effacées : il ne peut plus être réactivé."
+
+[errors.erasure_unavailable]
+other = "La suppression de compte n'est pas disponible sur ce déploiement. Prévenez l'équipe technique."

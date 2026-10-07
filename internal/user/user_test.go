@@ -195,6 +195,50 @@ func (f *fakeUserRepo) userCount() int {
 	return len(f.users)
 }
 
+// mustFind rend la ligne d'un compte — y compris anonymisée : c'est tout
+// l'objet de la plupart des tests de suppression.
+func (f *fakeUserRepo) mustFind(t *testing.T, id string) *User {
+	t.Helper()
+	oid, err := primitive.ObjectIDFromHex(id)
+	require.NoError(t, err)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[oid]
+	require.True(t, ok, "le compte %s doit exister : la ligne ne se supprime jamais", id)
+	clone := *u
+	return &clone
+}
+
+// backdateClosure recule la date de demande, pour que le délai de grâce soit
+// écoulé sans attendre trente jours.
+func (f *fakeUserRepo) backdateClosure(t *testing.T, id string, by time.Duration) {
+	t.Helper()
+	oid, err := primitive.ObjectIDFromHex(id)
+	require.NoError(t, err)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[oid]
+	require.True(t, ok)
+	require.NotNil(t, u.DeletionRequestedAt, "le compte doit d'abord être fermé")
+	when := u.DeletionRequestedAt.Add(-by)
+	u.DeletionRequestedAt = &when
+}
+
+// forceClosureDate pose une date de demande ÉCHUE sur un compte quel que soit
+// son état — la base incohérente qu'aucun chemin ne produit, et dont le second
+// verrou de `erase` doit protéger.
+func (f *fakeUserRepo) forceClosureDate(t *testing.T, id string, at time.Time) {
+	t.Helper()
+	oid, err := primitive.ObjectIDFromHex(id)
+	require.NoError(t, err)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[oid]
+	require.True(t, ok)
+	when := at
+	u.DeletionRequestedAt = &when
+}
+
 func (f *fakeUserRepo) setStatus(t *testing.T, phone, status string) {
 	t.Helper()
 	f.mu.Lock()
@@ -666,6 +710,10 @@ func (f *fakeUserRepo) SetAccountStatus(_ context.Context, id, status string) (*
 	}
 	before := f.toRow(u)
 	u.Status = status
+	if status == StatusActive {
+		// Comme le vrai dépôt : réactiver ANNULE l'effacement programmé.
+		u.DeletionRequestedAt = nil
+	}
 	u.UpdatedAt = time.Now().UTC()
 	return &before, nil
 }
@@ -908,6 +956,75 @@ func (f *fakeUserRepo) TrimRefreshTokens(_ context.Context, userID primitive.Obj
 		}
 	}
 	return evicted, nil
+}
+
+// --- LA SUPPRESSION D'UN COMPTE (voir erasure.go) --------------------------
+
+func (f *fakeUserRepo) CloseAccount(_ context.Context, id primitive.ObjectID, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[id]
+	if !ok {
+		return nil
+	}
+	u.Status = StatusClosed
+	when := at
+	u.DeletionRequestedAt = &when
+	u.UpdatedAt = at
+	return nil
+}
+
+func (f *fakeUserRepo) AccountsDueForErasure(_ context.Context, before time.Time, limit int) ([]*User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if limit <= 0 {
+		limit = 100
+	}
+	var out []*User
+	for _, u := range f.users {
+		if u.DeletionRequestedAt == nil || u.AnonymisedAt != nil {
+			continue
+		}
+		if u.DeletionRequestedAt.After(before) {
+			continue
+		}
+		clone := *u
+		out = append(out, &clone)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeUserRepo) AnonymiseUser(_ context.Context, id primitive.ObjectID, scrambledPhone, name string, at time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	u, ok := f.users[id]
+	if !ok {
+		return nil
+	}
+	u.Phone = scrambledPhone
+	u.Name = name
+	u.Status = StatusClosed
+	u.PasswordHash = ""
+	u.Email, u.FirstName, u.LastName, u.AvatarURL, u.Gender = "", "", "", "", ""
+	u.BirthDate, u.Device, u.Preferences = nil, nil, nil
+	when := at
+	u.AnonymisedAt = &when
+	u.UpdatedAt = at
+	return nil
+}
+
+func (f *fakeUserRepo) DeleteAddressesOf(_ context.Context, userID primitive.ObjectID) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for id, a := range f.addresses {
+		if a.UserID == userID {
+			delete(f.addresses, id)
+		}
+	}
+	return nil
 }
 
 // fakePolicies : ce qu'un pays décide, en mémoire.

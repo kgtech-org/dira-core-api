@@ -27,7 +27,27 @@ const (
 	// c'était au prestataire de réessayer — on faisait porter à l'acheteur la
 	// latence de nos mises en production.
 	TypeRefPaid = "core:ref_paid"
+	// TypeAccountErased annonce aux VERTICALES qu'un compte vient d'être
+	// effacé, pour qu'elles purgent ce qu'elles seules détiennent de cette
+	// personne.
+	//
+	// ⚠️ EN FILE, et pas en appel direct, pour la raison inverse de
+	// `TypeRefPaid` : ici personne n'attend : l'effacement du socle est DÉJÀ
+	// fait et il ne sera pas défait. Si une verticale est en redéploiement au
+	// moment du balayage, un appel direct perdrait la purge pour toujours — et
+	// rien, nulle part, ne le dirait. La file garde le fait et le réessaie.
+	TypeAccountErased = "core:account_erased"
 )
+
+// AccountErasedPayload ne porte QUE l'identifiant.
+//
+// ⚠️ NI NOM NI TÉLÉPHONE, et c'est tout le sujet : cette charge vit dans Redis
+// et dans un journal de tâches qu'on garde des jours. Y recopier l'identité à
+// l'instant où on l'efface annulerait l'effacement, dans le seul endroit que
+// personne ne pense à relire.
+type AccountErasedPayload struct {
+	UserID string `json:"user_id"`
+}
 
 // RefPaidPayload porte de quoi rappeler la bonne verticale.
 //

@@ -44,6 +44,23 @@ var applicationIndexes = []db.Index{
 		Unique:        true,
 		PartialFilter: bson.D{{Key: "email", Value: bson.D{{Key: "$gt", Value: ""}}}},
 	},
+	// LES COMPTES À EFFACER — le balayage de la suppression (voir
+	// `internal/user/erasure.go`). Il tourne toutes les heures sur la
+	// collection la plus lue de la plateforme ; sans index, il la parcourt
+	// entièrement vingt-quatre fois par jour pour trouver, le plus souvent,
+	// zéro ligne.
+	//
+	// ⚠️ PARTIEL SUR `deletion_requested_at`, pas sur `anonymised_at`. Les
+	// comptes fermés sont une poignée face à des centaines de milliers de
+	// comptes actifs : un index complet aurait indexé toute la base pour
+	// servir une requête qui ne regarde qu'elle. Le second critère
+	// (`anonymised_at` absent) se filtre après, sur les quelques lignes que
+	// l'index rend.
+	{
+		Collection:    "users",
+		Keys:          db.K("deletion_requested_at", 1),
+		PartialFilter: bson.D{{Key: "deletion_requested_at", Value: bson.D{{Key: "$exists", Value: true}}}},
+	},
 	// LA PORTE PAR CODE — un seul code vivant par numéro (voir
 	// `internal/user/otp.go`). L'unicité n'est pas décorative : c'est elle
 	// qui fait qu'une demande REMPLACE la précédente au lieu d'empiler des

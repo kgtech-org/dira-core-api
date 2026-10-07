@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.46.0** · 7 octobre 2026
+> **Version 4.47.0** · 7 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -354,6 +354,77 @@ remboursement pour un paiement qui n'a jamais abouti.
 
 ---
 
+## 🗑️ 6 ter. SUPPRIMER SON COMPTE — et ce qui reste des courses passées (v4.47.0)
+
+```
+DELETE /me
+{ "password": "…" }      ← compte avec mot de passe
+{ "code": "483920" }     ← compte né par code (demandez-en un par POST /auth/otp)
+   → 200 { "status": "closed", "erase_at": "2026-11-06T18:40:00Z" }
+```
+
+C'est un **droit**, et l'écran qui le porte doit être trouvable depuis le
+profil — pas enterré derrière le support.
+
+**EN DEUX TEMPS, ET IL FAUT DIRE LES DEUX.**
+
+1. **Tout de suite** — le compte est **fermé**. Toutes les sessions tombent, sur
+   **tous** les appareils ; les notifications cessent ; la connexion répond
+   ensuite `403 account_closed`, par mot de passe **comme par code**. Videz le
+   jeton, le stockage sécurisé, les caches et les écrans, et revenez à la
+   connexion.
+2. **À `erase_at`** (trente jours plus tard par défaut) — l'**identité** part :
+   le nom devient « Compte supprimé », le téléphone est brouillé puis
+   **libéré**, l'e-mail, la photo, l'état civil, les préférences et le **carnet
+   d'adresses** sont effacés, la boîte de notifications est purgée, et les
+   messages écrits au chauffeur, au livreur ou au support sont jetés.
+
+⚠️ **LES COURSES ET LES COMMANDES PASSÉES RESTENT — dites-le AVANT le bouton,
+pas après.** Ce sont des **écritures comptables** : prix, commission, date, déjà
+déclarés dans une facturation par pays. Les effacer trouerait un journal en
+partie double. Mais elles ne **désignent plus personne** — aucun service ne
+stocke de nom ni de téléphone, il les demande au compte au moment d'afficher —,
+donc anonymiser le compte anonymise **tout** l'historique d'un seul coup,
+partout, console et support compris. Un écran qui promet « tout sera effacé »
+promet ce qui ne peut pas l'être, et c'est la réclamation qui suivra.
+
+⚠️ **AFFICHEZ `erase_at`.** « Votre compte est fermé. Vos données seront
+effacées le 6 novembre. » se comprend. « Compte supprimé » tout seul ne se
+comprend pas — et la première réclamation arrive le jour où la personne appelle
+le support, qui lit encore son nom à l'écran.
+
+⚠️ **IL FAUT PROUVER QUI ON EST**, et c'est tout le corps de la requête :
+`password` pour un compte qui en a un, `code` pour un compte né par code
+(demandez-en un par `POST /auth/otp` ; il est **consommé** ici). L'opération est
+irréversible depuis l'application : sans cette preuve, un téléphone déverrouillé
+posé sur une table suffirait à faire disparaître le compte de quelqu'un.
+
+⚠️ **VIDEZ LE PORTEFEUILLE D'ABORD.** Un solde, des jetons ou une **dette**
+font refuser `409 wallet_not_empty`, et `error.meta.reason` dit lequel
+(`money` · `tokens` · `debt`). On ne détruit pas de l'argent en silence :
+emmenez la personne vers son solde, ou vers le support pour un remboursement.
+
+⚠️ **PENDANT LES TRENTE JOURS, LE SUPPORT PEUT ANNULER.** C'est le seul recours
+de qui a touché le bouton par erreur, et c'est la raison même du délai : dites-le
+sur l'écran de confirmation, avec le moyen d'écrire au support. Se **réinscrire**
+avec le même numéro pendant ce délai répond `403 account_closed` — pas
+`phone_taken` : le numéro n'est rendu qu'à `erase_at`.
+
+⚠️ **NE SUPPRIMEZ JAMAIS AU PREMIER APPUI.** Un écran de conséquences (ce qui
+part, ce qui reste, la date), puis la preuve d'identité. Deux gestes pour une
+action qu'aucun bouton ne défera.
+
+| Refus | Quand | Ce que l'écran fait |
+|---|---|---|
+| `401 invalid_credentials` | mot de passe faux | souligner le champ, ne pas quitter l'écran |
+| `401 otp_invalid` · `401 otp_expired` | code faux ou périmé | redemander un code |
+| `409 wallet_not_empty` | solde, jetons ou dette (`meta.reason`) | envoyer vers le solde, ou le support |
+| `409 deletion_already_requested` | demande déjà en cours | afficher `erase_at` et proposer le support pour annuler |
+| `403 erasure_not_self_serve` | compte d'agent, de marchand ou de direction | renvoyer vers le support (il porte des versements à solder) |
+| `403 account_closed` | à la connexion, au rafraîchissement ou à l'inscription | « ce compte a été supprimé » + « se réinscrire » ou support |
+
+---
+
 ## 7. ⚠️ La navigation : un onglet par métier, et ce que ça change
 
 Trois décisions qui n'existaient pas quand il y avait deux applications :
@@ -687,6 +758,7 @@ commande ou une course. Ne devinez pas le métier d'après la clé ; lisez
 | `403 wrong_app` | `error.reason` nomme l'application à ouvrir |
 | `429 rate_limited` | réessayer plus tard, sans boucler |
 | `422 validation_failed` | souligner `fields` |
+| `403 account_closed` | ce compte a été **supprimé** — « se réinscrire », ou le support si c'est une erreur |
 
 **La porte par code (§6 bis)**
 
@@ -731,10 +803,24 @@ du métier.
 - [ ] Deux sockets distincts, cycles de vie séparés ; `GET` à chaque reconnexion.
 - [ ] Notifications routées sur `data.type` ; clé inconnue affichée sans ouvrir.
 - [ ] Un seul carnet d'adresses, un seul solde, une seule boîte.
+- [ ] Suppression de compte : écran de conséquences **avant** la preuve d'identité, `erase_at` affiché, « les courses et commandes passées restent » dit **avant** le bouton, `409 wallet_not_empty` renvoyé vers le solde, `403 account_closed` traité à la connexion **et** à l'inscription.
 
 ---
 
 ## 15. Journal
+
+### 4.47.0 — 7 octobre 2026
+
+🗑️ **SUPPRIMER SON COMPTE** — `DELETE /me` (§6 ter), en **deux temps** : le
+compte est **fermé** tout de suite (sessions coupées partout, `403
+account_closed` ensuite, par mot de passe **comme par code**) et son identité
+part à **`erase_at`**, trente jours plus tard. ⚠️ **Les courses et les commandes
+passées restent** — ce sont des écritures comptables — mais elles ne désignent
+plus personne : le nom devient « Compte supprimé » partout, d'un coup. ⚠️ Il
+faut **prouver qui on est** (`password` ou `code`), le portefeuille doit être
+**vide** (`409 wallet_not_empty`, `meta.reason`), et le numéro n'est **libéré**
+qu'à `erase_at` — se réinscrire avant répond `403 account_closed`, pas
+`phone_taken`. Pendant le délai, le support peut **annuler**.
 
 ### 4.46.0 — 7 octobre 2026
 

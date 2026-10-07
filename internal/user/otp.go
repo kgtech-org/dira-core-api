@@ -362,6 +362,14 @@ func (s *Service) VerifyOTP(ctx context.Context, req OTPVerifyRequest) (AuthResp
 		if u.Status == StatusSuspended {
 			return AuthResponse{}, errAccountSuspended
 		}
+		// ⚠️ ET LA PORTE DU CODE SE REFERME AUSSI SUR UN COMPTE FERMÉ. Sans
+		// cette ligne, elle était le trou de la suppression : le mot de passe
+		// refusait, mais un code à usage unique rouvrait le compte de
+		// quelqu'un qui venait d'en demander l'effacement — et son numéro
+		// reçoit encore les codes, puisqu'il ne sera libéré qu'à l'échéance.
+		if u.Status == StatusClosed {
+			return AuthResponse{}, errAccountClosed
+		}
 		if err := allowedInApp(req.App, u); err != nil {
 			return AuthResponse{}, err
 		}

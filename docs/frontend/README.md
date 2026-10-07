@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.46.0** · 7 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.47.0** · 7 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -255,6 +255,7 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] Auth : stockage sécurisé, refresh **sérialisé**, déconnexion au second échec
 - [ ] 🔑 **Porte par code** (v4.46.0, applications de CLIENT) : compte à rebours rendu depuis `expires_at`, bouton « renvoyer » gouverné par `resend_after`, nom demandé **seulement** si `created: true`, et l'écran fonctionne **sans** `dev_code` — il disparaîtra. Les applications d'agent et de marchand gardent `POST /auth/login` (`403 otp_not_available` sinon)
 - [ ] 📱 **Appareils** : `device_id` envoyé à la connexion **par toutes les applications** (il ne va pas dans le jeton d'un client, il reconnaît le même téléphone qui revient) ; un `401` au rafraîchissement se traite comme une session expirée, sans message d'erreur technique
+- [ ] 🗑️ **Suppression de compte** (v4.47.0) : `DELETE /me` dans les applications de **CLIENT** — écran de conséquences **avant** la preuve d'identité (`password` ou `code`), **`erase_at` affiché**, « les courses et les commandes passées restent, anonymes » dit **avant** le bouton, `409 wallet_not_empty` renvoyé vers le solde. Les applications d'**agent** et de **marchand** n'affichent **pas** de bouton (`403 erasure_not_self_serve`) mais mettent « écrire au support ». **Toutes** traitent `403 account_closed` comme une fin de session **définitive** — pas comme une suspension
 - [ ] 🔒 **Verrou de l'application** (v4.46.0) : `app_lock` relu à **chaque** réponse qui le porte, y compris le **rafraîchissement**, et appliqué à chaud ; code de secours toujours possible à côté de la biométrie ; au-delà de `max_attempts`, **déconnexion** (jamais blocage) ; **jamais de verrou sur un écran d'appel ni sur l'urgence**
 - [ ] Pagination par curseur générique (`items` / `next_cursor`)
 - [ ] Montants en **entiers** — aucun flottant, formatage XOF à l'affichage seulement
@@ -323,6 +324,52 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.47.0 — 7 octobre 2026
+
+🗑️ **SUPPRIMER SON COMPTE — `DELETE /me`, en DEUX TEMPS, et les opérations
+passées RESTENT.**
+
+1. **Tout de suite** : le compte est **fermé**. Les sessions tombent sur **tous**
+   les appareils, les notifications cessent, et la connexion répond ensuite
+   `403 account_closed` — par mot de passe **comme par code**.
+2. **À `erase_at`** (trente jours, réglable au déploiement) : l'**identité**
+   part. Nom → « Compte supprimé », téléphone brouillé puis **libéré**, e-mail,
+   photo, état civil, préférences et **carnet d'adresses** effacés, boîte de
+   notifications purgée, et les verticales prévenues pour jeter les messages de
+   conversation, les fils de support et les pièces de conformité.
+
+⚠️ **ON EFFACE LA PERSONNE, PAS L'OPÉRATION.** Une course et une commande sont
+des **écritures comptables** — prix, commission, date, déjà déclarés dans une
+facturation par pays : les effacer trouerait le journal en partie double. Elles
+ne **désignent plus personne**, et c'est le socle commun qui rend cela tenable :
+aucune verticale ne stocke de nom ni de téléphone (elles les demandent au
+compte au moment d'afficher), donc anonymiser le compte anonymise **tout**
+l'historique d'un seul coup, partout, console et support compris. Un écran mobile
+qui promet « tout sera effacé » promet ce qui ne peut pas l'être.
+
+⚠️ **IL FAUT PROUVER QUI ON EST** — `password`, ou `code` pour un compte né par
+code (demandé par `POST /auth/otp`, **consommé** ici). Irréversible depuis
+l'application : sans preuve, un téléphone déverrouillé posé sur une table
+suffirait.
+
+⚠️ **PORTEFEUILLE VIDE EXIGÉ** : `409 wallet_not_empty`, et `meta.reason` dit
+`money` · `tokens` · `debt`. On ne détruit pas de l'argent en silence — et une
+suppression n'efface pas une dette.
+
+⚠️ **CLIENTS SEULEMENT** : `403 erasure_not_self_serve` pour un chauffeur, un
+livreur, un marchand ou un compte de direction. Ils portent des versements et
+parfois une dette qui vivent dans la verticale ; le support solde d'abord, le
+grand livre sous les yeux.
+
+⚠️ **`account_closed` N'EST PAS `account_suspended`.** Une suspension se lève ;
+une fermeture ne se lève que par le support, et seulement pendant le délai de
+grâce. Le message dit « ce compte a été supprimé » et propose de se réinscrire —
+pas « mot de passe oublié ».
+
+⚠️ **LE NUMÉRO N'EST RENDU QU'À `erase_at`.** Se réinscrire avant répond
+`403 account_closed`, pas `phone_taken` : « ce numéro est déjà enregistré »
+aurait fait croire que la suppression n'avait pas marché.
 
 ### 4.46.0 — 7 octobre 2026
 

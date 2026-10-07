@@ -452,3 +452,24 @@ func (s *Service) Signal(ctx context.Context, userID string, data map[string]str
 	}
 	return sent, nil
 }
+
+// PurgeOf efface la boîte et les appareils d'un compte supprimé.
+//
+// AU MIEUX : l'identité est déjà partie quand on arrive ici, et un échec de
+// ménage ne doit pas faire échouer un effacement. Le journal le dit, et le
+// balayage repassera.
+func (s *Service) PurgeOf(ctx context.Context, userID string) {
+	oid, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return
+	}
+	if err := s.repo.ForgetUser(ctx, oid); err != nil {
+		slog.WarnContext(ctx, "notify: inbox and devices not purged", "user_id", userID, "error", err)
+	}
+}
+
+// ForgetAll est le même geste, sous le nom que le module des comptes attend
+// pour les APPAREILS. Les deux passent par la même suppression : séparer la
+// boîte des appareils aurait fait deux allers-retours pour une seule
+// disparition.
+func (s *Service) ForgetAll(ctx context.Context, userID string) { s.PurgeOf(ctx, userID) }

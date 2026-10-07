@@ -36,6 +36,9 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		g.Get("/me", h.me)
 		g.Patch("/me", h.updateMe)
 		g.Patch("/me/preferences", h.updatePreferences)
+		// SUPPRIMER SON COMPTE — voir `erasure.go`. Deux temps : la fermeture
+		// maintenant, l'effacement après le délai de grâce.
+		g.Delete("/me", h.deleteMe)
 		// Carnet d'adresses : le client répétait jusqu'ici son adresse et ses
 		// indications de porte à chaque commande.
 		g.Get("/me/addresses", h.listAddresses)
@@ -259,6 +262,24 @@ func callerID(r *http.Request) (string, error) {
 		return "", apperr.Unauthorized("missing_token", "missing bearer token")
 	}
 	return userID, nil
+}
+
+func (h *Handler) deleteMe(w http.ResponseWriter, r *http.Request) {
+	userID, _ := auth.UserFromContext(r.Context())
+	var req ErasureRequest
+	// Le corps peut être VIDE pour un compte sans mot de passe qui n'a pas
+	// encore demandé de code : le service répondra ce qu'il faut envoyer.
+	if r.ContentLength > 0 {
+		if err := httpx.Decode(r, &req); err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+	}
+	if err := h.svc.RequestErasure(r.Context(), userID, req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, h.svc.ErasureStatus(r.Context(), userID))
 }
 
 func (h *Handler) updatePreferences(w http.ResponseWriter, r *http.Request) {

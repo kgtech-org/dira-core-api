@@ -496,6 +496,43 @@ func run(logger *slog.Logger) error {
 	userSvc.SetAuditor(auditRec)
 	countrySvc.SetAuditor(auditRec)
 
+	// LA SUPPRESSION D'UN COMPTE — fermeture immédiate, effacement de
+	// l'identité après le délai de grâce. Voir `internal/user/erasure.go`.
+	//
+	// ⚠️ LE PORTEFEUILLE EST BRANCHÉ EN PREMIER, et il n'est pas facultatif en
+	// pratique : sans lui, un client supprimerait son compte avec son solde
+	// Dira Cash dedans, et cet argent serait détruit sans écriture.
+	userSvc.SetBalances(tokenSvc)
+	userSvc.SetInbox(notifySvc)
+	userSvc.SetPushDevices(notifySvc)
+	userSvc.SetErasureAnnouncer(erasureAnnouncer{client: asynqClient})
+	userSvc.SetErasureGrace(cfg.AccountErasureGrace)
+	// Le balayage qui efface ce qui est arrivé à terme. À cadence lente :
+	// personne n'attend à la minute un effacement prévu trente jours plus tôt.
+	//
+	// ⚠️ IL TOURNE SUR CHAQUE INSTANCE, et c'est sans danger : `erase` ne fait
+	// rien d'un compte déjà anonymisé, et la liste des comptes dus est bornée.
+	// Deux instances qui balaient en même temps font le même travail deux
+	// fois, pas deux fois le travail.
+	go func() {
+		t := time.NewTicker(cfg.AccountErasureSweep)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				tctx, cancel := context.WithTimeout(ctx, time.Minute)
+				if n, err := userSvc.EraseDue(tctx, 200); err != nil {
+					logger.Error("core: the erasure sweep failed — closed accounts keep their identity", "error", err)
+				} else if n > 0 {
+					logger.Info("core: accounts erased", "count", n)
+				}
+				cancel()
+			}
+		}
+	}()
+
 	router.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 			httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -519,6 +556,11 @@ func run(logger *slog.Logger) error {
 		// relecture, comme une route qui existe.
 		adminUsers := user.NewAdminUsers(userRepo, tokenSvc, auditRec)
 		adminUsers.SetDefaultCountry(cfg.CountryDefault)
+		// ⚠️ `DELETE /admin/users/{id}` NE DÉTRUIT PLUS LA LIGNE : il ferme le
+		// compte et programme l'effacement de l'identité, comme la demande de
+		// la personne elle-même. Détruire la ligne cassait toutes les courses
+		// et commandes qui la désignent — voir `internal/user/erasure.go`.
+		adminUsers.SetErasure(userSvc)
 		adminUsers.Mount(r, authMW)
 		// LE JOURNAL D'AUDIT de toute la plateforme, lu ici et nulle part
 		// ailleurs : les verticales y écrivent par la surface de service.
@@ -594,7 +636,9 @@ func run(logger *slog.Logger) error {
 		Logger:      asynqSlog{},
 	})
 	mux := asynq.NewServeMux()
-	mux.HandleFunc(jobs.TypeRefPaid, callback.NewWorker(verticals).HandleRefPaid)
+	cbWorker := callback.NewWorker(verticals)
+	mux.HandleFunc(jobs.TypeRefPaid, cbWorker.HandleRefPaid)
+	mux.HandleFunc(jobs.TypeAccountErased, cbWorker.HandleAccountErased)
 	if err := asynqSrv.Start(mux); err != nil {
 		logger.Error("core: payment callbacks will NOT be delivered — job queue unavailable",
 			"error", err, "hint", "check REDIS_URI")
@@ -749,6 +793,44 @@ func enqueueRefPaid(ctx context.Context, client *asynq.Client, purpose, refID, p
 		return fmt.Errorf("callback: enqueue ref-paid: %w", err)
 	}
 	return nil
+}
+
+// erasureAnnouncer met en file le fait qu'un compte est effacé, pour que
+// chaque verticale purge ce qu'elle seule détient.
+//
+// ⚠️ EN FILE, ET SANS JAMAIS FAIRE ÉCHOUER L'EFFACEMENT. Quand cette méthode
+// est appelée, l'identité est DÉJÀ partie du socle : rendre une erreur ne la
+// ramènerait pas, et refuser l'effacement parce qu'une file est indisponible
+// rendrait le droit à l'effacement dépendant de Redis.
+type erasureAnnouncer struct{ client *asynq.Client }
+
+func (a erasureAnnouncer) AccountErased(ctx context.Context, userID string) {
+	if a.client == nil {
+		slog.ErrorContext(ctx, "core: no job queue — the verticals will NOT purge this erased account",
+			"user_id", userID, "hint", "check REDIS_URI")
+		return
+	}
+	task, err := jobs.NewTask(jobs.TypeAccountErased, jobs.AccountErasedPayload{UserID: userID})
+	if err != nil {
+		slog.ErrorContext(ctx, "core: account-erased task not built", "user_id", userID, "error", err)
+		return
+	}
+	// ⚠️ L'identifiant de tâche est DÉRIVÉ DU COMPTE, et la reprise est
+	// longue : un compte effacé le reste, et la purge chez les verticales
+	// peut attendre la fin d'un redéploiement. Vingt-quatre heures de
+	// rétention pour pouvoir répondre, le lendemain, à « cette suppression
+	// a-t-elle bien été propagée ? ».
+	if _, err := a.client.EnqueueContext(ctx, task,
+		asynq.TaskID("account-erased:"+userID),
+		asynq.MaxRetry(20),
+		asynq.Retention(retainFailedCallbacks),
+	); err != nil {
+		if errors.Is(err, asynq.ErrTaskIDConflict) {
+			return
+		}
+		slog.ErrorContext(ctx, "core: account-erased not queued — the verticals keep what this person wrote",
+			"user_id", userID, "error", err)
+	}
 }
 
 // retainFailedCallbacks garde les tâches abouties assez longtemps pour qu'on

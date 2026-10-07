@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -191,6 +192,91 @@ func (r *Repository) DeleteRefreshTokensOfUser(ctx context.Context, userID primi
 		return 0, fmt.Errorf("user: delete refresh tokens of user: %w", err)
 	}
 	return res.DeletedCount, nil
+}
+
+// CloseAccount ferme un compte et date la demande — le premier des deux temps
+// de la suppression (voir `erasure.go`).
+func (r *Repository) CloseAccount(ctx context.Context, id primitive.ObjectID, at time.Time) error {
+	_, err := r.users.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": bson.M{
+		"status":                StatusClosed,
+		"deletion_requested_at": at,
+		"updated_at":            at,
+	}})
+	if err != nil {
+		return fmt.Errorf("user: close account: %w", err)
+	}
+	return nil
+}
+
+// AccountsDueForErasure rend les comptes fermés depuis plus longtemps que le
+// délai de grâce et pas encore anonymisés.
+func (r *Repository) AccountsDueForErasure(ctx context.Context, before time.Time, limit int) ([]*User, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	cur, err := r.users.Find(ctx, bson.M{
+		"deletion_requested_at": bson.M{"$lte": before},
+		"anonymised_at":         bson.M{"$exists": false},
+	}, options.Find().SetLimit(int64(limit)))
+	if err != nil {
+		return nil, fmt.Errorf("user: list accounts due for erasure: %w", err)
+	}
+	var out []*User
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, fmt.Errorf("user: read accounts due for erasure: %w", err)
+	}
+	return out, nil
+}
+
+// AnonymiseUser retire l'identité et garde la ligne — le second temps.
+//
+// ⚠️ LA LIGNE RESTE, et c'est tout le mécanisme : chaque course, commande,
+// écriture de portefeuille et entrée de grand livre porte un `user_id`. La
+// supprimer laisserait des milliers de références vers un compte introuvable,
+// et les écrans afficheraient « compte inconnu » là où il faut lire « compte
+// supprimé » — une donnée manquante et une donnée effacée ne se disent pas
+// pareil.
+//
+// Le téléphone est BROUILLÉ plutôt que vidé : l'index est unique, deux comptes
+// effacés au téléphone vide entreraient en collision — et le brouiller LIBÈRE
+// le numéro, que la personne peut réutiliser pour revenir.
+func (r *Repository) AnonymiseUser(ctx context.Context, id primitive.ObjectID, scrambledPhone, name string, at time.Time) error {
+	_, err := r.users.UpdateOne(ctx, bson.M{"_id": id}, bson.M{
+		"$set": bson.M{
+			"phone":         scrambledPhone,
+			"name":          name,
+			"status":        StatusClosed,
+			"anonymised_at": at,
+			"updated_at":    at,
+			"password_hash": "",
+		},
+		"$unset": bson.M{
+			"email":      "",
+			"first_name": "",
+			"last_name":  "",
+			"avatar_url": "",
+			"birth_date": "",
+			"gender":     "",
+			"device":     "",
+			// Les préférences — langue, thème, catégories coupées, sons.
+			// Elles ne nomment personne, mais ce sont ses choix, et une ligne
+			// anonyme n'a plus personne à servir.
+			"preferences": "",
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("user: anonymise: %w", err)
+	}
+	return nil
+}
+
+// DeleteAddressesOf efface le carnet d'adresses — « Maison », « Bureau » et
+// leurs coordonnées : la donnée la plus personnelle que le socle détienne.
+func (r *Repository) DeleteAddressesOf(ctx context.Context, userID primitive.ObjectID) error {
+	if _, err := r.addresses.DeleteMany(ctx, bson.M{"user_id": userID}); err != nil {
+		return fmt.Errorf("user: delete addresses: %w", err)
+	}
+	return nil
 }
 
 // TrimRefreshTokens garde les `max` sessions les plus récentes d'un compte et

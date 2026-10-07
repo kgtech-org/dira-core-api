@@ -267,6 +267,31 @@ type AuthResponse struct {
 	Created bool `json:"created,omitempty"`
 }
 
+// ErasureRequest demande la suppression de SON compte.
+//
+// ⚠️ ELLE REDEMANDE DE PROUVER QUI ON EST, et c'est le seul champ qu'elle
+// porte : l'opération est irréversible, et un téléphone déverrouillé posé sur
+// une table suffirait sinon à faire disparaître le compte de quelqu'un.
+type ErasureRequest struct {
+	// Password : pour un compte qui en a un.
+	Password string `json:"password,omitempty" validate:"omitempty,max=128"`
+	// Code : pour un compte né par code — il en redemande un
+	// (`POST /auth/otp`), et celui-ci est consommé.
+	Code string `json:"code,omitempty" validate:"omitempty,min=4,max=12"`
+}
+
+// ErasureResponse dit ce qui a été fait, et quand l'identité partira.
+type ErasureResponse struct {
+	// Status vaut `closed` : le compte ne se connecte plus dès maintenant.
+	Status string `json:"status"`
+	// EraseAt est la date à laquelle le nom, le téléphone et les adresses
+	// s'en vont. ⚠️ À AFFICHER : « votre compte est fermé, vos données seront
+	// effacées le 6 novembre » est une phrase qui se comprend ; « compte
+	// supprimé » suivi d'un historique encore lisible chez le support ne se
+	// comprend pas.
+	EraseAt time.Time `json:"erase_at"`
+}
+
 // OTPRequest demande un code à usage unique pour ce numéro.
 type OTPRequest struct {
 	Phone string `json:"phone" validate:"required,e164"`

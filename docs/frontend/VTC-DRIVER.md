@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.46.0** · 7 octobre 2026
+> **Version 4.47.0** · 7 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -409,6 +409,33 @@ a pris la place : « vous avez été déconnecté parce que vous vous êtes conn
 sur <appareil> ». Affichez cette phrase — avec `invalid_token`, la personne se
 reconnecte, chasse l'autre téléphone à son tour, et la bascule ne s'arrête
 jamais.
+
+---
+
+## 🗑️ SUPPRIMER UN COMPTE — pas depuis cette application (v4.47.0)
+
+`DELETE /me` existe au socle, mais il répond **`403 erasure_not_self_serve`** à
+un compte de chauffeur. **N'affichez pas de bouton « supprimer mon compte » qui mène à
+un refus** : mettez « **Fermer mon compte — écrire au support** ».
+
+⚠️ **POURQUOI CE COMPTE N'EST PAS LIBRE DE PARTIR.** Il porte des
+**versements**, parfois une **dette**, un historique de commissions en espèces et un matériel parfois en cours de remboursement — et tout cela vit dans la
+verticale, pas dans le compte. Le support solde d'abord et supprime ensuite, le
+grand livre sous les yeux. Un bouton dans l'application laisserait une dette
+sans débiteur et des versements sans destinataire.
+
+⚠️ **CE QU'IL FAUT QUAND MÊME TRAITER : `403 account_closed`.** Quand le support
+ferme un compte, **les sessions tombent immédiatement** et la connexion le refuse
+ensuite — par mot de passe **comme par code**. Traitez-le comme une fin de
+session **définitive** : videz le jeton et le stockage sécurisé, arrêtez l'émission de position, et
+affichez le message tel quel plutôt que de renvoyer vers « mot de passe
+oublié ». Ce n'est pas `account_suspended` : une suspension se lève, une
+fermeture ne se lève que par le support, et seulement pendant trente jours.
+
+⚠️ **TRENTE JOURS PLUS TARD, L'IDENTITÉ PART** : le nom devient « Compte
+supprimé » partout où les courses passées le nommaient encore. Les courses, elles,
+**restent** — ce sont des écritures comptables, avec leur prix, leur commission
+et leur date.
 
 ---
 

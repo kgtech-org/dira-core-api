@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kgtech-org/dira-core-api/internal/country"
+	"github.com/kgtech-org/dira-core-api/internal/user"
 	core "github.com/kgtech-org/dira-core-api/pkg/config"
 )
 
@@ -84,6 +85,24 @@ type Config struct {
 	// écriture comptable — la mise en service du journal. Un mouvement plus
 	// ancien sans écriture n'est pas un écart.
 	FinanceJournalSince time.Time
+
+	// AccountErasureGrace : le délai entre la FERMETURE d'un compte et
+	// l'EFFACEMENT de son identité. Trente jours par défaut.
+	//
+	// ⚠️ RÉGLABLE PARCE QUE C'EST UN ARBITRAGE JURIDIQUE, pas une constante
+	// technique : un pays peut exiger plus court, un contrat de licence plus
+	// long. On ne redéploie pas pour un délai.
+	//
+	// ⚠️ ET IL NE DOIT PAS ÊTRE MIS À ZÉRO EN PRODUCTION. C'est lui qui
+	// laisse une course en cours se terminer — le chauffeur voit encore le nom
+	// de qui est dans sa voiture — et qui laisse à une personne le temps
+	// d'écrire au support après avoir touché le bouton par erreur. Voir
+	// `internal/user/erasure.go`.
+	AccountErasureGrace time.Duration
+	// AccountErasureSweep : la cadence du balayage qui efface les comptes
+	// arrivés à terme. Une heure par défaut — personne n'attend à la minute un
+	// effacement prévu trente jours plus tôt.
+	AccountErasureSweep time.Duration
 }
 
 // Load reads the environment, applies defaults and validates.
@@ -124,6 +143,12 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if cfg.OTPMaxPerHour, err = core.Int("OTP_MAX_PER_HOUR", 5); err != nil {
+		return nil, err
+	}
+	if cfg.AccountErasureGrace, err = core.Duration("ACCOUNT_ERASURE_GRACE", user.DefaultErasureGrace); err != nil {
+		return nil, err
+	}
+	if cfg.AccountErasureSweep, err = core.Duration("ACCOUNT_ERASURE_SWEEP", time.Hour); err != nil {
 		return nil, err
 	}
 	switch cfg.OTPSender {

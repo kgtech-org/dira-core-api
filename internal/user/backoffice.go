@@ -255,10 +255,19 @@ func (r *Repository) SetAccountStatus(ctx context.Context, id, status string) (*
 	if err != nil {
 		return nil, errAccountNotFound.WithCause(err)
 	}
+	update := bson.M{"$set": bson.M{"status": status, "updated_at": time.Now().UTC()}}
+	if status == StatusActive {
+		// ⚠️ RÉACTIVER UN COMPTE FERMÉ ANNULE SON EFFACEMENT. Sans cette
+		// ligne, le compte redevenait actif en gardant sa date de demande :
+		// il se reconnectait, commandait, et le balayage effaçait son
+		// identité trois semaines plus tard, sans que personne ne comprenne
+		// pourquoi un client actif venait de perdre son nom.
+		update["$unset"] = bson.M{"deletion_requested_at": ""}
+	}
 	var before AccountRow
 	err = r.users.FindOneAndUpdate(ctx,
 		bson.M{"_id": oid},
-		bson.M{"$set": bson.M{"status": status, "updated_at": time.Now().UTC()}},
+		update,
 		options.FindOneAndUpdate().SetReturnDocument(options.Before),
 	).Decode(&before)
 	if err != nil {

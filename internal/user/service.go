@@ -41,6 +41,13 @@ type Repo interface {
 	// compte, réclamée par les verticales — voir `agentapp.go`.
 	SetAgentApp(ctx context.Context, userID primitive.ObjectID, app string) error
 
+	// LA SUPPRESSION D'UN COMPTE — fermer, lister ce qui est dû, anonymiser,
+	// et le carnet d'adresses qui part avec. Voir `erasure.go`.
+	CloseAccount(ctx context.Context, id primitive.ObjectID, at time.Time) error
+	AccountsDueForErasure(ctx context.Context, before time.Time, limit int) ([]*User, error)
+	AnonymiseUser(ctx context.Context, id primitive.ObjectID, scrambledPhone, name string, at time.Time) error
+	DeleteAddressesOf(ctx context.Context, userID primitive.ObjectID) error
+
 	// COMBIEN D'APPAREILS — les sessions en trop, la plus silencieuse
 	// d'abord. Voir `devices.go`.
 	TrimRefreshTokens(ctx context.Context, userID primitive.ObjectID, keepHash, deviceID string, max int) (int, error)
@@ -123,6 +130,13 @@ type Service struct {
 	// CE QUE LE PAYS DÉCIDE pour les applications : le verrou (servi avec le
 	// jeton) et le nombre d'appareils d'un compte. FACULTATIF.
 	policies CountryPolicies
+	// LA SUPPRESSION D'UN COMPTE — voir `erasure.go`. Les quatre sont
+	// FACULTATIFS : aucun ne doit empêcher quelqu'un de se connecter.
+	balances     Balances
+	inbox        Inbox
+	devices      PushDevices
+	erasure      ErasureAnnouncer
+	erasureGrace time.Duration
 }
 
 // Entitlements est ce qu'une fiche de staff accorde à un compte `admin`.
@@ -221,6 +235,18 @@ func (s *Service) register(ctx context.Context, req RegisterRequest, role string
 	}
 	if err := s.repo.CreateUser(ctx, u); err != nil {
 		if errors.Is(err, ErrDuplicatePhone) {
+			// ⚠️ « CE NUMÉRO EST DÉJÀ ENREGISTRÉ » EST FAUX QUAND IL VIENT
+			// D'ÊTRE SUPPRIMÉ. Pendant le délai de grâce, le numéro reste pris
+			// par le compte fermé — pour que le support puisse encore le
+			// rendre. Quelqu'un qui a supprimé son compte hier et réessaie
+			// aujourd'hui lirait « déjà enregistré », chercherait son mot de
+			// passe, et conclurait que la suppression n'a pas marché. Une
+			// lecture de plus, sur un chemin rare, pour dire ce qui s'est
+			// vraiment passé.
+			if existing, ferr := s.repo.FindByPhone(ctx, phoneNumber); ferr == nil &&
+				existing != nil && existing.Status == StatusClosed {
+				return AuthResponse{}, errAccountClosed
+			}
 			return AuthResponse{}, errPhoneTaken
 		}
 		return AuthResponse{}, apperr.Internal(err)
@@ -319,6 +345,13 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 	}
 	if u.Status == StatusSuspended {
 		return AuthResponse{}, errAccountSuspended
+	}
+	// ⚠️ UN CODE À LUI, PAS `account_suspended`. « Votre compte est
+	// suspendu » envoie écrire au support pour faire lever une sanction qui
+	// n'existe pas ; « ce compte a été supprimé » dit ce qui s'est passé, et
+	// que s'inscrire à neuf est la suite normale.
+	if u.Status == StatusClosed {
+		return AuthResponse{}, errAccountClosed
 	}
 	// ⚠️ LA BONNE APPLICATION. Le mot de passe est juste — mais un compte
 	// client n'a rien à faire dans l'application chauffeur, et l'y laisser
@@ -488,6 +521,11 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, platform string) (T
 	}
 	if u.Status == StatusSuspended {
 		return TokenPairResponse{}, errAccountSuspended
+	}
+	// Les sessions d'un compte fermé sont déjà tombées ; cette ligne tient la
+	// porte si l'une d'elles a survécu à un ménage raté — voir `erasure.go`.
+	if u.Status == StatusClosed {
+		return TokenPairResponse{}, errAccountClosed
 	}
 	// UN SEUL APPAREIL PAR CHAUFFEUR : la porte DURABLE de la règle, celle qui
 	// tient même quand le registre Redis a été vidé.
@@ -1127,11 +1165,31 @@ func (s *Service) AccountsByIDs(ctx context.Context, ids []string) ([]AccountRow
 // localement, sans appeler le socle. C'est le prix assumé de cette
 // vérification locale — voir le commentaire de `pkg/auth`. Le rafraîchissement
 // est refusé, donc la porte se referme au plus tard à l'expiration.
+// ⚠️ ET « FERMÉ » NE S'ÉCRIT PAS D'ICI. Une fermeture n'est pas une sanction
+// que l'exploitation prononce : c'est une demande de suppression, elle traîne
+// un délai de grâce, une purge chez les verticales et un effacement
+// d'identité. Elle passe par `DELETE /admin/users/{id}` — voir `erasure.go`.
+// Réactiver un compte fermé, en revanche, se fait d'ici : c'est à cela que
+// sert le délai de grâce, et c'est le seul recours de quelqu'un qui a touché
+// le bouton par erreur.
 func (s *Service) SetAccountStatus(ctx context.Context, id, status string) (*AccountRow, error) {
 	switch status {
 	case StatusActive, StatusSuspended:
 	default:
 		return nil, apperr.Validation("status must be active or suspended")
+	}
+	if status == StatusActive {
+		// Un compte dont l'identité est DÉJÀ partie ne se rouvre pas : il n'y
+		// a plus de nom, plus de téléphone, plus de mot de passe. Répondre
+		// « réactivé » rendrait une coquille vide que personne ne pourrait
+		// ouvrir, et laisserait croire que la suppression s'annule toujours.
+		u, err := s.findUser(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if u.AnonymisedAt != nil {
+			return nil, errAlreadyErased
+		}
 	}
 	return s.repo.SetAccountStatus(ctx, id, status)
 }

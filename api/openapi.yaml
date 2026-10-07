@@ -551,6 +551,79 @@ paths:
       summary: Update own profile
       responses:
         "200": {description: Profile}
+    delete:
+      tags: [users]
+      summary: "Supprimer son compte (v4.47.0)"
+      description: >-
+        RGPD, en DEUX TEMPS. Le compte est FERMÉ immédiatement — sessions
+        coupées sur tous les appareils, notifications arrêtées, connexion
+        refusée ensuite (403 `account_closed`, par mot de passe comme par
+        code) — et son IDENTITÉ part à l'échéance du délai de grâce, rendu dans
+        `erase_at` : le nom devient « Compte supprimé », le téléphone est
+        brouillé puis LIBÉRÉ (on peut se réinscrire avec le même numéro),
+        l'e-mail, la photo, l'état civil, les préférences et le carnet
+        d'adresses s'en vont, la boîte de notifications est purgée, et les
+        verticales sont prévenues pour jeter ce qu'elles seules détiennent
+        (messages de conversation, fils de support, pièces de conformité).
+
+
+        ⚠️ LES COURSES ET LES COMMANDES PASSÉES RESTENT, et c'est volontaire :
+        ce sont des écritures COMPTABLES — prix, commission, date. Les effacer
+        trouerait le journal en partie double et retirerait d'une facturation
+        déjà déclarée des montants réels. Elles ne désignent plus personne :
+        aucune verticale ne stocke de nom ni de téléphone, donc anonymiser le
+        compte anonymise tout l'historique, partout, console comprise.
+
+
+        ⚠️ IL FAUT PROUVER QUI ON EST — `password`, ou `code` pour un compte né
+        par code (demandez-en un par `POST /auth/otp`, il est consommé ici).
+        L'opération est irréversible : sans cette preuve, un téléphone
+        déverrouillé posé sur une table suffirait à faire disparaître le compte
+        de quelqu'un.
+
+
+        ⚠️ AFFICHEZ `erase_at`. « Votre compte est fermé, vos données seront
+        effacées le 6 novembre » se comprend ; « compte supprimé » suivi d'un
+        historique encore lisible chez le support ne se comprend pas. Pendant
+        ce délai, le support peut ANNULER la suppression — c'est le seul
+        recours de quelqu'un qui a touché le bouton par erreur.
+
+
+        ⚠️ CLIENTS SEULEMENT (403 `erasure_not_self_serve`). Un chauffeur, un
+        livreur ou un marchand porte des versements et parfois une dette qui
+        vivent dans la verticale, et un compte de staff n'est pas à soi : pour
+        eux, la suppression passe par le support, qui a le grand livre sous les
+        yeux avant de décider.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password: {type: string, description: Pour un compte qui en a un}
+                code:
+                  type: string
+                  description: >-
+                    Pour un compte né par code — les six chiffres d'un
+                    `POST /auth/otp`, consommés ici.
+      responses:
+        "200":
+          description: Closed, erasure scheduled
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, erase_at]
+                properties:
+                  status: {type: string, enum: [closed]}
+                  erase_at:
+                    type: string
+                    format: date-time
+                    description: Quand le nom, le téléphone et les adresses s'en vont.
+        "401": {description: invalid_credentials}
+        "403": {description: erasure_not_self_serve}
+        "409": {description: wallet_not_empty, deletion_already_requested}
+        "422": {description: otp_invalid, ou aucune preuve fournie}
   /countries:
     get:
       tags: [countries]
@@ -2065,17 +2138,50 @@ paths:
         "404": {description: user_not_found}
     delete:
       tags: [admin]
-      summary: Delete an account
+      summary: "Fermer un compte et programmer l'effacement de son identité (v4.47.0)"
       description: >-
-        Définitif. Les écritures qui le citent — commandes, courses,
-        portefeuilles — restent pour la comptabilité. On ne se supprime pas
-        soi-même (409 `cannot_delete_self`) ; suspendre est le geste
-        réversible qui répond au même besoin.
-      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+        ⚠️ NE SUPPRIME PLUS LA LIGNE. Elle était détruite jusqu'ici, et c'était
+        un défaut : chaque course, commande, écriture de portefeuille et entrée
+        de grand livre porte un `user_id`, et les détruire laissait des
+        milliers de références vers un compte introuvable.
+
+
+        Le compte est FERMÉ tout de suite — sessions coupées, notifications
+        arrêtées, connexion refusée (403 `account_closed`) — puis son IDENTITÉ
+        part à l'échéance du délai de grâce (trente jours,
+        `ACCOUNT_ERASURE_GRACE`) : le nom devient « Compte supprimé », le
+        téléphone est brouillé et libéré, l'e-mail, la photo, l'état civil et
+        le carnet d'adresses s'en vont, et les verticales sont prévenues pour
+        purger ce qu'elles seules détiennent.
+
+
+        Les OPÉRATIONS restent intactes — prix, commission, date — et comme
+        aucune verticale ne stocke de nom ni de téléphone, toutes les courses
+        et commandes passées deviennent anonymes du même coup.
+
+
+        Pendant le délai, `PATCH /admin/users/{id}/status` à `active` ANNULE
+        l'effacement : c'est le recours de quelqu'un qui a touché le bouton par
+        erreur. Après, c'est 409 `account_already_erased`.
+
+
+        Refus : 409 `cannot_delete_self`, 409 `wallet_not_empty` (solde, jetons
+        ou dette — on ne détruit pas de l'argent en silence), 409
+        `deletion_already_requested`.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - name: immediate
+          in: query
+          schema: {type: boolean}
+          description: >-
+            `true` efface SANS attendre le délai de grâce — demande légale,
+            compte frauduleux. Jamais le défaut : une suppression immédiate ne
+            se rattrape pas.
       responses:
-        "204": {description: Deleted}
+        "204": {description: Closed, erasure scheduled}
         "404": {description: user_not_found}
-        "409": {description: cannot_delete_self}
+        "409": {description: cannot_delete_self, wallet_not_empty, deletion_already_requested}
+        "503": {description: erasure_unavailable}
   /admin/users/{id}/status:
     patch:
       tags: [admin]
@@ -2086,6 +2192,14 @@ paths:
         cours : les verticales vérifient le jeton localement, sans appeler le
         socle. Le rafraîchissement est refusé, donc la porte se referme au plus
         tard à l'expiration de l'accès.
+
+
+        ⚠️ `closed` NE S'ÉCRIT PAS D'ICI (422) : une fermeture n'est pas une
+        sanction, c'est une demande de suppression — elle passe par
+        `DELETE /admin/users/{id}`. En revanche `active` sur un compte fermé
+        ANNULE son effacement programmé : c'est à cela que sert le délai de
+        grâce. Un compte déjà effacé, lui, ne se rouvre pas
+        (409 `account_already_erased`).
       parameters: [{name: id, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Previous state and new status}
