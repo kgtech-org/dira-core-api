@@ -107,7 +107,7 @@ func (w *Worker) HandleAccountErased(ctx context.Context, t *asynq.Task) error {
 	}
 	var failed []string
 	for _, v := range targets {
-		if err := v.AccountErased(ctx, p.UserID); err != nil {
+		if err := v.AccountErased(ctx, p.UserID, p.Phone); err != nil {
 			retried, _ := asynq.GetRetryCount(ctx)
 			slog.WarnContext(ctx, "callback: vertical did not purge the erased account, will retry",
 				"target", v.Target(), "user_id", p.UserID, "attempt", retried+1, "error", err)

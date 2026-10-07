@@ -48,8 +48,27 @@ type Purge struct {
 	Run  func(ctx context.Context, userID primitive.ObjectID) (int64, error)
 }
 
+// ByPhone est un module qui ne connaît PAS les comptes : il classe ce qu'il
+// détient par NUMÉRO DE TÉLÉPHONE.
+//
+// ⚠️ IL EN EXISTE, et c'est pour eux que l'annonce porte un numéro : la
+// conversation du robot WhatsApp garde le numéro de la personne et tout ce
+// qu'elle a écrit pour commander, sans jamais nommer de compte. Purger « par
+// identifiant » ne l'atteindrait pas, et elle resterait là pour toujours.
+//
+// Séparé de `Purge` plutôt que fondu dedans : une purge qui reçoit les deux
+// clés et choisit laquelle utiliser laisserait, au premier module ajouté, un
+// doute sur ce qu'elle a vraiment filtré.
+type ByPhone struct {
+	Name string
+	Run  func(ctx context.Context, phone string) (int64, error)
+}
+
 // Handler sert `POST /internal/accounts/erased`.
-type Handler struct{ purges []Purge }
+type Handler struct {
+	purges  []Purge
+	byPhone []ByPhone
+}
 
 // NewHandler branche les modules à purger, dans l'ordre où ils seront appelés.
 func NewHandler(purges ...Purge) *Handler {
@@ -60,6 +79,16 @@ func NewHandler(purges ...Purge) *Handler {
 		}
 	}
 	return &Handler{purges: kept}
+}
+
+// AlsoByPhone ajoute les modules qui classent par NUMÉRO — voir `ByPhone`.
+func (h *Handler) AlsoByPhone(purges ...ByPhone) *Handler {
+	for _, p := range purges {
+		if p.Run != nil && p.Name != "" {
+			h.byPhone = append(h.byPhone, p)
+		}
+	}
+	return h
 }
 
 // Mount enregistre la route derrière le secret de SERVICE.
@@ -88,6 +117,10 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 func (h *Handler) erased(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		UserID string `json:"user_id" validate:"required,len=24,hexadecimal"`
+		// Phone : le numéro TEL QU'IL ÉTAIT, pour les modules qui classent
+		// dessus. Facultatif — un socle d'avant le champ ne l'envoie pas, et
+		// une purge par numéro doit alors ne rien faire plutôt que de deviner.
+		Phone string `json:"phone"`
 	}
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
@@ -98,7 +131,7 @@ func (h *Handler) erased(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, apperr.Validation("user_id must be an object id").WithCause(err))
 		return
 	}
-	if len(h.purges) == 0 {
+	if len(h.purges) == 0 && len(h.byPhone) == 0 {
 		// ⚠️ UN CRI, PAS UN SILENCE. Une porte montée sans rien derrière
 		// répondrait « c'est fait » à chaque effacement, et la file du socle
 		// marquerait l'annonce comme livrée.
@@ -118,6 +151,30 @@ func (h *Handler) erased(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		fields = append(fields, p.Name, n)
+	}
+	// Les modules qui classent par NUMÉRO.
+	//
+	// ⚠️ UN NUMÉRO ABSENT N'EST PAS UN ÉCHEC, mais il se DIT : un socle d'avant
+	// le champ laisse ces traces en place, et c'est le journal — pas une file
+	// en échec — qui doit permettre de s'en apercevoir.
+	if len(h.byPhone) > 0 {
+		if req.Phone == "" {
+			names := make([]string, 0, len(h.byPhone))
+			for _, p := range h.byPhone {
+				names = append(names, p.Name)
+			}
+			slog.ErrorContext(r.Context(), "erasure: no phone in the announcement — what is filed under it stays",
+				"user_id", req.UserID, "left", names)
+		} else {
+			for _, p := range h.byPhone {
+				n, err := p.Run(r.Context(), req.Phone)
+				if err != nil {
+					failures = append(failures, fmt.Errorf("%s: %w", p.Name, err))
+					continue
+				}
+				fields = append(fields, p.Name, n)
+			}
+		}
 	}
 	if len(failures) > 0 {
 		slog.ErrorContext(r.Context(), "erasure: part of an erased account survived here, the core will retry",

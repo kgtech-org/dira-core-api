@@ -817,26 +817,31 @@ func enqueueRefPaid(ctx context.Context, client *asynq.Client, purpose, refID, p
 // rendrait le droit à l'effacement dépendant de Redis.
 type erasureAnnouncer struct{ client *asynq.Client }
 
-func (a erasureAnnouncer) AccountErased(ctx context.Context, userID string) {
+func (a erasureAnnouncer) AccountErased(ctx context.Context, userID, phone string) {
 	if a.client == nil {
 		slog.ErrorContext(ctx, "core: no job queue — the verticals will NOT purge this erased account",
 			"user_id", userID, "hint", "check REDIS_URI")
 		return
 	}
-	task, err := jobs.NewTask(jobs.TypeAccountErased, jobs.AccountErasedPayload{UserID: userID})
+	task, err := jobs.NewTask(jobs.TypeAccountErased,
+		jobs.AccountErasedPayload{UserID: userID, Phone: phone})
 	if err != nil {
 		slog.ErrorContext(ctx, "core: account-erased task not built", "user_id", userID, "error", err)
 		return
 	}
 	// ⚠️ L'identifiant de tâche est DÉRIVÉ DU COMPTE, et la reprise est
-	// longue : un compte effacé le reste, et la purge chez les verticales
-	// peut attendre la fin d'un redéploiement. Vingt-quatre heures de
-	// rétention pour pouvoir répondre, le lendemain, à « cette suppression
-	// a-t-elle bien été propagée ? ».
+	// longue : un compte effacé le reste, et la purge chez les verticales peut
+	// attendre la fin d'un redéploiement.
+	//
+	// ⚠️ MAIS LA RÉTENTION EST COURTE — une heure, pas les 72 h des autres
+	// annonces. Cette charge porte un NUMÉRO DE TÉLÉPHONE, parce qu'une
+	// verticale garde des traces classées dessus ; le laisser dormir trois
+	// jours dans Redis après avoir promis de l'effacer serait contredire la
+	// promesse dans la file qui l'exécute.
 	if _, err := a.client.EnqueueContext(ctx, task,
 		asynq.TaskID("account-erased:"+userID),
 		asynq.MaxRetry(20),
-		asynq.Retention(retainFailedCallbacks),
+		asynq.Retention(jobs.AccountErasedRetention),
 	); err != nil {
 		if errors.Is(err, asynq.ErrTaskIDConflict) {
 			return

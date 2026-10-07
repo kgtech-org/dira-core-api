@@ -189,9 +189,15 @@ func (c *Client) RefPaid(ctx context.Context, purpose, refID, paymentID string) 
 // (`UserNames`/`ContactOf`). Ses courses et ses commandes sont donc déjà
 // anonymes. Ce qu'on lui demande ici, c'est de jeter le TEXTE écrit par la
 // personne, que le socle ne connaît pas.
-func (c *Client) AccountErased(ctx context.Context, userID string) error {
+// ⚠️ LE TÉLÉPHONE PART AVEC, et c'est le seul moment où il le fait. Une
+// verticale garde des traces classées par NUMÉRO et non par compte — la
+// conversation du robot WhatsApp porte le numéro de la personne et tout ce
+// qu'elle a écrit pour commander. Sans lui, elles resteraient là pour toujours
+// et rien ne dirait comment les retrouver : l'identifiant de compte n'y
+// apparaît pas.
+func (c *Client) AccountErased(ctx context.Context, userID, phone string) error {
 	return c.post(ctx, "/api/v1/internal/accounts/erased", map[string]string{
-		"user_id": userID,
+		"user_id": userID, "phone": phone,
 	})
 }
 

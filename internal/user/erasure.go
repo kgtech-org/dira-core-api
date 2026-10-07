@@ -102,7 +102,14 @@ func (s *Service) SetBalances(b Balances) { s.balances = b }
 // déjà partie ; ce qui reste chez les verticales est du texte écrit par la
 // personne, qu'une relance effacera.
 type ErasureAnnouncer interface {
-	AccountErased(ctx context.Context, userID string)
+	// ⚠️ LE TÉLÉPHONE PART AVEC, et c'est un arbitrage, pas une facilité :
+	// une verticale garde des traces classées par NUMÉRO et non par compte —
+	// la conversation du robot WhatsApp, qui porte le numéro et tout ce que la
+	// personne a écrit pour commander. Sans lui, elles resteraient là pour
+	// toujours, et rien ne dirait comment les retrouver. Voir
+	// `jobs.AccountErasedPayload`, qui en paie le prix par une rétention
+	// courte.
+	AccountErased(ctx context.Context, userID, phone string)
 }
 
 // SetErasureAnnouncer branche l'annonce aux verticales.
@@ -325,7 +332,11 @@ func (s *Service) erase(ctx context.Context, u *User) (bool, error) {
 	// Et ce que les verticales détiennent : les conversations, les fils de
 	// support, les pièces de conformité. Au mieux, une fois.
 	if s.erasure != nil {
-		s.erasure.AccountErased(ctx, u.ID.Hex())
+		// ⚠️ `u.Phone` EST ENCORE L'ANCIEN ICI : la ligne a été anonymisée en
+		// base, mais l'exemplaire qu'on tient en mémoire date d'avant. C'est
+		// voulu, et c'est la seule fenêtre où ce numéro existe encore pour
+		// aller purger ce qui est classé dessus.
+		s.erasure.AccountErased(ctx, u.ID.Hex(), u.Phone)
 	} else {
 		slog.WarnContext(ctx, "user: verticals not told of the erasure — nothing wired",
 			"user_id", u.ID.Hex())

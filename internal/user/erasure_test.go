@@ -23,10 +23,14 @@ func (b fakeBalances) NonZeroBalance(context.Context, string) (string, bool) {
 }
 
 // fakeAnnouncer compte les annonces faites aux verticales.
-type fakeAnnouncer struct{ told []string }
+type fakeAnnouncer struct {
+	told   []string
+	phones []string
+}
 
-func (a *fakeAnnouncer) AccountErased(_ context.Context, userID string) {
+func (a *fakeAnnouncer) AccountErased(_ context.Context, userID, phone string) {
 	a.told = append(a.told, userID)
+	a.phones = append(a.phones, phone)
 }
 
 // fakeFiles : le stockage d'objets, qui retient ce qu'on lui demande de jeter.
@@ -157,6 +161,12 @@ func TestWhenTheGraceIsOverTheIdentityGoesAndTheRowStays(t *testing.T) {
 	assert.Equal(t, []string{id}, inbox.purged)
 	assert.Equal(t, []string{id}, announcer.told,
 		"les verticales doivent être PRÉVENUES, une fois, pour purger ce qu'elles seules détiennent")
+	// ⚠️ ET AVEC LE NUMÉRO TEL QU'IL ÉTAIT. Une verticale garde des traces
+	// classées par NUMÉRO et non par compte — la conversation du robot
+	// WhatsApp. Sans ce numéro, elles resteraient là pour toujours, et rien ne
+	// dirait comment les retrouver.
+	assert.Equal(t, []string{"+22890000000"}, announcer.phones,
+		"l'annonce doit porter l'ancien numéro, pas celui brouillé")
 }
 
 // ⚠️ LA PHOTO DE PROFIL EST UN FICHIER, PAS UN CHAMP. Retirer `avatar_url` du

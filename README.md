@@ -312,6 +312,17 @@ a repository that does not serve a single ride route.
 > pourrait plus être déployé seul, et une verticale indisponible rendrait le
 > droit à l'effacement indisponible avec elle.
 >
+> ⚠️ **L'ANNONCE PORTE LE TÉLÉPHONE, À CONTRECŒUR.** Une verticale garde des
+> traces classées par NUMÉRO et non par compte — la conversation du robot
+> WhatsApp, qui porte le numéro de la personne et tout ce qu'elle a écrit pour
+> commander. Sans ce champ, elles resteraient là **pour toujours** et rien, nulle
+> part, ne dirait comment les retrouver : l'identifiant de compte n'y apparaît
+> pas. Trois jours dans une file contre toujours dans un journal de
+> conversations : le choix se fait tout seul. C'est pour cela que cette tâche
+> est retenue **une heure** (`jobs.AccountErasedRetention`) et non les 72 h des
+> autres annonces. Ni nom ni adresse, en revanche — rien qui ne serve de CLÉ
+> quelque part.
+>
 > ⚠️ **TROIS DÉFAUTS CORRIGÉS AU PASSAGE.** `DELETE /admin/users/{id}` détruisait
 > la ligne du compte — des milliers de références de courses, commandes et
 > écritures pointaient alors vers un compte introuvable ; il recopiait **nom et
