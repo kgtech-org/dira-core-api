@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.45.1** · 7 octobre 2026
+> **Version 4.45.2** · 7 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -1229,6 +1229,10 @@ Deux personnes dont les **départs** et les **arrivées** sont proches montent
 dans la même voiture et paient **chacune son trajet**, moins cher. Le chauffeur
 sert deux courses pour un seul déplacement.
 
+⚠️ **ET LE MODE CHERCHE LE CO-PASSAGER *AVANT* LE CHAUFFEUR.** C'est ce qui le
+distingue de tous les autres modes, et ce qui change l'écran d'attente : lisez
+la section suivante avant de câbler quoi que ce soit.
+
 > ⚠️ **Ce n'est PAS le « partage de trajet » de l'écran sécurité** (envoyer sa
 > position à un proche), qui n'existe toujours pas. Ici, on partage la
 > **voiture** avec un inconnu.
@@ -1241,7 +1245,63 @@ POST /rides/pool/quote  { "stops": [ { kind: "pickup", … }, { kind: "dest", �
 POST /rides  { quote_id, payment_method }        # comme un devis ordinaire
 ```
 
-#### Le principe, en entier
+#### ⚠️ LE PRINCIPE : ON CHERCHE LE CO-PASSAGER *AVANT* LE CHAUFFEUR
+
+**C'est la seule chose à retenir, et tout le reste en découle.** Une course
+partagée ne cherche pas une voiture tout de suite : elle cherche d'abord
+**quelqu'un qui fait le même trajet**. Le groupe formé, et seulement alors, on
+appelle **un** chauffeur pour les deux.
+
+```
+1. RECHERCHE DU CO-PASSAGER          2. RECHERCHE DU CHAUFFEUR
+   dispatch_state: "pooling"            dispatch_state: "calling"
+   jusqu'à 5 min (pool_until)           UN seul appel, pour le groupe
+   ⚠️ AUCUN chauffeur n'est appelé      sur un cercle couvrant les 2 départs
+            │                                      │
+            └──── le groupe est FIGÉ ──────────────┘
+                  (pool_id, pool_size: 2)
+```
+
+⚠️ **PENDANT L'ÉTAPE 1, PERSONNE N'EST APPELÉ. Ne dites pas « nous cherchons un
+chauffeur »** — ce serait faux, et le passager s'étonnerait que ça dure cinq
+minutes. Dites **« nous cherchons quelqu'un qui fait le même trajet »**, et
+décomptez `pool_until`.
+
+⚠️ **POURQUOI DANS CET ORDRE, ET PAS L'INVERSE.** Appeler un chauffeur dès le
+premier passager aurait semblé plus rapide, et ne tenait pas : un chauffeur
+accepte en vingt secondes. Il aurait fallu, ensuite, soit **lui imposer un arrêt
+qu'il n'a pas accepté**, soit **faire partir le premier passager seul au prix du
+partage**. Le groupe est donc figé **avant** que le téléphone d'un chauffeur ne
+sonne : ce qu'il accepte est ce qu'il roulera.
+
+⚠️ **CONSÉQUENCE DIRECTE : ON NE REJOINT PLUS UN GROUPE APRÈS L'ACCEPTATION.**
+Un troisième passager qui arriverait après coup ne sera **pas** ajouté — ni à
+votre course, ni à la voiture.
+
+**Les mêmes deux temps, champ par champ :**
+
+```
+POST /rides
+   │
+   ├─▶ dispatch_state: "pooling"      ← 1. on cherche un CO-PASSAGER
+   │     pool_until: <instant>           AUCUN chauffeur n'est appelé
+   │
+   ├─▶ dispatch_state: "calling"      ← 2. le groupe est formé, on appelle
+   │     pool_id, pool_size: 2           UNE voiture pour les deux
+   │
+   └─▶ status: "accepted"             ← un chauffeur a pris le groupe
+```
+
+⚠️ **`pool_until` EST UN INSTANT, pas une durée** — comme `eta_at`. Décomptez-le
+localement, sans réinterroger : une durée servie il y a trois minutes en vaut
+une de moins.
+
+**Quand le groupe se forme**, le passager qui attendait reçoit le push
+**`ride_pool_matched`** (`data.type: "ride_status"`, `dispatch_state: "calling"`,
+`pool_id`) — relisez la course. Celui qui vient de commander, lui, voit déjà
+`calling` dans la réponse de `POST /rides` : il n'y a pas de push pour lui.
+
+#### Le marché, et les règles qui en découlent
 
 **Trois personnes y gagnent quelque chose, et chacune y renonce à quelque
 chose.** C'est le marché, et tout le reste en découle :
@@ -1387,34 +1447,6 @@ Préparez ces réponses : ce sont celles que le support reçoit.
 | « pourquoi je paie moins ? » | `100 − share_pct` % de moins, parce que vous partagez la voiture |
 | « l'autre a annulé, je paie plus ? » | **non** — le prix est figé, et l'annulation n'est pas la vôtre |
 | « je peux partager avec un ami ? » | **non** : c'est le serveur qui apparie, sur la proximité des trajets |
-
-#### ⚠️ LA RECHERCHE SE FAIT EN DEUX TEMPS — c'est TOUT ce qu'il faut comprendre
-
-```
-POST /rides
-   │
-   ├─▶ dispatch_state: "pooling"      ← 1. on cherche un CO-PASSAGER
-   │     pool_until: <instant>           AUCUN chauffeur n'est appelé
-   │
-   ├─▶ dispatch_state: "calling"      ← 2. le groupe est formé, on appelle
-   │     pool_id, pool_size: 2           UNE voiture pour les deux
-   │
-   └─▶ status: "accepted"             ← un chauffeur a pris le groupe
-```
-
-⚠️ **PENDANT L'ÉTAPE 1, PERSONNE N'EST APPELÉ. Ne dites pas « nous cherchons un
-chauffeur »** — ce serait faux, et le passager s'étonnerait que ça dure cinq
-minutes. Dites « nous cherchons quelqu'un qui fait le même trajet », et
-décomptez `pool_until`.
-
-⚠️ **`pool_until` EST UN INSTANT, pas une durée** — comme `eta_at`. Décomptez-le
-localement, sans réinterroger : une durée servie il y a trois minutes en vaut
-une de moins.
-
-**Quand le groupe se forme**, le passager qui attendait reçoit le push
-**`ride_pool_matched`** (`data.type: "ride_status"`, `dispatch_state: "calling"`,
-`pool_id`) — relisez la course. Celui qui vient de commander, lui, voit déjà
-`calling` dans la réponse de `POST /rides` : il n'y a pas de push pour lui.
 
 #### Le prix : chacun sa distance, remisée d'une PART (v4.44.0)
 

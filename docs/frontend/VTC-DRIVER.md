@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.45.1** · 7 octobre 2026
+> **Version 4.45.2** · 7 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -1302,6 +1302,11 @@ vous êtes payé **deux courses**.
 
 #### Le principe, de votre côté
 
+⚠️ **LE SERVEUR A CHERCHÉ LE CO-PASSAGER *AVANT* DE VOUS APPELER.** C'est le
+principe du mode, et c'est ce qui vous protège : quand votre téléphone sonne, le
+groupe est **déjà formé et figé**. Vous n'acceptez jamais « une course à laquelle
+on ajoutera quelqu'un » — vous acceptez les deux, ou rien.
+
 **Vous faites UN déplacement et vous êtes payé DEUX courses.** C'est tout le
 marché, et c'est pour cela qu'il vaut le coup même si chaque course est moins
 chère qu'une course ordinaire.
@@ -1318,7 +1323,14 @@ paie, pas le prix unitaire. Si votre écran n'affiche que le prix d'un seul
 passager, il sous-vend la course de moitié — **affichez `meta.fare_xof`, qui est
 le total du groupe**.
 
-##### Comment un groupe arrive jusqu'à vous
+##### Comment un groupe arrive jusqu'à vous — les deux temps
+
+```
+1. RECHERCHE DU CO-PASSAGER     2. RECHERCHE DU CHAUFFEUR — VOUS
+   jusqu'à 5 min                   le groupe est FIGÉ
+   ⚠️ vous ne voyez RIEN           un seul appel, pour les deux passagers
+   aucun chauffeur n'est appelé    sur un cercle couvrant les 2 départs
+```
 
 Vous ne voyez **rien** de la première étape. Le serveur a déjà :
 
