@@ -135,6 +135,7 @@ type Service struct {
 	balances     Balances
 	inbox        Inbox
 	devices      PushDevices
+	files        Files
 	erasure      ErasureAnnouncer
 	erasureGrace time.Duration
 }

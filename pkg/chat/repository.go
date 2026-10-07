@@ -88,3 +88,22 @@ func (r *Repository) CountUnread(ctx context.Context, refID primitive.ObjectID, 
 	}
 	return int(n), nil
 }
+
+// PurgeOf jette tout ce que cette personne a ÉCRIT, dans toutes ses
+// conversations — la part de l'effacement d'un compte qui vit ici.
+//
+// ⚠️ ON SUPPRIME SES MESSAGES, PAS LA CONVERSATION. Le fil appartient à DEUX
+// personnes : effacer le tout retirerait au chauffeur ce qu'il a écrit lui-même
+// et dont il peut avoir besoin — « j'ai déposé le sac chez le gardien » est sa
+// trace, pas celle du client. Ce qui part, c'est le texte de la personne
+// effacée ; ce qui reste n'est plus adressé à personne.
+//
+// ⚠️ IDEMPOTENTE, parce que l'annonce du socle arrive « au moins une fois » :
+// supprimer des messages déjà supprimés ne supprime rien, et rend zéro.
+func (r *Repository) PurgeOf(ctx context.Context, senderID primitive.ObjectID) (int64, error) {
+	res, err := r.col.DeleteMany(ctx, bson.M{"sender_id": senderID})
+	if err != nil {
+		return 0, fmt.Errorf("chat: purge of %s: %w", senderID.Hex(), err)
+	}
+	return res.DeletedCount, nil
+}

@@ -504,6 +504,12 @@ func run(logger *slog.Logger) error {
 	// Dira Cash dedans, et cet argent serait détruit sans écriture.
 	userSvc.SetBalances(tokenSvc)
 	userSvc.SetInbox(notifySvc)
+	// ⚠️ LA PHOTO DE PROFIL EST UN FICHIER, pas un champ : sans ce câblage, le
+	// visage d'une personne effacée reste dans le bucket et plus rien ne le
+	// désigne.
+	if media != nil {
+		userSvc.SetFiles(media)
+	}
 	userSvc.SetPushDevices(notifySvc)
 	userSvc.SetErasureAnnouncer(erasureAnnouncer{client: asynqClient})
 	userSvc.SetErasureGrace(cfg.AccountErasureGrace)

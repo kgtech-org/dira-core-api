@@ -175,6 +175,9 @@ type Service struct {
 	fleet Fleet
 	audit Auditor
 	watch Watcher
+	// files retire les IMAGES des pièces quand un compte est effacé — voir
+	// `erasure.go`. Facultatif.
+	files Files
 }
 
 // Watcher est prévenu d'un DÉPÔT : la verticale en fait une alerte au staff

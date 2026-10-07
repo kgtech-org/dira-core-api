@@ -151,3 +151,38 @@ func (r *Repository) PendingOrExpiredDocuments(ctx context.Context, now time.Tim
 	}
 	return out, nil
 }
+
+// DocumentsOf rend les pièces d'un propriétaire, y compris celles qu'aucun
+// profil ne réclame plus — la liste que l'effacement d'un compte doit jeter.
+//
+// Distinct de `DocumentsByOwner`, qui sert un écran et peut filtrer : ici on
+// veut TOUT, sans quoi l'effacement laisserait derrière lui la pièce qu'une
+// vue ne montrait pas.
+func (r *Repository) DocumentsOf(ctx context.Context, ownerID primitive.ObjectID) ([]Document, error) {
+	cur, err := r.documents.Find(ctx, bson.M{"owner_id": ownerID})
+	if err != nil {
+		return nil, fmt.Errorf("compliance: documents of %s: %w", ownerID.Hex(), err)
+	}
+	var out []Document
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, fmt.Errorf("compliance: read documents of %s: %w", ownerID.Hex(), err)
+	}
+	return out, nil
+}
+
+// DeleteDocumentsOf jette les pièces d'un propriétaire.
+//
+// ⚠️ LES LIGNES, PAS LES IMAGES. Les fichiers vivent dans le stockage d'objets,
+// et c'est le service qui les retire — lui seul le connaît. Supprimer la ligne
+// sans l'image laisserait une photo de permis et une carte d'identité dans un
+// bucket, sans plus rien pour dire à qui elles sont ni pourquoi les garder : le
+// pire des deux mondes.
+//
+// ⚠️ IDEMPOTENTE : l'annonce du socle arrive « au moins une fois ».
+func (r *Repository) DeleteDocumentsOf(ctx context.Context, ownerID primitive.ObjectID) (int64, error) {
+	res, err := r.documents.DeleteMany(ctx, bson.M{"owner_id": ownerID})
+	if err != nil {
+		return 0, fmt.Errorf("compliance: delete documents of %s: %w", ownerID.Hex(), err)
+	}
+	return res.DeletedCount, nil
+}

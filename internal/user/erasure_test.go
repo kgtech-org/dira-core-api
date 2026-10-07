@@ -29,6 +29,14 @@ func (a *fakeAnnouncer) AccountErased(_ context.Context, userID string) {
 	a.told = append(a.told, userID)
 }
 
+// fakeFiles : le stockage d'objets, qui retient ce qu'on lui demande de jeter.
+type fakeFiles struct{ removed []string }
+
+func (f *fakeFiles) Remove(_ context.Context, url string) error {
+	f.removed = append(f.removed, url)
+	return nil
+}
+
 // fakeInbox et fakePushDevices : ce qui se purge au passage.
 type fakeInbox struct{ purged []string }
 
@@ -149,6 +157,29 @@ func TestWhenTheGraceIsOverTheIdentityGoesAndTheRowStays(t *testing.T) {
 	assert.Equal(t, []string{id}, inbox.purged)
 	assert.Equal(t, []string{id}, announcer.told,
 		"les verticales doivent être PRÉVENUES, une fois, pour purger ce qu'elles seules détiennent")
+}
+
+// ⚠️ LA PHOTO DE PROFIL EST UN FICHIER, PAS UN CHAMP. Retirer `avatar_url` du
+// document laisse le VISAGE de la personne dans le bucket, et plus rien ne le
+// désigne : impossible à retrouver pour le supprimer, impossible à justifier si
+// on le trouve. Un compte « effacé » dont la photo survit n'est pas effacé.
+func TestTheProfilePhotoLeavesTheBucketToo(t *testing.T) {
+	svc, repo, _, _, _ := newErasureTestService(t)
+	files := &fakeFiles{}
+	svc.SetFiles(files)
+	id := registerClient(t, svc)
+	photo := "http://minio:9000/dira-media/avatars/awa.jpg"
+	_, err := svc.UpdateProfile(context.Background(), id, UpdateMeRequest{AvatarURL: &photo})
+	require.NoError(t, err)
+	require.NoError(t, svc.RequestErasure(context.Background(), id, ErasureRequest{
+		Password: "s3cret-password",
+	}))
+	repo.backdateClosure(t, id, DefaultErasureGrace+time.Hour)
+
+	_, err = svc.EraseDue(context.Background(), 100)
+	require.NoError(t, err)
+	assert.Equal(t, []string{photo}, files.removed)
+	assert.Empty(t, repo.mustFind(t, id).AvatarURL)
 }
 
 // ⚠️ LE NUMÉRO EST LIBÉRÉ PAR L'EFFACEMENT, et c'est un droit, pas un effet de

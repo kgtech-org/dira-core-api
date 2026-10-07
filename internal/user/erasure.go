@@ -305,6 +305,20 @@ func (s *Service) erase(ctx context.Context, u *User) (bool, error) {
 	if err := s.repo.DeleteAddressesOf(ctx, u.ID); err != nil {
 		slog.WarnContext(ctx, "user: addresses not deleted", "user_id", u.ID.Hex(), "error", err)
 	}
+	// LA PHOTO DE PROFIL — le fichier, pas seulement le champ.
+	//
+	// ⚠️ APRÈS L'ANONYMISATION, DONC AVEC L'URL QU'ON TIENT ENCORE EN MÉMOIRE :
+	// le document ne la porte plus. L'ordre inverse aurait perdu l'adresse de
+	// l'image avant de l'avoir supprimée.
+	if u.AvatarURL != "" {
+		if s.files == nil {
+			slog.ErrorContext(ctx, "user: no object store wired — the PHOTO of an erased account stays in the bucket",
+				"user_id", u.ID.Hex())
+		} else if err := s.files.Remove(ctx, u.AvatarURL); err != nil {
+			slog.ErrorContext(ctx, "user: the photo of an erased account survived",
+				"user_id", u.ID.Hex(), "error", err)
+		}
+	}
 	if s.inbox != nil {
 		s.inbox.PurgeOf(ctx, u.ID.Hex())
 	}
@@ -342,6 +356,23 @@ type PushDevices interface {
 
 // SetPushDevices branche le registre des appareils de notification.
 func (s *Service) SetPushDevices(d PushDevices) { s.devices = d }
+
+// Files retire un fichier du stockage d'objets, désigné par son URL publique.
+//
+// Déclarée côté consommateur — c'est `pkg/storage.Store`. FACULTATIVE : sans
+// elle, l'identité part quand même et le journal crie.
+//
+// ⚠️ ELLE EXISTE POUR LA PHOTO DE PROFIL, et c'est tout sauf un détail.
+// `anonymised_at` posé et `avatar_url` retiré du document laissent le VISAGE de
+// la personne dans le bucket, et plus rien ne le désigne : impossible à
+// retrouver pour le supprimer, impossible à justifier si on le trouve. Un
+// compte « effacé » dont la photo survit n'est pas effacé.
+type Files interface {
+	Remove(ctx context.Context, publicURL string) error
+}
+
+// SetFiles branche le stockage d'objets.
+func (s *Service) SetFiles(f Files) { s.files = f }
 
 // erasureAt rend la date d'effacement prévue d'un compte fermé.
 func (s *Service) erasureAt(u *User) *time.Time {

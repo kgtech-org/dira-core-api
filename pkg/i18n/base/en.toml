@@ -51,3 +51,9 @@ other = "Nobody has taken this yet"
 
 [errors.not_a_lost_item]
 other = "This ticket is not about a lost item"
+
+# The door the core uses to announce an erased account (pkg/erasure).
+# ⚠️ This refusal never reaches a phone: it answers the core, which re-queues
+# the announcement. The sentence exists for the console and the logs.
+[errors.erasure_unavailable]
+other = "Purging an erased account is not wired on this service"

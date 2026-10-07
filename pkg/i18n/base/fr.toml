@@ -64,3 +64,9 @@ other = "Personne n'a encore pris en charge cette demande"
 
 [errors.not_a_lost_item]
 other = "Ce ticket ne concerne pas un objet perdu"
+
+# La porte par laquelle le socle annonce un compte effacé (pkg/erasure).
+# ⚠️ Ce refus ne part JAMAIS vers un téléphone : il répond au socle, qui remet
+# l'annonce en file. La phrase existe pour la console et les journaux.
+[errors.erasure_unavailable]
+other = "La purge d'un compte effacé n'est pas branchée sur ce service"
