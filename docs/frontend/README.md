@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.45.1** · 7 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.45.2** · 7 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -320,6 +320,33 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.45.2 — 7 octobre 2026
+
+🔁 **LE PRINCIPE DU MODE PARTAGÉ REMIS EN PREMIER : on cherche le CO-PASSAGER
+*avant* le chauffeur.** Correction de rédaction, aucun changement d'API.
+
+⚠️ **C'était une faute d'ordre introduite par la 4.45.1** : en ajoutant
+l'explication détaillée, les deux temps — la seule chose à retenir — s'étaient
+retrouvés **après six sous-sections**. Ils ouvrent désormais la section, avec le
+schéma, les champs, et la raison de cet ordre.
+
+**Pourquoi dans cet ordre, et pas l'inverse** — c'est maintenant écrit : appeler
+un chauffeur dès le premier passager aurait semblé plus rapide et ne tenait pas.
+Un chauffeur accepte en vingt secondes ; il aurait fallu ensuite soit **lui
+imposer un arrêt qu'il n'a pas accepté**, soit **faire partir le premier passager
+seul au prix du partage**. Le groupe est donc figé **avant** que le téléphone
+d'un chauffeur ne sonne : ce qu'il accepte est ce qu'il roulera. ⚠️ Conséquence
+directe, dite aussi : **on ne rejoint plus un groupe après l'acceptation**.
+
+- **`VTC-CLIENT`** : la section ouvre sur « on cherche le co-passager avant le
+  chauffeur », et l'avertissement de l'écran d'attente va avec — ⚠️ **ne dites
+  pas « nous cherchons un chauffeur » pendant l'étape 1**, dites « nous cherchons
+  quelqu'un qui fait le même trajet » et décomptez `pool_until`.
+- **`VTC-DRIVER`** : la section ouvre sur ce que cet ordre **protège** — quand
+  son téléphone sonne, le groupe est déjà formé et figé. Il n'accepte jamais
+  « une course à laquelle on ajoutera quelqu'un ».
+- **`DIRA-CLIENT`** : le renvoi dit le principe au lieu de le nommer.
 
 ### 4.45.1 — 7 octobre 2026
 

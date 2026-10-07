@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.45.1** · 7 octobre 2026
+> **Version 4.45.2** · 7 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -446,7 +446,7 @@ ceux des deux specs métier, qui restent à jour.
 |---|---|
 | Choisir | `GET /classes?near=` · `GET /settings/modes?near=` |
 | Chiffrer | `POST /rides/quote` · `POST /rides/pool/quote` · `POST /rides/rental/quote` |
-| | ⚠️ **La course PARTAGÉE a un principe de fonctionnement à lire avant de câbler un écran** — `VTC-CLIENT` §4 quater : la recherche en deux temps, ce qui décide que deux trajets se partagent, la chronologie des deux passagers, l'ordre de route, et les quatre façons dont ça se termine |
+| | ⚠️ **La course PARTAGÉE cherche le CO-PASSAGER *avant* le chauffeur** — c'est le seul mode qui le fasse, et l'écran d'attente en dépend : pendant la première étape (`dispatch_state: "pooling"`, jusqu'à 5 min) **aucun chauffeur n'est appelé**. Principe complet, chronologie des deux passagers, conditions d'appariement, ordre de route et les quatre fins possibles : `VTC-CLIENT` §4 quater, **à lire avant de câbler un écran** |
 | Commander | `POST /rides` · `GET /rides` · `GET /rides/{id}` · `POST /rides/{id}/cancel` · `POST /rides/{id}/relaunch` |
 | En route | `PATCH /rides/{id}/stops` · socket du suivi (§11) |
 | Parler, noter | `GET/POST /rides/{id}/messages` · `POST /rides/{id}/rating` |
