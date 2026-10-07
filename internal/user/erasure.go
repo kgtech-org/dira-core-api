@@ -394,6 +394,18 @@ func (s *Service) erasureAt(u *User) *time.Time {
 	return &at
 }
 
+// userResponse rend le compte avec sa date d'effacement prévue.
+//
+// ⚠️ ELLE EST CALCULÉE, PAS STOCKÉE, et c'est pour que le délai de grâce reste
+// un RÉGLAGE : le raccourcir pour un pays qui l'exige doit avancer l'échéance
+// des comptes déjà fermés, pas seulement celle des suivants. Une date écrite à
+// la fermeture aurait figé l'ancien délai sur tout ce qui attendait.
+func (s *Service) accountResponse(u *User) UserResponse {
+	out := newUserResponse(u)
+	out.EraseAt = s.erasureAt(u)
+	return out
+}
+
 // ErasureStatus rend ce qu'il faut afficher après la demande : le compte est
 // fermé, et voici quand l'identité partira.
 func (s *Service) ErasureStatus(ctx context.Context, userID string) ErasureResponse {

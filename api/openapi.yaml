@@ -1129,7 +1129,13 @@ paths:
         socle et non dans une verticale : une même société possède des motos
         qui livrent et des voitures qui font des courses.
       parameters:
-        - {name: status, in: query, schema: {type: string, enum: [active, suspended]}}
+        - name: status
+          in: query
+          schema: {type: string, enum: [active, suspended, closed]}
+          description: >-
+            `closed` = suppression demandée (v4.47.0) : le compte ne se
+            reconnecte plus et son identité part à l'échéance du délai de grâce.
+            Distinct de `suspended`, qui se lève.
         - {name: q, in: query, schema: {type: string}}
         - {name: limit, in: query, schema: {type: integer}}
         - {name: cursor, in: query, schema: {type: string}}

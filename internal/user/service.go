@@ -286,7 +286,7 @@ func (s *Service) register(ctx context.Context, req RegisterRequest, role string
 	}
 	s.enforceDeviceLimit(ctx, u, hashToken(pair.RefreshToken), sessionDeviceOf(req.DeviceID))
 	return AuthResponse{
-		User:         newUserResponse(u),
+		User:         s.accountResponse(u),
 		AccessToken:  pair.AccessToken,
 		RefreshToken: pair.RefreshToken,
 		Session:      sessionResponse(u, deviceID, false),
@@ -608,7 +608,7 @@ func (s *Service) Me(ctx context.Context, userID string) (UserResponse, error) {
 // ce compte peut changer de pays. Une lecture de staff, pour les
 // administrateurs seulement — un client n'a pas de fiche à lire.
 func (s *Service) userResponse(ctx context.Context, u *User) UserResponse {
-	out := newUserResponse(u)
+	out := s.accountResponse(u)
 	if u.Role == auth.RoleAdmin {
 		e := s.entitlements(ctx, u)
 		out.CountryAny = e.Direction
@@ -667,7 +667,7 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, req UpdateMe
 	if err := s.repo.UpdateUser(ctx, u); err != nil {
 		return UserResponse{}, apperr.Internal(err)
 	}
-	return newUserResponse(u), nil
+	return s.accountResponse(u), nil
 }
 
 // UpdatePreferences règle les préférences du compte.
@@ -721,7 +721,7 @@ func (s *Service) UpdatePreferences(ctx context.Context, userID string, req Upda
 	if err := s.repo.UpdateUser(ctx, u); err != nil {
 		return UserResponse{}, apperr.Internal(err)
 	}
-	return newUserResponse(u), nil
+	return s.accountResponse(u), nil
 }
 
 // NotificationPrefs rend, pour le module de notification, la langue choisie et

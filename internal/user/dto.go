@@ -218,6 +218,18 @@ type UserResponse struct {
 	// démarrage, et un appel séparé pour quatre interrupteurs serait un
 	// aller-retour de plus sur un réseau mobile.
 	Preferences *Preferences `json:"preferences,omitempty"`
+	// EraseAt est la date à laquelle l'identité d'un compte FERMÉ s'en va —
+	// absente pour tout autre compte. Voir `erasure.go`.
+	//
+	// ⚠️ À AFFICHER PARTOUT OÙ `status: closed` APPARAÎT, application comme
+	// console. « Fermé » tout seul ne dit pas si c'est réversible ; « fermé,
+	// effacement le 6 novembre » dit à la fois ce qui va se passer et de
+	// combien de temps dispose le support pour l'annuler.
+	EraseAt *time.Time `json:"erase_at,omitempty"`
+	// AnonymisedAt dit que l'identité EST partie : ce compte ne se rouvre plus,
+	// et son nom n'est plus un nom. Sans ce champ, un écran proposerait
+	// « réactiver » sur une coquille vide, et le refus arriverait après le clic.
+	AnonymisedAt *time.Time `json:"anonymised_at,omitempty"`
 }
 
 func newUserResponse(u *User) UserResponse {
@@ -236,6 +248,10 @@ func newUserResponse(u *User) UserResponse {
 		Status:      u.Status,
 		Country:     u.Country,
 		CreatedAt:   u.CreatedAt,
+		// `anonymised_at` ne demande aucun réglage : c'est une date écrite sur
+		// la ligne. `erase_at`, lui, est CALCULÉ depuis le délai de grâce du
+		// déploiement — voir `Service.userResponse`.
+		AnonymisedAt: u.AnonymisedAt,
 	}
 }
 

@@ -97,7 +97,7 @@ func (a *AdminUsers) Create(ctx context.Context, req AdminCreateUserRequest) (Us
 		a.auditor.Record(ctx, "user.create", "user", u.ID.Hex(), nil,
 			map[string]any{"role": u.Role, "phone": u.Phone})
 	}
-	return newUserResponse(u), nil
+	return a.userResponse(u), nil
 }
 
 // Update patches identity fields (and optionally resets the password).
@@ -148,7 +148,7 @@ func (a *AdminUsers) Update(ctx context.Context, id string, req AdminUpdateUserR
 		a.auditor.Record(ctx, "user.update", "user", id, before,
 			map[string]any{"name": u.Name, "email": u.Email, "phone": u.Phone})
 	}
-	return newUserResponse(u), nil
+	return a.userResponse(u), nil
 }
 
 // Delete ferme un compte et programme son effacement — il ne SUPPRIME plus la
@@ -248,4 +248,18 @@ func (a *AdminUsers) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// userResponse rend le compte avec sa date d'effacement prévue, quand le
+// service des comptes est branché.
+//
+// ⚠️ SANS LUI, LA DATE MANQUE PLUTÔT QUE D'ÊTRE FAUSSE. Un déploiement qui ne
+// câble pas l'effacement ne doit pas annoncer une échéance calculée sur un
+// délai par défaut qu'il n'applique pas — la console lirait une date que rien
+// ne tiendrait.
+func (a *AdminUsers) userResponse(u *User) UserResponse {
+	if a.erasure == nil {
+		return newUserResponse(u)
+	}
+	return a.erasure.accountResponse(u)
 }
