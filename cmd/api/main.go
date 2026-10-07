@@ -627,6 +627,13 @@ func run(logger *slog.Logger) error {
 		internalAPI.SetStaff(staffSvc)
 		internalAPI.SetJournal(auditRec)
 		internalAPI.SetEquipment(equipmentSvc)
+		// ⚠️ LE BUCKET N'EST OUVERT QU'ICI. Quand un compte est effacé, la
+		// photo de son permis vit chez les COURSES et chez la LIVRAISON, dans
+		// des collections que le socle ne connaît pas : c'est à elles de dire
+		// quelles images, et à nous de les retirer.
+		if media != nil {
+			internalAPI.SetFiles(media)
+		}
 		internalAPI.Mount(r, middleware.Service(cfg.ServiceToken))
 	})
 
