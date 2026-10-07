@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.45.2** · 7 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.46.0** · 7 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -320,6 +320,47 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.46.0 — 7 octobre 2026
+
+🆕 **S'INSCRIRE ET SE CONNECTER PAR CODE — le téléphone, et rien d'autre.**
+Ajout rétrocompatible : `POST /auth/otp` envoie six chiffres,
+`POST /auth/otp/verify` les consomme et rend **exactement** le corps de
+`POST /auth/login`, augmenté de **`created`** — le compte vient de naître, ou
+non. Rien ne change pour `POST /auth/register` ni `POST /auth/login`, qui
+restent la porte des **agents** et des **marchands**.
+
+⚠️ **LA PASSERELLE N'EST PAS ENCORE CÂBLÉE.** Tant que la réponse porte
+`channel: "echo"`, **rien n'est envoyé** : le code est rendu en clair dans
+**`dev_code`**, pour que les applications se câblent dès maintenant. C'est une
+faille assumée et temporaire — quiconque connaît un numéro entre dans le
+compte —, et **`dev_code` disparaîtra sans préavis** : l'écran doit fonctionner
+à l'identique sans lui.
+
+⚠️ **RÉSERVÉE AUX CLIENTS, et c'est une règle de sécurité.** Six chiffres
+remplacent un mot de passe : l'ouvrir aux chauffeurs, aux livreurs, aux
+marchands ou à la direction ferait du numéro de téléphone — qui s'affiche sur
+une plaque et se donne à un passager — le seul secret protégeant un compte qui
+débite des portefeuilles. Un compte qui n'est pas client reçoit
+`403 otp_not_available` et **aucun code**.
+
+⚠️ **LA DEMANDE DE CODE NE DIT JAMAIS SI LE NUMÉRO EST CONNU** — ce serait un
+annuaire. C'est `created` qui autorise l'écran « comment vous appelez-vous ? »,
+une fois la personne authentifiée ; le nom est **facultatif**, et le numéro fait
+office de nom d'affichage tant qu'il n'est pas donné.
+
+⚠️ **UN COMPTE NÉ PAR CODE N'A PAS DE MOT DE PASSE**, et `POST /auth/login` lui
+répond `401 invalid_credentials` — jamais un code qui dirait « ce compte se
+connecte autrement », ce qui révélerait quels numéros existent. Ne lui proposez
+ni mot de passe, ni « mot de passe oublié ». *(Au passage : cette connexion
+répondait `500` avant d'être corrigée — un compte sans empreinte faisait échouer
+la vérification.)*
+
+Cadence : un code par minute et par numéro (`429 otp_too_soon`), cinq par heure
+(`429 otp_too_many_requests`), le code vit **5 minutes** et meurt après **5
+essais** (`401 otp_too_many_attempts`). Un échec de remise
+(`503 otp_delivery_failed`) ne consomme **rien**. Détail et table des refus :
+`DIRA-CLIENT.md` §6 bis.
 
 ### 4.45.2 — 7 octobre 2026
 

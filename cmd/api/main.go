@@ -234,6 +234,19 @@ func run(logger *slog.Logger) error {
 	// plus tard, et la rotation — seule raison de servir la clé depuis le
 	// serveur — ne servirait à rien.
 	userSvc.SetBasemaps(countrySvc)
+	// LA PORTE PAR CODE — un client s'inscrit avec son téléphone et six
+	// chiffres, sans mot de passe à choisir ni à retrouver.
+	//
+	// ⚠️ LE POIVRE EST LE SECRET JWT, et ce n'est pas un raccourci : il ne
+	// doit pas vivre dans la base qu'il protège (voir `OTPCode.Hash`), et le
+	// socle n'a pas d'autre secret déjà déployé partout. Un secret dédié
+	// (`OTP_PEPPER`) se branchera ici sans rien changer d'autre.
+	userSvc.EnableOTP(otpSender(logger, cfg.OTPSender), cfg.JWTSecret, user.OTPPolicy{
+		TTL:          cfg.OTPTTL,
+		Resend:       cfg.OTPResend,
+		MaxAttempts:  cfg.OTPMaxAttempts,
+		MaxPerWindow: cfg.OTPMaxPerHour,
+	})
 	// La résolution « dans quel pays suis-je ? » aligne le compte ; le repli
 	// par adresse IP passe par un fournisseur HTTP réglable, mis en cache.
 	countrySvc.SetAccounts(userSvc)
@@ -798,5 +811,28 @@ func (a staffAlerts) AlertStaff(ctx context.Context, scope, country, key string,
 	}
 	for _, id := range ids {
 		a.notify.Notify(ctx, id, key, vars, data)
+	}
+}
+
+// otpSender choisit le canal de remise du code à usage unique.
+//
+// ⚠️ UN SEUL EXPÉDITEUR EXISTE AUJOURD'HUI — `echo` —, et il ne remet rien :
+// il rend le code dans la réponse HTTP pour que les applications se câblent
+// avant la passerelle. Tant que c'est lui qui sert, N'IMPORTE QUI CONNAISSANT
+// UN NUMÉRO ENTRE DANS LE COMPTE : le démarrage le dit en ERROR, et non en
+// WARN, parce qu'une ligne d'avertissement dans un journal de production ne
+// réveille personne.
+//
+// `whatsapp` et `sms` sont refusés plutôt que silencieusement rabattus sur
+// `echo` : régler une variable et croire les codes partis serait pire que
+// l'absence de canal.
+func otpSender(logger *slog.Logger, kind string) user.OTPSender {
+	switch kind {
+	case "echo":
+		logger.Error("auth: OTP en mode ECHO — le code est rendu EN CLAIR dans la réponse ; aucune passerelle n'est câblée")
+		return user.EchoSender{}
+	default:
+		logger.Error("auth: OTP_SENDER non implémenté, la porte par code reste FERMÉE", "sender", kind)
+		return nil
 	}
 }

@@ -89,7 +89,7 @@ never reads — so variables nobody knows whether to set.
 
 ```
 cmd/api          HTTP entrypoint
-internal/user    accounts, auth, RBAC, addresses, preferences
+internal/user    accounts, auth (password + ONE-TIME CODE), RBAC, addresses, preferences
 internal/token   token wallets and ledger
 internal/payment mobile money (provider abstraction + mock)
 internal/notify  inbox, push devices, multilingual templates (FCM)
@@ -241,6 +241,27 @@ a repository that does not serve a single ride route.
 > two guarantees that belong nowhere else: **all five specs are present**, and
 > they **share one version** — "a frontend quoting v2.1.0 names a precise
 > contract" only holds if nobody can forget to bump one.
+
+> ⚠️ **UN CLIENT S'INSCRIT PAR CODE, ET LE CODE REVIENT DANS LA RÉPONSE.**
+> `POST /auth/otp` puis `POST /auth/otp/verify` (voir `internal/user/otp.go`) :
+> six chiffres, pas de mot de passe. **Aucune passerelle n'est câblée** —
+> `OTP_SENDER=echo`, le défaut, ne remet rien et rend le code en clair dans
+> `dev_code`. Tant que c'est le cas, **quiconque connaît un numéro entre dans le
+> compte** : le démarrage le dit en ERROR, et brancher WhatsApp ou le SMS
+> consiste à écrire un `OTPSender` et à le nommer dans `otpSender()`
+> (`cmd/api/main.go`) — rien d'autre ne bouge.
+>
+> ⚠️ **La porte est RÉSERVÉE AUX CLIENTS.** Six chiffres remplacent un mot de
+> passe : l'ouvrir à un chauffeur, un marchand ou la direction ferait du numéro
+> de téléphone — qui s'affiche sur une plaque — le seul secret protégeant un
+> compte qui débite des portefeuilles. Un compte qui n'est pas `client` ne
+> reçoit aucun code.
+>
+> ⚠️ **Un compte né par code n'a pas d'empreinte de mot de passe**, et
+> `POST /auth/login` lui répond `401 invalid_credentials` — jamais un code qui
+> dirait « ce compte se connecte autrement », ce qui révélerait quels numéros
+> existent. Avant cette version, cette connexion répondait **500** : l'empreinte
+> vide faisait échouer la vérification.
 
 ## Status
 

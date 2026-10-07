@@ -25,6 +25,7 @@ type fakeUserRepo struct {
 	users         map[primitive.ObjectID]*User
 	refreshTokens map[string]*RefreshToken // by token hash
 	addresses     map[primitive.ObjectID]*Address
+	otpCodes      map[string]*OTPCode
 }
 
 func newFakeUserRepo() *fakeUserRepo {
@@ -32,6 +33,7 @@ func newFakeUserRepo() *fakeUserRepo {
 		addresses:     make(map[primitive.ObjectID]*Address),
 		users:         make(map[primitive.ObjectID]*User),
 		refreshTokens: make(map[string]*RefreshToken),
+		otpCodes:      make(map[string]*OTPCode),
 	}
 }
 
@@ -822,4 +824,48 @@ func TestEnsureAccountNeverOverwritesAnExistingEmail(t *testing.T) {
 	row, err := svc.AccountByID(ctx, id)
 	require.NoError(t, err)
 	assert.Equal(t, "first@dira.llc", row.Email, "l'adresse en place ne bouge pas")
+}
+
+// --- LA PORTE PAR CODE (voir otp.go) ---------------------------------------
+//
+// Un code vivant par numéro, comme l'index unique de `auth_otp_codes`.
+
+func (f *fakeUserRepo) SaveOTP(_ context.Context, c *OTPCode) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.otpCodes == nil {
+		f.otpCodes = make(map[string]*OTPCode)
+	}
+	clone := *c
+	f.otpCodes[c.Phone] = &clone
+	return nil
+}
+
+func (f *fakeUserRepo) FindOTP(_ context.Context, phone string) (*OTPCode, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c, ok := f.otpCodes[phone]
+	if !ok {
+		return nil, nil
+	}
+	clone := *c
+	return &clone, nil
+}
+
+func (f *fakeUserRepo) IncOTPAttempts(_ context.Context, phone string) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c, ok := f.otpCodes[phone]
+	if !ok {
+		return 0, nil
+	}
+	c.Attempts++
+	return c.Attempts, nil
+}
+
+func (f *fakeUserRepo) DeleteOTP(_ context.Context, phone string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.otpCodes, phone)
+	return nil
 }

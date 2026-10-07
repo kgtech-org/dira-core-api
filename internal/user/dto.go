@@ -253,6 +253,62 @@ type AuthResponse struct {
 	// plateforme quand le pays en a configuré une. ABSENT quand la plateforme
 	// ne s'est pas nommée — l'application garde alors notre fond.
 	Maps *MapsResponse `json:"maps,omitempty"`
+	// Created : ce compte VIENT DE NAÎTRE, à la vérification d'un code.
+	//
+	// ⚠️ C'EST LE SEUL SIGNAL QUI DIT À L'APPLICATION DE DEMANDER LE NOM. La
+	// demande de code, elle, ne dit jamais si le numéro est connu — ce serait
+	// un annuaire (voir `otp.go`) —, donc l'écran « comment vous
+	// appelez-vous ? » ne peut se décider qu'ici, une fois la personne
+	// authentifiée.
+	Created bool `json:"created,omitempty"`
+}
+
+// OTPRequest demande un code à usage unique pour ce numéro.
+type OTPRequest struct {
+	Phone string `json:"phone" validate:"required,e164"`
+	// Channel : `whatsapp` (défaut) ou `sms`. Le serveur rend le canal qui a
+	// RÉELLEMENT servi — un fournisseur peut basculer.
+	Channel string `json:"channel,omitempty" validate:"omitempty,oneof=whatsapp sms"`
+	// App : seules les applications de CLIENT ouvrent cette porte. Vide =
+	// toléré, comme ailleurs, pour une application pas encore à jour.
+	App    string `json:"app,omitempty" validate:"omitempty,oneof=client driver courier merchant console"`
+	Locale string `json:"locale,omitempty" validate:"omitempty,oneof=fr en"`
+}
+
+// OTPRequestResponse dit ce qui est parti, et quand on pourra redemander.
+type OTPRequestResponse struct {
+	Sent    bool   `json:"sent"`
+	Channel string `json:"channel"`
+	// ExpiresAt : le compte à rebours de l'écran se rend DEPUIS CETTE DATE,
+	// jamais depuis l'horloge du téléphone.
+	ExpiresAt time.Time `json:"expires_at"`
+	// ResendAfter est le nombre de secondes avant qu'un nouveau code puisse
+	// être demandé (`429 otp_too_soon` avant).
+	ResendAfter int `json:"resend_after"`
+	// DevCode est le code EN CLAIR, et il n'existe que tant qu'aucune
+	// passerelle n'est câblée (`channel: "echo"`). Il disparaîtra sans
+	// préavis : une application qui le lit doit le traiter comme un bonus de
+	// développement, jamais comme un dû.
+	DevCode string `json:"dev_code,omitempty"`
+}
+
+// OTPVerifyRequest consomme le code : elle inscrit ou connecte.
+type OTPVerifyRequest struct {
+	Phone string `json:"phone" validate:"required,e164"`
+	Code  string `json:"code" validate:"required,min=4,max=12"`
+	// Name, FirstName, LastName : FACULTATIFS, et lus seulement si le compte
+	// naît ici. Sans nom, le numéro fait office de nom d'affichage et la
+	// personne le changera depuis son profil.
+	Name       string `json:"name,omitempty" validate:"omitempty,max=120"`
+	FirstName  string `json:"first_name,omitempty" validate:"omitempty,max=80"`
+	LastName   string `json:"last_name,omitempty" validate:"omitempty,max=80"`
+	App        string `json:"app,omitempty" validate:"omitempty,oneof=client driver courier merchant console"`
+	DeviceID   string `json:"device_id,omitempty" validate:"omitempty,max=128"`
+	DeviceName string `json:"device_name,omitempty" validate:"omitempty,max=120"`
+	// Platform : acceptée et ignorée, comme à l'inscription — voir
+	// `RegisterRequest.Platform`. La retirer ferait un `422 unknown_field`
+	// chez toutes les applications qui l'envoient déjà.
+	Platform string `json:"platform,omitempty" validate:"omitempty,oneof=web android ios"`
 }
 
 // SessionResponse dit à l'application où sa session est ouverte.

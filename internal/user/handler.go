@@ -25,6 +25,10 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 	r.Post("/auth/register", h.register)
 	r.Post("/auth/login", h.login)
 	r.Post("/auth/refresh", h.refresh)
+	// LA PORTE PAR CODE, pour les clients — voir `otp.go`. Publique par
+	// nature : on s'inscrit avant d'avoir un jeton.
+	r.Post("/auth/otp", h.requestOTP)
+	r.Post("/auth/otp/verify", h.verifyOTP)
 
 	r.Group(func(g chi.Router) {
 		g.Use(authMW)
@@ -136,6 +140,43 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(country.Header, resp.User.Country)
 	}
 	httpx.JSON(w, http.StatusCreated, resp)
+}
+
+func (h *Handler) requestOTP(w http.ResponseWriter, r *http.Request) {
+	var req OTPRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	resp, err := h.svc.RequestOTP(r.Context(), req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) verifyOTP(w http.ResponseWriter, r *http.Request) {
+	var req OTPVerifyRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	resp, err := h.svc.VerifyOTP(r.Context(), req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	// Le pays retenu pour un compte qui vient de naître — l'indicatif a pu
+	// parler —, comme à l'inscription ordinaire.
+	if resp.User.Country != "" {
+		w.Header().Set(country.Header, resp.User.Country)
+	}
+	status := http.StatusOK
+	if resp.Created {
+		status = http.StatusCreated
+	}
+	httpx.JSON(w, status, resp)
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {

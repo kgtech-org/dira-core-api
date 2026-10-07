@@ -309,6 +309,173 @@ paths:
             l'application Dira Livreur. » Le mot de passe était juste — envoyer
             la personne en changer un qui fonctionne ne mène nulle part, et
             c'est un appel au support pour rien.
+  /auth/otp:
+    post:
+      tags: [auth]
+      summary: Ask for a one-time code (clients)
+      description: >-
+        **S'inscrire et se connecter avec son téléphone, sans mot de passe.**
+        Le socle envoie six chiffres par WhatsApp ou par SMS ; `POST
+        /auth/otp/verify` les consomme, inscrit le compte s'il n'existait pas
+        et ouvre la session.
+
+
+        ⚠️ **LA PASSERELLE N'EST PAS ENCORE CÂBLÉE.** Tant que `OTP_SENDER`
+        vaut `echo` — c'est le défaut —, **rien n'est remis** : la réponse
+        porte `channel: "echo"` et **`dev_code`, le code EN CLAIR**. C'est ce
+        qui permet de câbler les applications dès maintenant, et c'est une
+        faille assumée et temporaire : quiconque connaît un numéro entre dans
+        le compte. `dev_code` **disparaîtra sans préavis** le jour où un canal
+        réel est branché — une application qui le lit doit le traiter comme un
+        bonus de développement, jamais comme un dû, et toujours offrir la
+        saisie manuelle.
+
+
+        ⚠️ **RÉSERVÉ AUX CLIENTS, et c'est une règle de sécurité.** Six
+        chiffres remplacent un mot de passe : l'ouvrir aux chauffeurs, aux
+        marchands ou à la direction ferait du numéro de téléphone — qui
+        s'affiche sur une plaque et se donne à un passager — le seul secret
+        protégeant un compte qui débite des portefeuilles. Un compte qui n'est
+        pas `client` ne reçoit **aucun** code (`403 otp_not_available`), et une
+        application d'agent se voit refuser la porte.
+
+
+        ⚠️ **ELLE NE DIT JAMAIS SI LE NUMÉRO EST CONNU.** Rendre « compte
+        existant » ferait de cette route un annuaire : qui veut savoir si
+        quelqu'un est client de Dira n'aurait qu'à poster son numéro. C'est
+        `created` dans la réponse de la vérification qui dit à l'application de
+        demander le nom, une fois la personne authentifiée.
+
+
+        **Cadence** : un code par minute et par numéro (`429 otp_too_soon`),
+        cinq par heure (`429 otp_too_many_requests`). Le code vit **5 minutes**
+        et meurt après **5 essais**. Une nouvelle demande REMPLACE le code
+        précédent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: {type: string, description: E.164 avec le +}
+                channel:
+                  type: string
+                  enum: [whatsapp, sms]
+                  description: >-
+                    Le canal souhaité, `whatsapp` par défaut — il coûte moins
+                    cher qu'un SMS et c'est déjà celui par lequel la livraison
+                    parle aux clients. Le serveur rend le canal qui a
+                    RÉELLEMENT servi : un fournisseur peut basculer.
+                app:
+                  type: string
+                  enum: [client, driver, courier, merchant, console]
+                  description: >-
+                    Seul `client` ouvre cette porte (les deux applications de
+                    clients partagent ce mot). Omis = toléré, comme ailleurs,
+                    pour une application pas encore à jour ; le rôle du compte
+                    est de toute façon vérifié à la vérification.
+                locale: {type: string, enum: [fr, en]}
+      responses:
+        "200":
+          description: >-
+            `{sent, channel, expires_at, resend_after}` — et `dev_code` tant
+            que `channel` vaut `echo`.
+
+
+            ⚠️ **Le compte à rebours de l'écran se rend depuis `expires_at`**,
+            jamais depuis l'horloge du téléphone, et le bouton « renvoyer » se
+            rouvre après `resend_after` secondes.
+        "403":
+          description: >-
+            `otp_not_available` — ce compte se connecte avec un mot de passe
+            (chauffeur, livreur, marchand, direction), ou l'application n'est
+            pas une application de client. Aucun code n'a été envoyé.
+        "422":
+          description: >-
+            `validation_failed` — `fields: ["phone"]` si le `+` manque : le
+            socle ne devine pas d'indicatif.
+        "429":
+          description: >-
+            `otp_too_soon` (un code vient de partir) ou
+            `otp_too_many_requests` (plafond horaire de ce numéro).
+        "503":
+          description: >-
+            `otp_delivery_failed` — la passerelle n'a pas pris le message.
+            **Rien n'est écrit** : ni la cadence ni le plafond ne sont
+            consommés, redemander tout de suite est légitime.
+  /auth/otp/verify:
+    post:
+      tags: [auth]
+      summary: Verify a one-time code — signs up or signs in (clients)
+      description: >-
+        Consomme le code : **inscrit** le compte s'il n'existait pas
+        (`201`, `created: true`), **connecte** sinon (`200`). La réponse est
+        celle de `POST /auth/login`, augmentée de `created`.
+
+
+        ⚠️ **LE CODE EST CONSOMMÉ AVANT TOUTE AUTRE VÉRIFICATION** — compte
+        suspendu, mauvaise application. Un code qui survivrait à un refus
+        resterait valide pour être rejoué ailleurs.
+
+
+        ⚠️ **LE NOM EST FACULTATIF.** Sans lui, le numéro fait office de nom
+        d'affichage, et la personne le changera depuis son profil (`PATCH /me`)
+        — c'est la convention déjà en vigueur : « nom égal au téléphone » se lit
+        « nom non posé ». Exiger un nom ajouterait un écran entre le code et la
+        première course. L'application qui veut le demander le fait **après**
+        la vérification, quand `created` vaut `true`.
+
+
+        ⚠️ **LE COMPTE NÉ ICI N'A PAS DE MOT DE PASSE**, et `POST /auth/login`
+        lui répond `401 invalid_credentials` — jamais un code qui dirait « ce
+        compte se connecte autrement », ce qui révélerait quels numéros
+        existent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone, code]
+              properties:
+                phone: {type: string, description: E.164 avec le +}
+                code: {type: string, minLength: 4, maxLength: 12}
+                name:
+                  type: string
+                  maxLength: 120
+                  description: >-
+                    Facultatif, et lu **seulement si le compte naît ici**.
+                first_name: {type: string, maxLength: 80}
+                last_name: {type: string, maxLength: 80}
+                app:
+                  type: string
+                  enum: [client, driver, courier, merchant, console]
+                device_id: {type: string, maxLength: 128}
+                device_name: {type: string, maxLength: 120}
+                platform:
+                  type: string
+                  enum: [web, android, ios]
+                  description: Acceptée et ignorée, comme à l'inscription.
+      responses:
+        "200":
+          description: Connexion — même corps que `POST /auth/login`.
+        "201":
+          description: >-
+            Inscription — même corps, plus **`created: true`**. C'est le signal
+            qui autorise l'écran « comment vous appelez-vous ? ».
+        "401":
+          description: >-
+            `otp_invalid` (code faux, ou aucun code en cours — les deux
+            répondent pareil, sans quoi on saurait quels numéros sont en train
+            de se connecter), `otp_expired` (le code a plus de 5 minutes) ou
+            `otp_too_many_attempts` (cinq essais : le code est **mort**, il
+            faut en redemander un).
+        "403":
+          description: >-
+            `otp_not_available` (ce compte se connecte avec un mot de passe),
+            `account_suspended`, ou `wrong_app`.
   /auth/refresh:
     post:
       tags: [auth]

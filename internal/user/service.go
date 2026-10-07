@@ -41,6 +41,13 @@ type Repo interface {
 	// compte, réclamée par les verticales — voir `agentapp.go`.
 	SetAgentApp(ctx context.Context, userID primitive.ObjectID, app string) error
 
+	// LA PORTE PAR CODE : un code vivant par numéro, ses essais, sa purge —
+	// voir `otp.go`.
+	SaveOTP(ctx context.Context, c *OTPCode) error
+	FindOTP(ctx context.Context, phone string) (*OTPCode, error)
+	IncOTPAttempts(ctx context.Context, phone string) (int, error)
+	DeleteOTP(ctx context.Context, phone string) error
+
 	// Carnet d'adresses. Le client répétait jusqu'ici son adresse à chaque
 	// commande, avec ses indications de porte.
 	ListAddresses(ctx context.Context, userID primitive.ObjectID) ([]Address, error)
@@ -103,6 +110,12 @@ type Service struct {
 	// basemaps rend le FOND DE CARTE du pays — voir `basemap.go`. FACULTATIF.
 	basemaps Basemaps
 	auditor  *audit.Recorder
+	// LA PORTE PAR CODE — voir `otp.go`. FACULTATIVE : sans expéditeur
+	// branché, les deux routes répondent `otp_not_available` plutôt que
+	// d'envoyer dans le vide.
+	otpSender OTPSender
+	otpPepper string
+	otpPolicy OTPPolicy
 }
 
 // Entitlements est ce qu'une fiche de staff accorde à un compte `admin`.
@@ -271,6 +284,21 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 		return AuthResponse{}, apperr.Internal(err)
 	}
 	if u == nil {
+		return AuthResponse{}, errInvalidCredentials
+	}
+	// ⚠️ UN COMPTE SANS MOT DE PASSE N'A PAS DE PORTE ICI, et il en existe
+	// depuis que les clients s'inscrivent par code (voir `otp.go`). Sans ce
+	// refus, `VerifyPassword` rend une erreur d'encodage sur une empreinte
+	// vide, et une tentative de connexion parfaitement ordinaire répond 500 :
+	// la personne voit « le service est en panne » là où il faut lui dire
+	// « ce n'est pas ainsi qu'on entre », et la supervision compte une panne
+	// qui n'en est pas une.
+	//
+	// ⚠️ ET C'EST `invalid_credentials`, PAS UN CODE QUI DIT LA VÉRITÉ. Un
+	// « ce compte se connecte par code » dirait à qui essaie des numéros
+	// lesquels existent — exactement ce que l'enveloppe d'erreur de la
+	// connexion évite depuis toujours.
+	if u.PasswordHash == "" {
 		return AuthResponse{}, errInvalidCredentials
 	}
 	ok, err := VerifyPassword(req.Password, u.PasswordHash)

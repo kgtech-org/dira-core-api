@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.45.2** · 7 octobre 2026
+> **Version 4.46.0** · 7 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -172,12 +172,72 @@ C'est tout l'intérêt d'une application unifiée : **une** inscription, **un**
 solde, **une** boîte.
 
 ```
+POST /auth/otp · POST /auth/otp/verify          ← la porte par CODE (v4.46.0)
 POST /auth/register · POST /auth/login · POST /auth/refresh · POST /auth/logout
 GET /me · GET /me/addresses · POST /me/devices
 GET /wallet · GET /wallet/transactions
 POST /payments/initiate · GET /payments/{id} · GET /payments/providers
 GET /notifications · GET /countries · POST /uploads
 ```
+
+### 🆕 6 bis. S'INSCRIRE ET SE CONNECTER PAR CODE — le téléphone, et rien d'autre (v4.46.0)
+
+Deux routes, un écran de six chiffres, **pas de mot de passe à choisir ni à
+retrouver** :
+
+```
+POST /auth/otp          { phone, channel?: "whatsapp"|"sms", app: "client", locale? }
+   → 200 { sent, channel, expires_at, resend_after, dev_code? }
+
+POST /auth/otp/verify   { phone, code, name?, first_name?, last_name?,
+                          app: "client", device_id?, device_name? }
+   → 201 { …, created: true }   le compte VIENT DE NAÎTRE
+   → 200 { …, created: false }  connexion
+```
+
+Le corps de la réponse de `verify` est **exactement celui de
+`POST /auth/login`** (`user`, `access_token`, `refresh_token`, `session?`,
+`maps?`), augmenté de `created`.
+
+⚠️ **LA PASSERELLE N'EST PAS ENCORE CÂBLÉE — LE CODE REVIENT DANS LA RÉPONSE.**
+Tant que le serveur répond `channel: "echo"`, **rien n'est envoyé** : le code
+est dans **`dev_code`**. C'est ce qui vous permet de câbler l'écran dès
+maintenant. ⚠️ **`dev_code` disparaîtra sans préavis** le jour où WhatsApp ou
+le SMS sera branché : traitez-le comme un bonus de développement — pré-remplir
+le champ si vous voulez —, **jamais** comme la source du code. L'écran doit
+fonctionner à l'identique quand il n'y est plus.
+
+⚠️ **LE COMPTE À REBOURS SE REND DEPUIS `expires_at`**, jamais depuis l'horloge
+du téléphone, et le bouton « renvoyer » se rouvre après `resend_after`
+secondes. Un code vit **5 minutes** et meurt après **5 essais**.
+
+⚠️ **NE DEMANDEZ LE NOM QU'APRÈS LA VÉRIFICATION, ET SEULEMENT SI
+`created: true`.** La demande de code **ne dit jamais** si le numéro est déjà
+client — ce serait un annuaire : qui veut savoir si quelqu'un utilise Dira
+n'aurait qu'à poster son numéro. Sans nom, le serveur affiche le **numéro**
+comme nom ; la personne le changera depuis son profil (`PATCH /me`).
+
+⚠️ **CE COMPTE N'A PAS DE MOT DE PASSE.** `POST /auth/login` lui répondra
+toujours `401 invalid_credentials` : ne proposez pas « se connecter avec un mot
+de passe » à quelqu'un qui s'est inscrit par code, et ne gardez pas d'écran de
+mot de passe oublié pour lui.
+
+⚠️ **RÉSERVÉE AUX CLIENTS.** Un compte chauffeur, livreur, marchand ou de
+direction reçoit `403 otp_not_available` et **aucun code** — six chiffres ne
+remplacent un mot de passe que pour un client. Les applications d'agent gardent
+`POST /auth/login`.
+
+| Refus | Quand | Ce que l'écran fait |
+|---|---|---|
+| `422 validation_failed` (`fields: ["phone"]`) | le `+` manque | souligner le champ ; pré-remplir l'indicatif du pays |
+| `429 otp_too_soon` | un code vient de partir | garder le bouton « renvoyer » grisé jusqu'à `resend_after` |
+| `429 otp_too_many_requests` | plafond horaire de ce numéro | proposer le support, pas un nouvel essai |
+| `503 otp_delivery_failed` | la passerelle n'a rien pris | **redemander tout de suite est légitime** : rien n'a été consommé |
+| `401 otp_invalid` | code faux **ou** aucun code en cours | « code incorrect », garder la saisie |
+| `401 otp_expired` | plus de 5 minutes | « demandez un nouveau code » |
+| `401 otp_too_many_attempts` | 5 essais | le code est **mort** : revenir à l'écran du numéro |
+| `403 otp_not_available` | compte qui se connecte par mot de passe | « ouvrez l'application correspondante » |
+| `403 account_suspended` | compte suspendu | le dire tel quel, ne pas renvoyer vers « mot de passe oublié » |
 
 ⚠️ **DITES QUELLE APPLICATION SE CONNECTE — `app`.** À la connexion, envoyez
 `app: "client"`. Le serveur refuse `403 wrong_app` quand le compte n'a pas le
@@ -570,6 +630,17 @@ du métier.
 ---
 
 ## 15. Journal
+
+### 4.46.0 — 7 octobre 2026
+
+🆕 **LA PORTE PAR CODE** — `POST /auth/otp` et `POST /auth/otp/verify` (§6 bis) :
+le téléphone, six chiffres, pas de mot de passe. `verify` rend le corps de
+`POST /auth/login` plus **`created`**. ⚠️ Tant que `channel` vaut `echo`, **rien
+n'est envoyé** et le code revient dans **`dev_code`** — un bonus de
+développement qui disparaîtra sans préavis. ⚠️ Le nom ne se demande qu'après,
+et seulement si `created: true` : la demande de code ne dit jamais si le numéro
+est connu. ⚠️ Un compte né par code **n'a pas de mot de passe** : pas d'écran
+« mot de passe oublié » pour lui.
 
 ### 4.43.0 — 6 octobre 2026
 

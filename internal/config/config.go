@@ -54,6 +54,22 @@ type Config struct {
 	VTCBaseURL       string
 	VTCCallbackToken string
 
+	// OTPSender nomme le canal de remise du code à usage unique :
+	// `echo` (défaut), `whatsapp` ou `sms`.
+	//
+	// ⚠️ `echo` NE REMET RIEN : il rend le code dans la réponse HTTP. C'est
+	// ce qui permet de câbler les applications avant qu'une passerelle
+	// n'existe, et c'est une faille — quiconque connaît un numéro entre dans
+	// le compte. Le démarrage le crie ; voir `internal/user/otp.go`.
+	OTPSender string
+	// OTPTTL, OTPResend, OTPMaxAttempts, OTPMaxPerHour : la vie du code et sa
+	// cadence. Réglables parce qu'un marché lent sur les SMS demande une
+	// durée plus longue, et qu'on ne redéploie pas pour ça.
+	OTPTTL         time.Duration
+	OTPResend      time.Duration
+	OTPMaxAttempts int
+	OTPMaxPerHour  int
+
 	// CountryIPLookupURL et CountryIPLookupField : le fournisseur qui situe
 	// une adresse IP, repli de la résolution de pays quand l'application n'a
 	// pas de position. `{ip}` est remplacé dans l'URL ; le champ est celui
@@ -90,12 +106,30 @@ func Load() (*Config, error) {
 		FoodCallbackToken:     core.Env("FOOD_CALLBACK_TOKEN", ""),
 		VTCBaseURL:            core.Env("VTC_BASE_URL", ""),
 		VTCCallbackToken:      core.Env("VTC_CALLBACK_TOKEN", ""),
+		OTPSender:             core.Env("OTP_SENDER", "echo"),
 		CountryIPLookupURL:    core.Env("COUNTRY_IP_LOOKUP_URL", country.DefaultIPLookupURL),
 		CountryIPLookupField:  core.Env("COUNTRY_IP_LOOKUP_FIELD", country.DefaultIPLookupField),
 	}
 
 	if cfg.FinanceIntegrityInterval, err = core.Duration("FINANCE_INTEGRITY_INTERVAL", 15*time.Minute); err != nil {
 		return nil, err
+	}
+	if cfg.OTPTTL, err = core.Duration("OTP_TTL", 5*time.Minute); err != nil {
+		return nil, err
+	}
+	if cfg.OTPResend, err = core.Duration("OTP_RESEND", time.Minute); err != nil {
+		return nil, err
+	}
+	if cfg.OTPMaxAttempts, err = core.Int("OTP_MAX_ATTEMPTS", 5); err != nil {
+		return nil, err
+	}
+	if cfg.OTPMaxPerHour, err = core.Int("OTP_MAX_PER_HOUR", 5); err != nil {
+		return nil, err
+	}
+	switch cfg.OTPSender {
+	case "echo", "whatsapp", "sms":
+	default:
+		return nil, fmt.Errorf("config: invalid OTP_SENDER %q (want echo|whatsapp|sms)", cfg.OTPSender)
 	}
 	// La mise en service du journal : le 21 septembre 2026. Réglable pour
 	// une base qui aurait été reprise plus tard.

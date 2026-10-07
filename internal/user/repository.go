@@ -23,6 +23,7 @@ type Repository struct {
 	users         *mongo.Collection
 	refreshTokens *mongo.Collection
 	addresses     *mongo.Collection
+	otpCodes      *mongo.Collection
 }
 
 func NewRepository(m *db.Mongo) *Repository {
@@ -30,6 +31,7 @@ func NewRepository(m *db.Mongo) *Repository {
 		users:         m.Collection(usersCollection),
 		refreshTokens: m.Collection(refreshTokensCollection),
 		addresses:     m.Collection(CollectionAddresses),
+		otpCodes:      m.Collection(CollectionOTP),
 	}
 }
 

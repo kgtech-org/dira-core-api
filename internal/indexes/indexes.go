@@ -44,6 +44,15 @@ var applicationIndexes = []db.Index{
 		Unique:        true,
 		PartialFilter: bson.D{{Key: "email", Value: bson.D{{Key: "$gt", Value: ""}}}},
 	},
+	// LA PORTE PAR CODE — un seul code vivant par numéro (voir
+	// `internal/user/otp.go`). L'unicité n'est pas décorative : c'est elle
+	// qui fait qu'une demande REMPLACE la précédente au lieu d'empiler des
+	// codes valides, et donc de multiplier les chances d'en deviner un.
+	{Collection: "auth_otp_codes", Keys: db.K("phone", 1), Unique: true},
+	// La purge suit la FENÊTRE de cadence, pas l'échéance du code : effacer
+	// à l'expiration du code remettrait le compteur horaire à zéro toutes
+	// les cinq minutes, et le plafond de demandes ne plafonnerait rien.
+	{Collection: "auth_otp_codes", Keys: db.K("purge_at", 1), TTLSeconds: db.TTL(0)},
 	{Collection: "refresh_tokens", Keys: db.K("token_hash", 1), Unique: true},
 	{Collection: "refresh_tokens", Keys: db.K("user_id", 1)},
 	{Collection: "refresh_tokens", Keys: db.K("expires_at", 1), TTLSeconds: db.TTL(0)},
