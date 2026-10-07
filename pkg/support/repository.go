@@ -41,6 +41,11 @@ func Indexes(collection string) []db.Index {
 		{Collection: collection, Keys: db.K("assigned_to", 1)},
 		{Collection: collection, Keys: db.K("user_id", 1)},
 		{Collection: collection, Keys: db.K("counterpart_id", 1)},
+		// L'EFFACEMENT D'UN COMPTE retire ses messages des fils d'AUTRUI —
+		// l'objet perdu dans sa voiture, où il a répondu. Sans cet index, la
+		// purge balaie toute la collection des tickets pour trouver, le plus
+		// souvent, un seul fil. Voir `PurgeOf`.
+		{Collection: collection, Keys: db.K("messages.author_id", 1)},
 	}
 }
 
