@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.45.0** · 7 octobre 2026
+> **Version 4.45.1** · 7 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -1240,6 +1240,153 @@ POST /rides/pool/quote  { "stops": [ { kind: "pickup", … }, { kind: "dest", �
 
 POST /rides  { quote_id, payment_method }        # comme un devis ordinaire
 ```
+
+#### Le principe, en entier
+
+**Trois personnes y gagnent quelque chose, et chacune y renonce à quelque
+chose.** C'est le marché, et tout le reste en découle :
+
+| | Ce qu'elle gagne | Ce qu'elle accepte |
+|---|---|---|
+| **Le passager** | un prix plus bas (70 % du tarif, par défaut) | attendre qu'on trouve quelqu'un, un détour, un inconnu à bord |
+| **Le chauffeur** | deux courses pour un seul déplacement | un arrêt de plus, et un trajet qui n'est pas le plus direct |
+| **La plateforme** | des sièges vides remplis | apparier, et une commission par course un peu plus haute |
+
+⚠️ **SI L'UN DES TROIS N'Y GAGNE RIEN, LE MODE NE PREND PAS.** C'est pour cela
+qu'il y a un **trajet minimum** (sur deux kilomètres, le détour coûte plus que
+la remise), une **remise réelle** (sans elle, personne n'accepterait l'inconnu),
+et une **limite de détour** (les deux rayons). Ces trois réglages ne sont pas
+des garde-fous techniques : ce sont les termes du marché.
+
+##### 1. Ce qui décide que deux trajets peuvent se partager
+
+Le serveur compare votre course aux courses **qui attendent déjà** un
+co-passager. Cinq conditions, **toutes** nécessaires :
+
+| Condition | Pourquoi |
+|---|---|
+| **même classe de véhicule** | le prix, les places et ce que chacun a choisi en dépendent : une eco et un van ne se partagent pas |
+| **même pays** | réglages, monnaie et villes desservies diffèrent |
+| **départs proches** — ≤ `pickup_radius_m` | c'est le détour que le second impose au premier **avant** de rouler |
+| **arrivées proches** — ≤ `dropoff_radius_m` | ⚠️ **les deux, pas l'une des deux** : deux personnes peuvent partir du même immeuble et aller à l'opposé de la ville |
+| **le groupe n'est pas complet** — < `max_riders` | deux par défaut |
+
+Entre deux candidates valables, le serveur garde **la plus ancienne** : elle
+attend depuis plus longtemps, et sa fenêtre se referme en premier.
+
+```
+Lomé — rayons à 2,5 km, trajet minimum 3 km
+
+  Ana  : Tokoin ─────────────▶ Aéroport        ⏳ attend depuis 2 min
+  Boris: Nukafu ─────────────▶ Aéroport        ✅ départs à 1,0 km, même arrivée
+  Carl : Agoé   ─────────────▶ Aéroport        ❌ départ à 5,4 km de Tokoin
+  Dina : Tokoin ─────────────▶ Bè Plage        ❌ même départ, arrivée à 4 km
+```
+
+⚠️ **CE N'EST PAS VOTRE TRAVAIL DE CALCULER ÇA**, et il ne faut pas essayer : le
+serveur ne vous donne jamais les courses qui attendent (ce serait donner
+l'adresse d'inconnus). Vous proposez le mode, vous commandez, vous affichez ce
+qui revient. Les rayons sont servis dans les réglages **pour que vous puissiez
+l'expliquer**, pas pour que vous l'appliquiez.
+
+##### 2. La chronologie, les deux passagers côte à côte
+
+Ana commande à 9 h 00, Boris à 9 h 02.
+
+| | Ana (première) | Boris (second) |
+|---|---|---|
+| 9 h 00 | `POST /rides` → `pooling`, `pool_until` = 9 h 05. Écran : « on cherche quelqu'un qui fait le même trajet », décompte 5 min | — |
+| 9 h 02 | push **`ride_pool_matched`** → relire la course : `calling`, `pool_id`, `pool_size: 2` | `POST /rides` répond **déjà** `calling` + `pool_id`. ⚠️ **Pas de push pour lui** : il a la réponse sous les yeux |
+| 9 h 02 | « nous cherchons une voiture pour vous deux » | idem |
+| 9 h 03 | `accepted` — push `ride_accepted`, la carte du chauffeur | `accepted` aussi, **même chauffeur, même plaque** |
+| 9 h 03+ | la voiture vient chercher Ana | ⚠️ la voiture vient chercher **Ana d'abord** |
+| 9 h 09 | Ana à bord (`in_transit`) | la voiture arrive ensuite chez Boris |
+| 9 h 14 | — | Boris à bord |
+| 9 h 30 | Ana déposée → `completed`, note, reçu | course encore `in_transit` |
+| 9 h 36 | — | Boris déposé → `completed` |
+
+⚠️ **LES DEUX COURSES AVANCENT SÉPARÉMENT.** Chacune a son `status`, son prix,
+sa note, son reçu, sa conversation. Il n'existe **aucun** objet « course de
+groupe » à suivre : vous suivez **votre** course, comme toujours.
+
+##### 3. Pourquoi la voiture semble venir d'ailleurs
+
+L'appel du chauffeur n'est **pas** centré sur votre départ : il est centré au
+**milieu** des deux départs, sur un cercle élargi de leur demi-distance.
+
+```
+     Tokoin ●───────── 1 000 m ─────────● Nukafu
+                       ▲
+                   le centre de l'appel (ni l'un ni l'autre)
+     rayon = rayon d'appel du pays + 500 m
+```
+
+⚠️ **APPELER SUR LE DÉPART DE L'UN DES DEUX SERAIT FAUX** : le chauffeur le plus
+proche d'Ana peut être hors de portée de Boris, et l'on appellerait des voitures
+qui n'ont aucune raison d'être proches du trajet réel. Conséquence pour vous :
+**le chauffeur peut arriver d'une direction inattendue**, et son `eta_at` peut
+être plus long que sur une course ordinaire. N'expliquez pas, **prévenez** : « il
+récupère d'abord l'autre passager » suffit.
+
+##### 4. L'ordre de route : les deux montées, PUIS les deux descentes
+
+⚠️ **LE CHAUFFEUR NE DÉPOSE PERSONNE AVANT D'AVOIR PRIS LES DEUX.** Déposer le
+premier avant d'aller chercher le second ferait **deux courses à la suite**, pas
+une course partagée — et le second attendrait tout le trajet du premier.
+
+Pour vous, cela veut dire deux choses :
+
+- **si vous montez en premier**, la voiture fait un arrêt **avant** de partir
+  vers votre destination. Dites-le **au moment de commander**, pas quand ça
+  arrive ;
+- **si vous montez en second**, la voiture arrive chez vous avec quelqu'un
+  dedans.
+
+⚠️ **ET `eta_at` EST OPTIMISTE POUR LE SECOND PASSAGER — sachez-le.** Il est
+calculé en ligne directe depuis la position du chauffeur vers **votre** arrêt :
+il **ne passe pas** par la prise en charge de l'autre. Tant que le chauffeur n'a
+pas récupéré le premier passager, le chiffre annoncé est donc **plus court** que
+la réalité.
+
+Ce qu'on vous demande d'en faire, et c'est la seule chose honnête : **ne
+l'affichez pas comme une promesse sur une course partagée tant que `pool_size`
+> 1 et que vous n'êtes pas encore à bord.** Dites « il récupère d'abord l'autre
+passager » plutôt qu'un décompte qui va glisser. Dès que vous êtes `in_transit`,
+`eta_at` redevient exact : il n'y a plus d'arrêt intercalé.
+
+⚠️ **VOUS NE RECEVEZ NI LE NOM NI L'ADRESSE DE L'AUTRE PASSAGER**, et c'est
+délibéré : on ne donne pas l'adresse de quelqu'un à un inconnu avant qu'il ne
+monte en voiture. Vous savez seulement que vous partagez (`pool_size`). Le
+chauffeur, lui, a l'itinéraire complet : c'est lui qui conduit.
+
+##### 5. Les quatre façons dont ça se termine
+
+```
+pooling ──┬──▶ personne n'est venu          → exhausted · pool_no_match
+          └──▶ groupe formé → calling ──┬──▶ un chauffeur prend  → accepted ✅
+                                        ├──▶ aucun preneur       → exhausted
+                                        ├──▶ le co-passager annule→ exhausted · pool_partner_left
+                                        └──▶ l'appel n'a pas pu s'ouvrir
+                                                                 → exhausted · pool_call_failed
+```
+
+⚠️ **DANS LES QUATRE CAS D'ÉCHEC, LA COURSE RESTE LA VÔTRE** : `searching`, non
+annulée, mode et prix inchangés. C'est à vous de proposer la suite — et
+`dispatch_reason` dit laquelle (voir plus bas).
+
+##### 6. Ce que le passager va demander
+
+Préparez ces réponses : ce sont celles que le support reçoit.
+
+| Il demande | Répondez |
+|---|---|
+| « pourquoi ça prend si longtemps ? » | on cherche quelqu'un qui fait le même trajet — jusqu'à `search_ttl_s` ; après, vous décidez |
+| « où est mon chauffeur, il va dans l'autre sens » | il récupère l'autre passager d'abord |
+| « ça disait 4 min et ça fait 10 » | ⚠️ sur une course partagée, avant d'être à bord, le décompte ne compte pas l'autre prise en charge — **ne le montrez pas** |
+| « qui est cette personne ? » | un autre client Dira, qui va au même endroit. Ni son nom ni son adresse ne vous sont donnés |
+| « pourquoi je paie moins ? » | `100 − share_pct` % de moins, parce que vous partagez la voiture |
+| « l'autre a annulé, je paie plus ? » | **non** — le prix est figé, et l'annulation n'est pas la vôtre |
+| « je peux partager avec un ami ? » | **non** : c'est le serveur qui apparie, sur la proximité des trajets |
 
 #### ⚠️ LA RECHERCHE SE FAIT EN DEUX TEMPS — c'est TOUT ce qu'il faut comprendre
 

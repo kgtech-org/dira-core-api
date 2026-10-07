@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.45.0** · 7 octobre 2026
+> **Version 4.45.1** · 7 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -1299,6 +1299,121 @@ vous êtes payé **deux courses**.
             "fare_xof": 4900, "driver_xof": 3970,
             "class": "eco", "stops": 4, "distance_m": 9800 } }
 ```
+
+#### Le principe, de votre côté
+
+**Vous faites UN déplacement et vous êtes payé DEUX courses.** C'est tout le
+marché, et c'est pour cela qu'il vaut le coup même si chaque course est moins
+chère qu'une course ordinaire.
+
+```
+Course ordinaire  : 1 trajet  → 1 course   au tarif plein
+Course partagée   : 1 trajet  → 2 courses  à 70 % chacune  = 140 %
+                    + un arrêt de plus, et un chemin moins direct
+```
+
+⚠️ **CHAQUE PASSAGER PAIE UNE PART DU TARIF ORDINAIRE** (70 % par défaut, réglé
+par pays). Deux parts valent **plus** qu'une course entière : c'est le volume qui
+paie, pas le prix unitaire. Si votre écran n'affiche que le prix d'un seul
+passager, il sous-vend la course de moitié — **affichez `meta.fare_xof`, qui est
+le total du groupe**.
+
+##### Comment un groupe arrive jusqu'à vous
+
+Vous ne voyez **rien** de la première étape. Le serveur a déjà :
+
+1. mis la course du premier passager en attente d'un co-passager (jusqu'à
+   5 minutes) — **aucun chauffeur n'était appelé** ;
+2. vérifié qu'un second trajet lui ressemble : **même classe de véhicule**,
+   départs à moins de 2,5 km l'un de l'autre, arrivées à moins de 2,5 km,
+   trajet d'au moins 3 km ;
+3. **figé le groupe** — et c'est seulement là qu'il vous appelle.
+
+⚠️ **LE GROUPE EST FIGÉ AVANT QUE VOTRE TÉLÉPHONE NE SONNE.** Personne ne vous
+sera ajouté après que vous avez accepté : ce que l'appel annonce est ce que vous
+roulerez. C'est la raison pour laquelle la première étape existe — l'inverse
+vous aurait imposé un arrêt que vous n'avez pas accepté.
+
+##### L'appel est centré entre les deux départs
+
+```
+     Tokoin ●───────── 1 000 m ─────────● Nukafu
+                       ▲
+            `pickup` de l'appel : le MILIEU
+     rayon = rayon d'appel du pays + 500 m (la demi-distance)
+```
+
+⚠️ **`pickup` N'EST LE DÉPART D'AUCUN DES DEUX PASSAGERS.** Ne l'affichez pas
+comme une adresse de prise en charge : montrez-le comme la **zone** de départ.
+Les vraies adresses arrivent avec `pool_plan`, après l'acceptation. Sans cela,
+vous rouleriez vers un point où personne ne vous attend.
+
+##### Ce que vous recevez en acceptant
+
+**Deux courses**, et un **ordre de passage**. Les deux apparaissent dans
+`GET /rides` avec votre `driver_id`, et chacune porte le même `pool_plan`.
+
+```
+1. prise   Tokoin      → course A
+2. prise   Nukafu      → course B      ⚠️ les DEUX montées d'abord
+3. dépôt   Angondjé    → course B
+4. dépôt   Aéroport    → course A
+```
+
+⚠️ **SUIVEZ `pool_plan` DANS L'ORDRE DONNÉ.** Déposer le premier passager avant
+d'aller chercher le second ferait **deux courses à la suite**, pas une course
+partagée — et le second aurait attendu tout le trajet du premier. L'ordre des
+dépôts, lui, est calculé depuis la dernière prise en charge : il n'est pas
+forcément celui des montées.
+
+⚠️ **`ride_id` SUR CHAQUE ARRÊT DIT À QUI IL EST.** C'est ce qui vous permet
+d'annoncer le bon nom, de signaler la bonne arrivée et de faire avancer **la
+bonne** course. Quatre points sans propriétaire, et vous ne savez plus lequel va
+avec lequel.
+
+##### Deux courses, deux vies
+
+Vous avancez **chacune** séparément (`PATCH /rides/{id}/status`), vous signalez
+l'arrivée de chacune, vous êtes noté **deux fois**, et chacune a sa conversation.
+⚠️ Il n'existe **pas** de « course de groupe » à terminer d'un coup.
+
+Concrètement, sur un groupe de deux :
+
+| Vous faites | Sur quelle course |
+|---|---|
+| « je suis arrivé » chez le premier | la course **A** passe à `arrived` |
+| le premier monte | **A** passe à `in_transit` ; **B** est encore `accepted` |
+| « je suis arrivé » chez le second | **B** passe à `arrived` |
+| vous déposez le premier | **A** passe à `completed` — **B** continue |
+
+##### Si un passager annule
+
+⚠️ **AVANT QUE VOUS N'ACCEPTIEZ** : le groupe se défait, et l'appel s'arrête.
+Vous ne recevez rien, ou l'appel se referme (`call_closed`).
+
+⚠️ **APRÈS** : sa course passe à `cancelled`, **et `pool_plan` ne change pas**.
+Vous **sautez ses arrêts** et finissez l'autre course normalement. Fiez-vous au
+**statut de chaque course**, jamais à la longueur du plan : un plan qui
+rétrécirait sous vos yeux en route serait pire qu'un arrêt à ignorer.
+
+##### ⚠️ Le décompte du passager ne connaît pas votre détour
+
+`eta_at` est calculé en ligne **directe** depuis votre position vers l'arrêt
+suivant de **chaque** course. Pour le passager que vous prenez en **second**, il
+ne passe donc **pas** par la prise en charge du premier : son application lui
+annonce moins de temps qu'il n'en faudra.
+
+Ce que cela veut dire pour vous : **le second passager peut vous croire en
+retard alors que vous êtes dans les temps.** Sa spec lui demande de ne pas
+afficher ce décompte avant la montée à bord — mais si on vous le reproche, c'est
+de là que ça vient, pas de votre conduite.
+
+##### Ce qui ne change pas
+
+L'attente au départ, le temps réel, le klaxon, l'enchaînement, le hors ligne, la
+dette : tout fonctionne comme sur une course ordinaire, **course par course**.
+⚠️ Et la cadence de suivi est `normal` — une course partagée est une course
+commandée.
 
 ⚠️ **UN ÉCRAN D'APPEL DISTINCT, comme pour la location, et pour la même
 raison.** L'appel arrive dans la même trame qu'une course ordinaire, avec les

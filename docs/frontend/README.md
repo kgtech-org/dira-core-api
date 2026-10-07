@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.45.0** · 7 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.45.1** · 7 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -320,6 +320,43 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.45.1 — 7 octobre 2026
+
+📖 **LE PRINCIPE DE FONCTIONNEMENT DE LA COURSE PARTAGÉE, EN ENTIER.** Aucun
+changement d'API : les deux specs VTC expliquent désormais **comment ça marche**,
+et pas seulement quels champs lire.
+
+**`VTC-CLIENT` §4 quater** — le marché à trois (ce que chacun gagne et à quoi il
+renonce), **les cinq conditions qui décident que deux trajets se partagent**
+(avec un exemple de carte montrant une paire acceptée et deux refusées), la
+**chronologie minute par minute des deux passagers côte à côte**, pourquoi la
+voiture semble venir d'ailleurs, l'ordre de route, les **quatre façons dont ça se
+termine**, et les **six questions que le passager va poser** avec leur réponse.
+
+⚠️ **Ce qui manquait vraiment** : rien n'expliquait **ce qui décide** qu'un
+appariement est possible. Les rayons étaient servis dans les réglages sans dire
+à quoi ils servent — et une application ne doit surtout pas les appliquer
+elle-même : le serveur ne lui donne jamais les courses en attente (ce serait
+donner l'adresse d'inconnus). Ils sont là **pour qu'elle puisse expliquer**.
+
+**`VTC-DRIVER` §4 ter** — l'économie du mode (un déplacement, deux courses :
+140 % au lieu de 100 %), comment un groupe arrive jusqu'à lui, pourquoi
+`pickup` n'est le départ d'**aucun** des deux passagers, ce qu'il reçoit en
+acceptant, le tableau « vous faites ceci → sur quelle course », et ce qui se
+passe si un passager annule **avant** puis **après** son acceptation.
+
+⚠️ **UNE LIMITE CONNUE, DÉSORMAIS ÉCRITE : `eta_at` EST OPTIMISTE POUR LE SECOND
+PASSAGER.** Il est calculé en ligne **directe** depuis la position du chauffeur
+vers l'arrêt suivant de **chaque** course : il ne passe **pas** par la prise en
+charge de l'autre. Tant que le second passager n'est pas à bord, le chiffre
+annoncé est donc plus court que la réalité.
+
+- **Côté passager** : ne l'affichez pas comme une promesse quand `pool_size > 1`
+  et que vous n'êtes pas encore `in_transit` — dites « il récupère d'abord
+  l'autre passager ». Dès la montée à bord, `eta_at` redevient exact.
+- **Côté chauffeur** : le second passager peut vous croire en retard alors que
+  vous êtes dans les temps. C'est de là que ça vient, pas de votre conduite.
 
 ### 4.45.0 — 7 octobre 2026
 
