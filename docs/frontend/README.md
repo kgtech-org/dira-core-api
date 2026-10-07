@@ -254,6 +254,7 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ Un **seul** jeton pour les deux bases : ne dupliquez pas la session
 - [ ] Auth : stockage sécurisé, refresh **sérialisé**, déconnexion au second échec
 - [ ] 🔑 **Porte par code** (v4.46.0, applications de CLIENT) : compte à rebours rendu depuis `expires_at`, bouton « renvoyer » gouverné par `resend_after`, nom demandé **seulement** si `created: true`, et l'écran fonctionne **sans** `dev_code` — il disparaîtra. Les applications d'agent et de marchand gardent `POST /auth/login` (`403 otp_not_available` sinon)
+- [ ] 📱 **Appareils** : `device_id` envoyé à la connexion **par toutes les applications** (il ne va pas dans le jeton d'un client, il reconnaît le même téléphone qui revient) ; un `401` au rafraîchissement se traite comme une session expirée, sans message d'erreur technique
 - [ ] 🔒 **Verrou de l'application** (v4.46.0) : `app_lock` relu à **chaque** réponse qui le porte, y compris le **rafraîchissement**, et appliqué à chaud ; code de secours toujours possible à côté de la biométrie ; au-delà de `max_attempts`, **déconnexion** (jamais blocage) ; **jamais de verrou sur un écran d'appel ni sur l'urgence**
 - [ ] Pagination par curseur générique (`items` / `next_cursor`)
 - [ ] Montants en **entiers** — aucun flottant, formatage XOF à l'affichage seulement
@@ -324,6 +325,28 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 ## Journal
 
 ### 4.46.0 — 7 octobre 2026
+
+📱 **COMBIEN D'APPAREILS UN COMPTE PEUT TENIR — réglable par PAYS, trois par
+défaut.** Les comptes ordinaires (client, marchand, staff) n'avaient jusqu'ici
+**aucune borne** : un compte pouvait accumuler vingt sessions vivantes, chacune
+avec un jeton de rafraîchissement de trente jours, sans que rien ne le montre.
+Au-delà de `max_devices` (`GET /countries`, réglé depuis la console), la session
+**la plus silencieuse** est déconnectée.
+
+⚠️ **« LA PLUS SILENCIEUSE », PAS « LA PREMIÈRE OUVERTE ».** Une session est
+datée de son dernier rafraîchissement : le téléphone du quotidien se redate
+seul, celui du tiroir part le premier. L'appareil évincé l'apprend à son
+prochain rafraîchissement — un `401` ordinaire, à traiter comme une session
+expirée.
+
+⚠️ **ENVOYEZ `device_id`, MÊME CÔTÉ CLIENT.** Il ne va pas dans le jeton et ne
+soumet à aucune règle d'agent ; il sert à reconnaître **le même téléphone qui
+revient**, pour qu'une réinstallation ne pousse pas un autre appareil dehors.
+
+⚠️ **LES CHAUFFEURS ET LIVREURS GARDENT UN SEUL APPAREIL**, et cela ne se règle
+pas : deux téléphones en ligne pour un véhicule, ce sont deux flux de positions
+et un appel qui part vers le mauvais. Leur refus reste `session_superseded`,
+avec le libellé de l'appareil qui a pris la place.
 
 🔒 **LE VERROU DE L'APPLICATION — biométrie ou code secret, réglé par PAYS
 depuis la console.** Ajout rétrocompatible : `app_lock` voyage avec le jeton

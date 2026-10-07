@@ -54,7 +54,11 @@ var applicationIndexes = []db.Index{
 	// les cinq minutes, et le plafond de demandes ne plafonnerait rien.
 	{Collection: "auth_otp_codes", Keys: db.K("purge_at", 1), TTLSeconds: db.TTL(0)},
 	{Collection: "refresh_tokens", Keys: db.K("token_hash", 1), Unique: true},
-	{Collection: "refresh_tokens", Keys: db.K("user_id", 1)},
+	// Les sessions d'un compte, la plus récemment active en tête : c'est
+	// l'ordre exact dans lequel la borne d'appareils les lit pour évincer la
+	// plus silencieuse (`internal/user/devices.go`). Sans le `created_at`,
+	// chaque connexion triait en mémoire toutes les sessions du compte.
+	{Collection: "refresh_tokens", Keys: db.K("user_id", 1, "created_at", -1)},
 	{Collection: "refresh_tokens", Keys: db.K("expires_at", 1), TTLSeconds: db.TTL(0)},
 	// --- user (carnet d'adresses) ---
 	// Le carnet d'un compte, l'adresse par défaut en tête — c'est celle que

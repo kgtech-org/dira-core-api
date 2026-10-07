@@ -83,10 +83,25 @@ type AppLock struct {
 	MaxAttempts int `bson:"max_attempts,omitempty"`
 }
 
+// Sessions borne le nombre d'APPAREILS d'un compte.
+//
+// ⚠️ NE CONCERNE PAS LES CHAUFFEURS NI LES LIVREURS. Eux n'ont qu'un seul
+// appareil, et ce n'est pas un réglage de sécurité : un agent connecté sur deux
+// téléphones pousse DEUX flux de positions pour un seul véhicule — le vivier
+// voit la même voiture à deux endroits, l'appel part vers le téléphone resté à
+// la maison, et la course meurt d'un « personne n'a répondu » que rien
+// n'explique. Rendre ce nombre réglable pour eux aurait offert, dans un écran
+// d'administration, un bouton qui casse le dispatch sans le dire.
+type Sessions struct {
+	// MaxDevices : appareils simultanés d'un compte ordinaire — client,
+	// marchand, membre du staff. Au-delà, le plus ancien est déconnecté.
+	MaxDevices int `bson:"max_devices,omitempty"`
+}
+
 // Security rassemble ce qu'un pays décide de la sécurité des applications.
-// Un seul bloc aujourd'hui ; d'autres viendront s'y ranger.
 type Security struct {
-	AppLock AppLock `bson:"app_lock,omitempty"`
+	AppLock  AppLock  `bson:"app_lock,omitempty"`
+	Sessions Sessions `bson:"sessions,omitempty"`
 }
 
 // AppLockResponse est la politique telle que la console la lit et que les
@@ -99,14 +114,31 @@ type AppLockResponse struct {
 	MaxAttempts  int    `json:"max_attempts"`
 }
 
-// SecurityResponse est le bloc complet.
-type SecurityResponse struct {
-	AppLock AppLockResponse `json:"app_lock"`
+// SessionsResponse est la borne telle que la console la lit et que les
+// applications la reçoivent.
+type SessionsResponse struct {
+	MaxDevices int `json:"max_devices"`
+	// AgentMaxDevices est rendu pour être AFFICHÉ, pas réglé : il vaut
+	// toujours 1. Le dire évite la question « pourquoi mon chauffeur est-il
+	// déconnecté alors que j'ai mis 3 ? ».
+	AgentMaxDevices int `json:"agent_max_devices"`
 }
 
-// SecurityUpdateRequest règle le verrou depuis la console. Tout est
-// facultatif : on change un champ sans réécrire les autres.
+// SecurityResponse est le bloc complet.
+type SecurityResponse struct {
+	AppLock  AppLockResponse  `json:"app_lock"`
+	Sessions SessionsResponse `json:"sessions"`
+}
+
+// SecurityUpdateRequest règle le verrou et le nombre d'appareils depuis la
+// console. Tout est facultatif : on change un champ sans réécrire les autres.
 type SecurityUpdateRequest struct {
+	// MaxDevices : 1 à 10 appareils par compte ordinaire.
+	//
+	// ⚠️ Le PLAFOND est volontairement bas. « Autant qu'on veut » aurait
+	// laissé un compte partagé par vingt personnes ressembler à un compte
+	// ordinaire, et c'est précisément ce que cette borne sert à voir.
+	MaxDevices   *int    `json:"max_devices" validate:"omitempty,min=1,max=10"`
 	Mode         *string `json:"mode" validate:"omitempty,oneof=off optional required"`
 	Biometrics   *bool   `json:"biometrics"`
 	PINLength    *int    `json:"pin_length" validate:"omitempty,oneof=4 6"`
@@ -115,7 +147,26 @@ type SecurityUpdateRequest struct {
 }
 
 var errNoSecurityUpdate = apperr.Validation(
-	"nothing to update: send mode, biometrics, pin_length, grace_seconds or max_attempts")
+	"nothing to update: send mode, biometrics, pin_length, grace_seconds, max_attempts or max_devices")
+
+// DefaultMaxDevices : trois appareils par compte ordinaire.
+//
+// Le téléphone, la tablette, et celui qu'on vient de changer sans penser à se
+// déconnecter de l'ancien. Deux auraient fait déconnecter quelqu'un qui n'a
+// rien fait de mal ; dix n'auraient rien borné du tout.
+const DefaultMaxDevices = 3
+
+// AgentMaxDevices : UN appareil pour un chauffeur ou un livreur. Non réglable
+// — voir `Sessions`.
+const AgentMaxDevices = 1
+
+func sessionsResponse(s Sessions) SessionsResponse {
+	max := s.MaxDevices
+	if max <= 0 {
+		max = DefaultMaxDevices
+	}
+	return SessionsResponse{MaxDevices: max, AgentMaxDevices: AgentMaxDevices}
+}
 
 // appLockResponse complète les trous avec les défauts : une application ne
 // doit jamais avoir à décider ce qu'un champ vide veut dire.
@@ -157,7 +208,10 @@ func (s *Service) Security(ctx context.Context, code string) (*SecurityResponse,
 	if err != nil {
 		return nil, apperr.Internal(err)
 	}
-	return &SecurityResponse{AppLock: appLockResponse(inst.Security.AppLock)}, nil
+	return &SecurityResponse{
+		AppLock:  appLockResponse(inst.Security.AppLock),
+		Sessions: sessionsResponse(inst.Security.Sessions),
+	}, nil
 }
 
 // UpdateSecurity règle le verrou d'un pays.
@@ -167,7 +221,7 @@ func (s *Service) UpdateSecurity(ctx context.Context, code string, req SecurityU
 		return nil, errUnknownCountry
 	}
 	if req.Mode == nil && req.Biometrics == nil && req.PINLength == nil &&
-		req.GraceSeconds == nil && req.MaxAttempts == nil {
+		req.GraceSeconds == nil && req.MaxAttempts == nil && req.MaxDevices == nil {
 		return nil, errNoSecurityUpdate
 	}
 	inst, _, err := s.repo.One(ctx, info.Code)
@@ -190,10 +244,32 @@ func (s *Service) UpdateSecurity(ctx context.Context, code string, req SecurityU
 	if req.MaxAttempts != nil {
 		lock.MaxAttempts = *req.MaxAttempts
 	}
-	if err := s.repo.SetSecurity(ctx, info.Code, Security{AppLock: lock}); err != nil {
+	sess := inst.Security.Sessions
+	if req.MaxDevices != nil {
+		sess.MaxDevices = *req.MaxDevices
+	}
+	if err := s.repo.SetSecurity(ctx, info.Code, Security{AppLock: lock, Sessions: sess}); err != nil {
 		return nil, apperr.Internal(err)
 	}
-	return &SecurityResponse{AppLock: appLockResponse(lock)}, nil
+	return &SecurityResponse{AppLock: appLockResponse(lock), Sessions: sessionsResponse(sess)}, nil
+}
+
+// MaxDevicesOf rend le nombre d'appareils admis dans un pays — l'adaptateur
+// que le module des comptes appelle à chaque nouvelle session.
+//
+// ⚠️ AU MIEUX : une base muette rend le défaut, jamais une erreur. Refuser une
+// connexion parce qu'on n'a pas su lire une borne d'appareils serait hors de
+// proportion ; trois est une valeur sûre, et c'est celle qu'on aurait choisie.
+func (s *Service) MaxDevicesOf(ctx context.Context, code string) int {
+	info, ok := country.Lookup(code)
+	if !ok {
+		return DefaultMaxDevices
+	}
+	inst, _, err := s.repo.One(ctx, info.Code)
+	if err != nil {
+		return DefaultMaxDevices
+	}
+	return sessionsResponse(inst.Security.Sessions).MaxDevices
 }
 
 // AppLockOf rend la politique d'un pays pour les APPLICATIONS — l'adaptateur

@@ -130,14 +130,16 @@ func (f *fakeUserRepo) InsertRefreshToken(_ context.Context, t *RefreshToken) er
 	return nil
 }
 
-func (f *fakeUserRepo) DeleteRefreshTokenByHash(_ context.Context, tokenHash string) (bool, error) {
+func (f *fakeUserRepo) DeleteRefreshTokenByHash(_ context.Context, tokenHash string) (string, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if _, ok := f.refreshTokens[tokenHash]; !ok {
-		return false, nil
+	row, ok := f.refreshTokens[tokenHash]
+	if !ok {
+		return "", false, nil
 	}
 	delete(f.refreshTokens, tokenHash)
-	return true, nil
+	// L'appareil de la session effacée : c'est lui qui survit à la rotation.
+	return row.DeviceID, true, nil
 }
 
 func (f *fakeUserRepo) DeleteRefreshTokensOfUser(_ context.Context, userID primitive.ObjectID) (int64, error) {
@@ -869,3 +871,49 @@ func (f *fakeUserRepo) DeleteOTP(_ context.Context, phone string) error {
 	delete(f.otpCodes, phone)
 	return nil
 }
+
+// --- COMBIEN D'APPAREILS (voir devices.go) ---------------------------------
+//
+// La fausse base reproduit l'ordre du vrai tri : les sessions les plus
+// RÉCEMMENT datées d'abord — une session est datée de son dernier
+// rafraîchissement.
+
+func (f *fakeUserRepo) TrimRefreshTokens(_ context.Context, userID primitive.ObjectID, keepHash, deviceID string, max int) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if max < 1 {
+		max = 1
+	}
+	rows := make([]*RefreshToken, 0, len(f.refreshTokens))
+	for _, t := range f.refreshTokens {
+		if t.UserID == userID {
+			rows = append(rows, t)
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].CreatedAt.After(rows[j].CreatedAt) })
+
+	evicted, kept := 0, 0
+	for _, row := range rows {
+		switch {
+		case row.TokenHash == keepHash:
+			kept++
+		case deviceID != "" && row.DeviceID == deviceID:
+			delete(f.refreshTokens, row.TokenHash)
+			evicted++
+		case kept < max:
+			kept++
+		default:
+			delete(f.refreshTokens, row.TokenHash)
+			evicted++
+		}
+	}
+	return evicted, nil
+}
+
+// fakePolicies : ce qu'un pays décide, en mémoire.
+type fakePolicies struct{ maxDevices int }
+
+func (fakePolicies) AppLockOf(context.Context, string) (string, bool, int, int, int, bool) {
+	return "optional", true, 4, 120, 5, true
+}
+func (p fakePolicies) MaxDevicesOf(context.Context, string) int { return p.maxDevices }

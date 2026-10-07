@@ -32,7 +32,7 @@ type Repo interface {
 	UpdateUser(ctx context.Context, u *User) error
 	DeleteUser(ctx context.Context, id primitive.ObjectID) error
 	InsertRefreshToken(ctx context.Context, t *RefreshToken) error
-	DeleteRefreshTokenByHash(ctx context.Context, tokenHash string) (bool, error)
+	DeleteRefreshTokenByHash(ctx context.Context, tokenHash string) (deviceID string, existed bool, err error)
 	// UN SEUL APPAREIL PAR CHAUFFEUR : la trace durable de la règle, et de
 	// quoi jeter les jetons de l'appareil chassé.
 	DeleteRefreshTokensOfUser(ctx context.Context, userID primitive.ObjectID) (int64, error)
@@ -40,6 +40,10 @@ type Repo interface {
 	// UN CHAUFFEUR VTC N'EST JAMAIS LIVREUR : l'appartenance métier du
 	// compte, réclamée par les verticales — voir `agentapp.go`.
 	SetAgentApp(ctx context.Context, userID primitive.ObjectID, app string) error
+
+	// COMBIEN D'APPAREILS — les sessions en trop, la plus silencieuse
+	// d'abord. Voir `devices.go`.
+	TrimRefreshTokens(ctx context.Context, userID primitive.ObjectID, keepHash, deviceID string, max int) (int, error)
 
 	// LA PORTE PAR CODE : un code vivant par numéro, ses essais, sa purge —
 	// voir `otp.go`.
@@ -116,9 +120,9 @@ type Service struct {
 	otpSender OTPSender
 	otpPepper string
 	otpPolicy OTPPolicy
-	// LE VERROU DES APPLICATIONS — la politique du pays, servie avec le
-	// jeton. FACULTATIF : sans lui, l'application garde son réglage.
-	locks AppLocks
+	// CE QUE LE PAYS DÉCIDE pour les applications : le verrou (servi avec le
+	// jeton) et le nombre d'appareils d'un compte. FACULTATIF.
+	policies CountryPolicies
 }
 
 // Entitlements est ce qu'une fiche de staff accorde à un compte `admin`.
@@ -249,10 +253,11 @@ func (s *Service) register(ctx context.Context, req RegisterRequest, role string
 	// cette ligne sa toute première session serait la seule à n'être bornée à
 	// aucun appareil.
 	deviceID, _ := s.claimDevice(ctx, u, req.App, req.DeviceID, req.DeviceName)
-	pair, err := s.issueTokens(ctx, u, deviceID)
+	pair, err := s.issueTokens(ctx, u, deviceID, sessionDeviceOf(req.DeviceID))
 	if err != nil {
 		return AuthResponse{}, err
 	}
+	s.enforceDeviceLimit(ctx, u, hashToken(pair.RefreshToken), sessionDeviceOf(req.DeviceID))
 	return AuthResponse{
 		User:         newUserResponse(u),
 		AccessToken:  pair.AccessToken,
@@ -336,10 +341,11 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (AuthResponse, er
 	// d'être accepté — y compris par le suivi — et son socket de positions se
 	// ferme dans la seconde. Voir `device.go`.
 	deviceID, chased := s.claimDevice(ctx, u, req.App, req.DeviceID, req.DeviceName)
-	pair, err := s.issueTokens(ctx, u, deviceID)
+	pair, err := s.issueTokens(ctx, u, deviceID, sessionDeviceOf(req.DeviceID))
 	if err != nil {
 		return AuthResponse{}, err
 	}
+	s.enforceDeviceLimit(ctx, u, hashToken(pair.RefreshToken), sessionDeviceOf(req.DeviceID))
 	return AuthResponse{
 		User:         s.userResponse(ctx, u),
 		AccessToken:  pair.AccessToken,
@@ -490,7 +496,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, platform string) (T
 		return TokenPairResponse{}, err
 	}
 
-	deleted, err := s.repo.DeleteRefreshTokenByHash(ctx, hashToken(refreshToken))
+	sessionDevice, deleted, err := s.repo.DeleteRefreshTokenByHash(ctx, hashToken(refreshToken))
 	if err != nil {
 		return TokenPairResponse{}, apperr.Internal(err)
 	}
@@ -498,7 +504,10 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, platform string) (T
 		return TokenPairResponse{}, auth.ErrInvalidToken
 	}
 
-	pair, err := s.issueTokens(ctx, u, deviceID)
+	// La session GARDE son appareil d'un rafraîchissement à l'autre : la
+	// rotation écrit une nouvelle ligne, et sans cela le même téléphone serait
+	// méconnaissable au quart d'heure suivant.
+	pair, err := s.issueTokens(ctx, u, deviceID, sessionDevice)
 	if err != nil {
 		return pair, err
 	}
@@ -521,7 +530,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, platform string) (T
 // qui se retrouvait sans session enregistrée : plus protégé du tout, et de
 // nouveau chassable par n'importe quoi.
 func (s *Service) Logout(ctx context.Context, refreshToken string) error {
-	if _, err := s.repo.DeleteRefreshTokenByHash(ctx, hashToken(refreshToken)); err != nil {
+	if _, _, err := s.repo.DeleteRefreshTokenByHash(ctx, hashToken(refreshToken)); err != nil {
 		return apperr.Internal(err)
 	}
 	jwtPart, ok := splitRefreshToken(refreshToken)
@@ -757,7 +766,14 @@ func (s *Service) findUser(ctx context.Context, userID string) (*User, error) {
 // obtiendrait sinon un jeton portant l'appareil d'une connexion PRÉCÉDENTE —
 // autrement dit un jeton qui se fait passer pour un téléphone qu'il n'est pas,
 // et qui serait accepté ou refusé selon l'humeur du registre.
-func (s *Service) issueTokens(ctx context.Context, u *User, deviceID string) (TokenPairResponse, error) {
+// ⚠️ DEUX APPAREILS, ET CE N'EST PAS UNE REDONDANCE. `deviceID` est celui que
+// le JETON nomme : il n'existe que pour un agent, et c'est lui que le suivi et
+// le rafraîchissement confrontent au registre. `sessionDevice` est
+// l'installation qui tient CETTE session, pour tout le monde : il ne sert qu'à
+// reconnaître le même téléphone qui revient, et à ne pas lui faire payer une
+// place de plus (voir `devices.go`). Les confondre aurait soumis les clients à
+// la règle d'appareil unique des chauffeurs.
+func (s *Service) issueTokens(ctx context.Context, u *User, deviceID, sessionDevice string) (TokenPairResponse, error) {
 	// ⚠️ LA PORTÉE DU STAFF EST INSCRITE DANS LE JETON, à l'émission. Elle
 	// voyage avec lui parce que chaque verticale le vérifie LOCALEMENT :
 	// la faire lire au socle à chaque requête referait de lui le point de
@@ -793,6 +809,12 @@ func (s *Service) issueTokens(ctx context.Context, u *User, deviceID string) (To
 	rt := &RefreshToken{
 		TokenHash: hashToken(refresh),
 		UserID:    u.ID,
+		// ⚠️ L'APPAREIL SUR LA SESSION, quand l'application l'a déclaré. Sans
+		// lui, une réinstallation du même téléphone compte pour un appareil de
+		// plus et pousse le plus ancien dehors — alors que c'est le MÊME
+		// téléphone qui revient. Avec lui, la session précédente de cette
+		// installation est reconnue et remplacée.
+		DeviceID:  sessionDevice,
 		ExpiresAt: now.Add(s.tokens.RefreshTTL()),
 		CreatedAt: now,
 	}

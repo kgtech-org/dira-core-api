@@ -12,7 +12,9 @@ db.users.createIndex({ country: 1, role: 1, _id: 1 });
 
 // Refresh tokens are stored as sha256 hashes and rotated on every refresh.
 db.refresh_tokens.createIndex({ token_hash: 1 }, { unique: true });
-db.refresh_tokens.createIndex({ user_id: 1 });
+// Les sessions d'un compte, la plus récemment active en tête — l'ordre dans
+// lequel la borne d'appareils évince la plus silencieuse.
+db.refresh_tokens.createIndex({ user_id: 1, created_at: -1 });
 // TTL: expired refresh tokens are purged automatically.
 db.refresh_tokens.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
 

@@ -368,10 +368,11 @@ func (s *Service) VerifyOTP(ctx context.Context, req OTPVerifyRequest) (AuthResp
 	}
 
 	deviceID, chased := s.claimDevice(ctx, u, req.App, req.DeviceID, req.DeviceName)
-	pair, err := s.issueTokens(ctx, u, deviceID)
+	pair, err := s.issueTokens(ctx, u, deviceID, sessionDeviceOf(req.DeviceID))
 	if err != nil {
 		return AuthResponse{}, err
 	}
+	s.enforceDeviceLimit(ctx, u, hashToken(pair.RefreshToken), sessionDeviceOf(req.DeviceID))
 	return AuthResponse{
 		User:         s.userResponse(ctx, u),
 		AccessToken:  pair.AccessToken,

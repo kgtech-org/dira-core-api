@@ -752,10 +752,29 @@ paths:
                       pin_length: {type: integer, enum: [4, 6]}
                       grace_seconds: {type: integer}
                       max_attempts: {type: integer}
+                  sessions:
+                    type: object
+                    properties:
+                      max_devices:
+                        type: integer
+                        description: >-
+                          Appareils simultanés d'un compte ORDINAIRE — client,
+                          marchand, staff. Défaut **3**. Au-delà, la session la
+                          plus silencieuse est déconnectée.
+                      agent_max_devices:
+                        type: integer
+                        description: >-
+                          Toujours **1**, et rendu pour être AFFICHÉ, pas réglé.
+                          ⚠️ Un chauffeur ou un livreur connecté sur deux
+                          téléphones pousse deux flux de positions pour un seul
+                          véhicule : le vivier voit la voiture à deux endroits
+                          et l'appel part vers le téléphone resté à la maison.
+                          Ce n'est pas un réglage de sécurité, c'est le
+                          dispatch.
         "404": {description: country_unknown — not in the catalog}
     put:
       tags: [admin, countries]
-      summary: Set the country's app-lock policy
+      summary: Set the country's app-lock and device policy
       description: >-
         Tout est facultatif : on change un champ sans réécrire les autres.
 
@@ -800,6 +819,31 @@ paths:
                 pin_length: {type: integer, enum: [4, 6]}
                 grace_seconds: {type: integer, minimum: 0, maximum: 3600}
                 max_attempts: {type: integer, minimum: 3, maximum: 10}
+                max_devices:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                  description: >-
+                    **Appareils simultanés d'un compte ordinaire** — client,
+                    marchand, staff. Défaut **3** : le téléphone, la tablette,
+                    et celui qu'on vient de changer sans penser à se
+                    déconnecter de l'ancien.
+
+
+                    Au-delà, la session **la plus silencieuse** est
+                    déconnectée — pas la première ouverte : une session est
+                    datée de son dernier rafraîchissement, donc le téléphone
+                    dont on se sert tous les jours se redate seul et celui qui
+                    dort dans un tiroir part le premier. L'appareil évincé voit
+                    sa session expirer au prochain rafraîchissement.
+
+
+                    ⚠️ **Sans effet sur les chauffeurs et les livreurs** : eux
+                    gardent **un** appareil, pour le dispatch, et cela ne se
+                    règle pas. ⚠️ **Une installation qui revient ne consomme
+                    pas de place** quand l'application déclare son `device_id` :
+                    c'est le même téléphone, sa session précédente est
+                    remplacée.
       responses:
         "200": {description: "La politique du pays, complète"}
         "404": {description: country_unknown — not in the catalog}

@@ -154,12 +154,21 @@ func (r *Repository) InsertRefreshToken(ctx context.Context, t *RefreshToken) er
 
 // DeleteRefreshTokenByHash removes a stored refresh token hash and reports
 // whether it existed (false means already rotated, revoked or never issued).
-func (r *Repository) DeleteRefreshTokenByHash(ctx context.Context, tokenHash string) (bool, error) {
-	res, err := r.refreshTokens.DeleteOne(ctx, bson.M{"token_hash": tokenHash})
+func (r *Repository) DeleteRefreshTokenByHash(ctx context.Context, tokenHash string) (string, bool, error) {
+	// ⚠️ ELLE REND L'APPAREIL DE LA SESSION EFFACÉE, et c'est ce qui permet à
+	// une session de GARDER son appareil d'un rafraîchissement à l'autre. Sans
+	// lui, la rotation — qui efface la ligne et en écrit une autre — perdait
+	// l'identifiant d'installation dès le premier quart d'heure, et le même
+	// téléphone revenant plus tard comptait pour un appareil de plus.
+	var row RefreshToken
+	err := r.refreshTokens.FindOneAndDelete(ctx, bson.M{"token_hash": tokenHash}).Decode(&row)
 	if err != nil {
-		return false, fmt.Errorf("user: delete refresh token: %w", err)
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("user: delete refresh token: %w", err)
 	}
-	return res.DeletedCount > 0, nil
+	return row.DeviceID, true, nil
 }
 
 // DeleteRefreshTokensOfUser jette TOUS les jetons de rafraîchissement d'un
@@ -182,6 +191,68 @@ func (r *Repository) DeleteRefreshTokensOfUser(ctx context.Context, userID primi
 		return 0, fmt.Errorf("user: delete refresh tokens of user: %w", err)
 	}
 	return res.DeletedCount, nil
+}
+
+// TrimRefreshTokens garde les `max` sessions les plus récentes d'un compte et
+// supprime les autres ; rend le nombre de sessions déconnectées.
+//
+// ⚠️ `keepHash` EST GARDÉ QUOI QU'IL ARRIVE. C'est la session qu'on vient
+// d'ouvrir : l'évincer déconnecterait la personne au moment même où elle donne
+// son mot de passe, et elle réessaierait en boucle sans jamais comprendre.
+//
+// ⚠️ `deviceID` : les sessions de la MÊME installation partent d'abord, et ne
+// comptent pas dans le quota. Une application réinstallée, ou qui se reconnecte
+// sans s'être déconnectée, est le MÊME téléphone qui revient — le compter comme
+// un appareil de plus aurait poussé dehors le téléphone principal de quelqu'un
+// à chaque réinstallation.
+//
+// Le tri est sur `created_at` DÉCROISSANT, et une session est datée de son
+// dernier rafraîchissement (la rotation réécrit la ligne) : ce qui part est
+// donc la session la plus SILENCIEUSE, pas la plus ancienne à avoir été
+// ouverte. C'est la différence entre déconnecter un téléphone oublié dans un
+// tiroir et déconnecter celui dont on se sert tous les jours.
+func (r *Repository) TrimRefreshTokens(ctx context.Context, userID primitive.ObjectID, keepHash, deviceID string, max int) (int, error) {
+	if max < 1 {
+		max = 1
+	}
+	cur, err := r.refreshTokens.Find(ctx,
+		bson.M{"user_id": userID},
+		options.Find().
+			SetSort(bson.D{{Key: "created_at", Value: -1}}).
+			SetProjection(bson.M{"token_hash": 1, "device_id": 1}))
+	if err != nil {
+		return 0, fmt.Errorf("user: list refresh tokens: %w", err)
+	}
+	var rows []RefreshToken
+	if err := cur.All(ctx, &rows); err != nil {
+		return 0, fmt.Errorf("user: read refresh tokens: %w", err)
+	}
+
+	var doomed []primitive.ObjectID
+	kept := 0
+	for _, row := range rows {
+		switch {
+		case row.TokenHash == keepHash:
+			// La session du jour. Elle compte dans le quota.
+			kept++
+		case deviceID != "" && row.DeviceID == deviceID:
+			// Le même téléphone, revenu : sa session précédente s'efface sans
+			// consommer une place.
+			doomed = append(doomed, row.ID)
+		case kept < max:
+			kept++
+		default:
+			doomed = append(doomed, row.ID)
+		}
+	}
+	if len(doomed) == 0 {
+		return 0, nil
+	}
+	res, err := r.refreshTokens.DeleteMany(ctx, bson.M{"_id": bson.M{"$in": doomed}})
+	if err != nil {
+		return 0, fmt.Errorf("user: trim refresh tokens: %w", err)
+	}
+	return int(res.DeletedCount), nil
 }
 
 // SetDevice écrit l'appareil courant d'un compte, et lui seul.

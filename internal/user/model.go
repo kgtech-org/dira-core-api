@@ -130,6 +130,10 @@ type RefreshToken struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty"`
 	TokenHash string             `bson:"token_hash"` // sha256 hex, unique
 	UserID    primitive.ObjectID `bson:"user_id"`
-	ExpiresAt time.Time          `bson:"expires_at"`
-	CreatedAt time.Time          `bson:"created_at"`
+	// DeviceID est l'INSTALLATION qui tient cette session, quand
+	// l'application l'a déclarée. Vide = inconnue, et la session compte alors
+	// pour un appareil à elle seule — voir `devices.go`.
+	DeviceID  string    `bson:"device_id,omitempty"`
+	ExpiresAt time.Time `bson:"expires_at"`
+	CreatedAt time.Time `bson:"created_at"`
 }

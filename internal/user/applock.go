@@ -23,17 +23,21 @@ import (
 	"github.com/kgtech-org/dira-core-api/pkg/country"
 )
 
-// AppLocks rend la politique de verrou d'un pays.
+// CountryPolicies rend ce qu'un PAYS décide pour les applications : le verrou,
+// et le nombre d'appareils qu'un compte peut tenir.
 //
 // Déclarée côté consommateur, comme `Basemaps`. FACULTATIVE : sans elle,
-// l'application garde le réglage qu'elle avait — une politique illisible ne
-// doit jamais empêcher quelqu'un de se connecter.
-type AppLocks interface {
+// l'application garde le réglage qu'elle avait et la borne retombe sur son
+// défaut — une politique illisible ne doit jamais empêcher quelqu'un de se
+// connecter.
+type CountryPolicies interface {
 	AppLockOf(ctx context.Context, countryCode string) (mode string, biometrics bool, pinLength, graceSeconds, maxAttempts int, ok bool)
+	// MaxDevicesOf rend le nombre d'appareils admis — voir `devices.go`.
+	MaxDevicesOf(ctx context.Context, countryCode string) int
 }
 
-// SetAppLocks branche le service de pays.
-func (s *Service) SetAppLocks(l AppLocks) { s.locks = l }
+// SetCountryPolicies branche le service de pays.
+func (s *Service) SetCountryPolicies(p CountryPolicies) { s.policies = p }
 
 // appLock rend la politique à appliquer, ou `nil` quand il n'y a rien à dire.
 //
@@ -42,7 +46,7 @@ func (s *Service) SetAppLocks(l AppLocks) { s.locks = l }
 // verrou doit le voir imposé, même si son compte est ailleurs : la règle
 // protège le téléphone qui est là, pas le compte qui est loin.
 func (s *Service) appLock(ctx context.Context, u *User) *AppLockResponse {
-	if s.locks == nil {
+	if s.policies == nil {
 		return nil
 	}
 	code := country.FromContext(ctx)
@@ -52,7 +56,7 @@ func (s *Service) appLock(ctx context.Context, u *User) *AppLockResponse {
 	if code == "" {
 		return nil
 	}
-	mode, biometrics, pinLength, grace, maxAttempts, ok := s.locks.AppLockOf(ctx, code)
+	mode, biometrics, pinLength, grace, maxAttempts, ok := s.policies.AppLockOf(ctx, code)
 	if !ok {
 		return nil
 	}

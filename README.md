@@ -257,6 +257,15 @@ a repository that does not serve a single ride route.
 > compte qui débite des portefeuilles. Un compte qui n'est pas `client` ne
 > reçoit aucun code.
 >
+> ⚠️ **COMBIEN D'APPAREILS UN COMPTE TIENT se règle par PAYS** —
+> `max_devices` dans le même bloc (défaut **3**). Les comptes ordinaires
+> n'avaient aucune borne : vingt sessions vivantes, chacune avec trente jours de
+> jeton de rafraîchissement, et rien pour le voir. Au-delà, la session la plus
+> SILENCIEUSE part (une session se redate à chaque rafraîchissement). ⚠️ **Les
+> chauffeurs et livreurs gardent UN appareil, et ce n'est pas réglable** : deux
+> téléphones en ligne pour un véhicule, ce sont deux flux de positions et un
+> appel qui part vers le mauvais — voir `internal/user/device.go`.
+>
 > ⚠️ **LE VERROU DES APPLICATIONS se règle par PAYS** —
 > `GET · PUT /admin/countries/{code}/security` (`internal/country/security.go`),
 > servi aux applications dans `app_lock` à la connexion, à l'inscription, à la

@@ -235,6 +235,29 @@ l'expiration d'un jeton de trente jours.
 
 ---
 
+### 📱 COMBIEN D'APPAREILS — et lequel se déconnecte (v4.46.0)
+
+Votre compte tient **plusieurs appareils** : le téléphone, la tablette, celui
+qu'on vient de changer. Le nombre est réglé **par pays** (trois par défaut) et
+se lit dans `GET /countries` → `max_devices`.
+
+⚠️ **AU-DELÀ, LA SESSION LA PLUS SILENCIEUSE PART** — pas la première ouverte.
+Une session est datée de son **dernier rafraîchissement** : le téléphone dont on
+se sert tous les jours se redate seul, celui qui dort dans un tiroir s'en va le
+premier. L'appareil évincé ne reçoit rien sur le moment : il l'apprend à son
+prochain rafraîchissement, qui répond **`401`**. Traitez-le comme une session
+expirée ordinaire — ramenez à l'écran de connexion, n'affichez pas « erreur ».
+
+⚠️ **ENVOYEZ `device_id` À LA CONNEXION, MÊME SI VOUS ÊTES UNE APPLICATION DE
+CLIENT.** Il ne va pas dans votre jeton et ne vous soumet à aucune règle d'agent ;
+il sert à une seule chose : **reconnaître le même téléphone qui revient**. Sans
+lui, une réinstallation compte pour un appareil de plus et pousse dehors un
+autre de vos appareils. Avec lui, votre session précédente est simplement
+remplacée. Il doit **survivre aux redémarrages** et vivre aussi longtemps que le
+jeton de rafraîchissement, à côté de lui.
+
+---
+
 ## 6. L'identité et l'argent — **PARTAGÉS** (socle, sans préfixe)
 
 C'est tout l'intérêt d'une application unifiée : **une** inscription, **un**

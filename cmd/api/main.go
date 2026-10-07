@@ -234,10 +234,12 @@ func run(logger *slog.Logger) error {
 	// plus tard, et la rotation — seule raison de servir la clé depuis le
 	// serveur — ne servirait à rien.
 	userSvc.SetBasemaps(countrySvc)
-	// LE VERROU DES APPLICATIONS : la politique du pays — proposé, imposé, ou
-	// rien —, servie avec le jeton et au rafraîchissement, réglée depuis la
-	// console (`PUT /admin/countries/{code}/security`).
-	userSvc.SetAppLocks(countrySvc)
+	// CE QUE LE PAYS DÉCIDE pour les applications, réglé depuis la console
+	// (`PUT /admin/countries/{code}/security`) : le VERROU — proposé, imposé
+	// ou rien, servi avec le jeton et au rafraîchissement — et le NOMBRE
+	// D'APPAREILS qu'un compte ordinaire peut tenir, au-delà duquel la
+	// session la plus silencieuse est déconnectée.
+	userSvc.SetCountryPolicies(countrySvc)
 	// LA PORTE PAR CODE — un client s'inscrit avec son téléphone et six
 	// chiffres, sans mot de passe à choisir ni à retrouver.
 	//

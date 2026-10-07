@@ -393,6 +393,25 @@ se verrouille, pas la minute où le téléphone sonne.
 
 ---
 
+### 📱 UN SEUL APPAREIL, ET POURQUOI ÇA NE SE RÈGLE PAS (v4.46.0)
+
+Les comptes ordinaires — clients, marchands — tiennent désormais plusieurs
+appareils, réglé par pays. **Pas vous.** Un compte d'agent n'en tient qu'**un**,
+et ce n'est pas un réglage de sécurité qu'un écran d'administration pourrait
+desserrer : deux téléphones en ligne pour un seul véhicule, ce sont **deux flux
+de positions** — le vivier voit la voiture à deux endroits, l'appel part vers le
+téléphone resté à la maison, et la course meurt d'un « personne n'a répondu »
+que rien n'explique.
+
+La dernière connexion gagne, et l'appareil chassé reçoit `401
+session_superseded` avec, dans `error.reason`, le **libellé** de l'appareil qui
+a pris la place : « vous avez été déconnecté parce que vous vous êtes connecté
+sur <appareil> ». Affichez cette phrase — avec `invalid_token`, la personne se
+reconnecte, chasse l'autre téléphone à son tour, et la bascule ne s'arrête
+jamais.
+
+---
+
 ## 2. Le profil chauffeur
 
 ```
