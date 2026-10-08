@@ -634,6 +634,12 @@ func run(logger *slog.Logger) error {
 		if media != nil {
 			internalAPI.SetFiles(media)
 		}
+		// ⚠️ QUI VOIT QUOI DE QUI, réglé par pays et par métier. Sans ce
+		// câblage, la porte de divulgation rend les défauts du métier : les
+		// applications marchent, mais la console ne commande plus rien — et
+		// c'est le genre de fil manquant qu'on ne découvre qu'en se demandant
+		// pourquoi un réglage « ne prend pas ».
+		internalAPI.SetPrivacy(countrySvc)
 		internalAPI.Mount(r, middleware.Service(cfg.ServiceToken))
 	})
 

@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.48.0** · 8 octobre 2026
+> **Version 4.49.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -674,6 +674,7 @@ ceux des deux specs métier, qui restent à jour.
 | Commander | `POST /rides` · `GET /rides` · `GET /rides/{id}` · `POST /rides/{id}/cancel` · `POST /rides/{id}/relaunch` |
 | En route | `PATCH /rides/{id}/stops` · socket du suivi (§11) |
 | Parler, noter | `GET/POST /rides/{id}/messages` · `POST /rides/{id}/rating` |
+| | 🔒 **CE QUE VOUS AVEZ LE DROIT D'AFFICHER du chauffeur ou du livreur est réglé par l'exploitation, pays par pays et métier par métier (v4.49.0).** Le serveur **n'envoie pas** ce qu'on n'a pas le droit de montrer : un champ absent n'est pas une panne, c'est un champ fermé. ⚠️ `phone` présent ne veut **pas** dire affichable — lisez `show_phone` ; `direct_call` sans `show_phone` veut dire « un bouton qui appelle, et le numéro nulle part ». ⚠️ **N'écrivez aucune règle en dur** : ces décisions changent sans redéploiement. Détail : `VTC-CLIENT` et `FOOD-CLIENT`, section Confidentialité |
 | Programmer, s'abonner | `POST /schedules` · `POST /subscriptions` |
 
 ⚠️ **`?near=` SUR LES DEUX ROUTES DE RÉGLAGE DES COURSES.** Passez le point de
@@ -809,6 +810,18 @@ du métier.
 ---
 
 ## 15. Journal
+
+### 4.49.0 — 8 octobre 2026
+
+🔒 **QUI VOIT QUOI DE QUI** — ce que vous avez le droit d'afficher de l'autre
+partie est désormais réglé par l'exploitation, **pays par pays et métier par
+métier**. Le serveur **n'envoie pas** ce qu'on n'a pas le droit de montrer : un
+champ absent n'est pas une panne. ⚠️ `phone` présent ne veut **pas** dire
+affichable — lisez **`show_phone`** ; `direct_call` sans `show_phone` veut dire
+« un bouton qui appelle, et le numéro nulle part ». ⚠️ **N'écrivez aucune règle
+en dur** (« si c'est une course, pas de téléphone ») : elle contredirait le
+serveur sans que personne ne sache laquelle croire. Détail : `VTC-CLIENT` §
+Confidentialité et `FOOD-CLIENT` § Confidentialité.
 
 ### 4.48.0 — 8 octobre 2026
 

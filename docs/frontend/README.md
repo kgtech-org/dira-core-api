@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.48.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.49.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -255,6 +255,7 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] Auth : stockage sécurisé, refresh **sérialisé**, déconnexion au second échec
 - [ ] 🔑 **Porte par code** (v4.46.0, applications de CLIENT) : compte à rebours rendu depuis `expires_at`, bouton « renvoyer » gouverné par `resend_after`, nom demandé **seulement** si `created: true`, et l'écran fonctionne **sans** `dev_code` — il disparaîtra. Les applications d'agent et de marchand gardent `POST /auth/login` (`403 otp_not_available` sinon)
 - [ ] 📱 **Appareils** : `device_id` envoyé à la connexion **par toutes les applications** (il ne va pas dans le jeton d'un client, il reconnaît le même téléphone qui revient) ; un `401` au rafraîchissement se traite comme une session expirée, sans message d'erreur technique
+- [ ] 🔒 **Confidentialité** (v4.49.0) : **aucune** règle d'affichage en dur — ni par pays, ni par métier. `show_phone` lu **avant** d'écrire un numéro à l'écran ; `direct_call` sans `show_phone` = un bouton qui appelle et le numéro **nulle part** ; `in_app_alert` lu pour **cacher** (et non désactiver) le bouton du klaxon ; nom affiché **tel que servi**, jamais reconstruit depuis `first_name` + `last_name` ; un champ absent traité comme fermé, **sans réessai** ; véhicule et argent à encaisser toujours montrés ; tout fermé → l'écran mène à la **conversation**
 - [ ] 🗑️ **Suppression de compte** (v4.47.0) : `DELETE /me` dans les applications de **CLIENT** — écran de conséquences **avant** la preuve d'identité (`password` ou `code`), **`erase_at` affiché**, « les courses et les commandes passées restent, anonymes » dit **avant** le bouton, `409 wallet_not_empty` renvoyé vers le solde. Les applications d'**agent** et de **marchand** n'affichent **pas** de bouton (`403 erasure_not_self_serve`) mais mettent « écrire au support ». **Toutes** traitent `403 account_closed` comme une fin de session **définitive** — pas comme une suspension
 - [ ] 🔒 **Verrou de l'application** (v4.46.0) : `app_lock` relu à **chaque** réponse qui le porte, y compris le **rafraîchissement**, et appliqué à chaud ; code de secours toujours possible à côté de la biométrie ; au-delà de `max_attempts`, **déconnexion** (jamais blocage) ; **jamais de verrou sur un écran d'appel ni sur l'urgence**
 - [ ] Pagination par curseur générique (`items` / `next_cursor`)
@@ -324,6 +325,73 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.49.0 — 8 octobre 2026
+
+🔒 **QUI VOIT QUOI DE QUI — RÉGLÉ PAR PAYS ET PAR MÉTIER, depuis la console.**
+
+Ce qu'un client et l'agent qui le sert voient l'un de l'autre était décidé dans
+le code, et il y avait **quatre réponses différentes** à la même question, dans
+quatre fichiers, aucune réglable. Ce n'était pas une incohérence — quatre
+arbitrages pris séparément, chacun défendable — mais il manquait un endroit
+pour les lire et la possibilité de les reprendre.
+
+**Ce qui se règle** : le nom (quatre niveaux : complet · prénom · initiales ·
+masqué), le prénom, le nom de famille, la photo, le genre, la note — et les
+**trois canaux de contact**.
+
+⚠️ **LE SERVEUR N'ENVOIE PAS CE QU'ON N'A PAS LE DROIT DE MONTRER.** Un champ
+absent n'est pas une panne : c'est un champ que l'exploitation n'a pas ouvert
+dans ce pays. Affichez votre propre libellé et **ne réessayez pas**.
+
+⚠️ **TROIS PERMISSIONS DE CONTACT, ET CE NE SONT PAS LES MÊMES** :
+`show_phone` (afficher le numéro), `direct_call` (proposer un bouton d'appel),
+`in_app_alert` (faire sonner l'application de l'autre).
+
+⚠️ **`phone` PRÉSENT NE VEUT PAS DIRE « AFFICHABLE ».** Le numéro arrive dès
+qu'il peut être affiché **ou composé** — un bouton d'appel en a besoin pour
+composer. **Lisez `show_phone` avant de l'écrire à l'écran** : un `phone`
+affiché parce qu'il était là annulerait le réglage dans l'écran même qui le
+lit. `direct_call: true` avec `show_phone: false` est le cas le plus courant :
+un bouton « Appeler », et le numéro **nulle part**. Nous savons qu'il reste
+dans le journal d'appels du téléphone — c'est de la friction, pas du secret, et
+c'est assumé : ne compensez pas en l'affichant.
+
+⚠️ **N'ÉCRIVEZ AUCUNE RÈGLE EN DUR** — ni « si le pays est le Togo », ni « si
+c'est une course alors pas de téléphone ». Ces décisions changent **sans
+redéploiement de votre application**, et une règle recopiée chez vous
+contredirait le serveur sans que personne ne sache laquelle croire.
+
+⚠️ **NE RECONSTRUISEZ JAMAIS UN NOM** à partir de `first_name` et `last_name` :
+ils ont leurs propres interrupteurs, et les concaténer rendrait un nom complet
+là où l'exploitation n'a ouvert que des initiales. Le nom arrive **déjà
+masqué**.
+
+⚠️ **CE QUI N'EST JAMAIS FERMÉ**, et qu'il faut donc toujours montrer : le
+**véhicule** (une plaque et un type ne nomment personne — c'est ce qu'on guette
+dans la rue, et ce qui reste quand tout le reste est fermé) et l'**argent à
+encaisser** d'une livraison en espèces (ce n'est pas une donnée personnelle,
+c'est ce que le livreur doit réclamer). S'ils manquent, c'est une panne.
+
+🔔 **LE KLAXON DES COURSES SE RÈGLE AU MÊME ENDROIT.** Une alerte sonore fait
+sonner le téléphone de quelqu'un : c'est un canal de contact. Ouvert par
+défaut ; fermé, `POST /rides/{id}/honk` répond `403 honk_not_available`.
+⚠️ **Cachez le bouton, ne le désactivez pas** : lisez
+`rider.contact.in_app_alert`. Un bouton qui échoue toujours fait chercher une
+panne, et le refus arrive après que le chauffeur a cru se signaler.
+
+🆕 **LA CARTE DU PASSAGER côté chauffeur** (`rider`), qui n'existait pas.
+**Absente par défaut** : un chauffeur enchaîne vingt courses et la plateforme ne
+lui donne pas vingt identités. Le champ existe pour qu'un marché qui l'exige
+puisse ouvrir un prénom ou un appel — pas pour qu'on construise un écran autour
+de lui.
+
+⚠️ **TOUT FERMÉ N'EST PAS UNE IMPASSE** : la **conversation** reste le canal, et
+elle existe précisément pour que ces deux-là se parlent sans rien s'échanger. Un
+écran sans nom ni numéro doit mener à elle, pas à un cul-de-sac.
+
+**Les défauts reproduisent exactement ce qui s'échangeait avant** — rien ne
+change tant que l'exploitation n'a rien touché.
 
 ### 4.48.0 — 8 octobre 2026
 

@@ -116,6 +116,21 @@ func (r *Repository) SetSecurity(ctx context.Context, code string, sec Security)
 	return nil
 }
 
+// SetPrivacy enregistre la politique de confidentialité d'un pays — qui voit
+// quoi de qui, métier par métier. Voir `privacy.go`.
+//
+// ⚠️ `upsert` : un pays jamais enregistré se règle quand même. Sans lui, un
+// réglage posé avant la première ouverture du pays disparaissait sans erreur.
+func (r *Repository) SetPrivacy(ctx context.Context, code string, p Privacy) error {
+	_, err := r.countries.UpdateOne(ctx, bson.M{"_id": code},
+		bson.M{"$set": bson.M{"privacy": p, "updated_at": time.Now().UTC()}},
+		options.Update().SetUpsert(true))
+	if err != nil {
+		return fmt.Errorf("country: set privacy: %w", err)
+	}
+	return nil
+}
+
 // SetTesting réserve un pays aux essais, ou l'en sort.
 func (r *Repository) SetTesting(ctx context.Context, code string, testing bool) error {
 	update := bson.M{"$set": bson.M{"updated_at": time.Now().UTC()}}

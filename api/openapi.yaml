@@ -789,6 +789,112 @@ paths:
         "200": {description: "Le fond par défaut du pays : {basemap}"}
         "404": {description: country_unknown — not in the catalog}
         "422": {description: nothing to update — send basemap}
+  /admin/countries/{code}/privacy:
+    get:
+      tags: [admin, countries]
+      summary: "QUI VOIT QUOI DE QUI entre un client et l'agent qui le sert (v4.49.0)"
+      description: >-
+        **La politique de confidentialité d'un pays, métier par métier.** Ce
+        qu'un client voit de son chauffeur ou de son livreur, et ce que
+        celui-ci voit de son client : nom (quatre niveaux), prénom, nom de
+        famille, photo, genre, note — et les trois canaux de contact.
+
+
+        ⚠️ **PAR MÉTIER, et c'est la décision qui porte le reste.** En
+        livraison, le livreur **encaisse** en espèces et cherche un portail qui
+        ne s'ouvre pas : le téléphone est un outil de travail. En course, il n'a
+        aucun de ces besoins — la conversation suffit. Une politique unique
+        aurait obligé à trancher pareil pour les deux, donc à casser l'un des
+        deux.
+
+
+        ⚠️ **`audience` NOMME QUI REGARDE**, et non « de qui » : `client` = ce
+        qu'un client voit de l'agent, `agent` = ce qu'un agent voit de son
+        client. Une flèche à interpréter serait une divulgation à l'envers.
+
+
+        ⚠️ **LES TROIS CANAUX DE CONTACT NE SONT PAS LA MÊME PERMISSION.**
+        `phone` affiche le numéro — il sort de la plateforme dès qu'il est à
+        l'écran, par recopie ou capture. `direct_call` propose un **bouton
+        d'appel** : joindre d'un geste sans repartir avec les coordonnées.
+        `in_app_alert` fait **sonner** l'application de l'autre — le klaxon des
+        courses, qui existe précisément parce qu'aucun numéro ne s'échange.
+
+
+        ⚠️ **`direct_call` SANS `phone` EST DE LA FRICTION, PAS DU SECRET** :
+        pour composer, le téléphone doit connaître le numéro, donc il arrive sur
+        l'appareil et atterrit dans son **journal d'appels**. Ce que le réglage
+        retire, c'est l'affichage, la recopie et la capture d'écran. Le seul
+        masquage réel serait un relais chez un opérateur, qui n'est pas branché.
+
+
+        La réponse est toujours **complète**, les deux métiers et les deux sens,
+        tous les champs posés : un pays jamais réglé rend les **défauts du
+        métier**, qui reproduisent exactement ce qui s'échangeait avant ce
+        réglage — course : nom et note au passager, rien au chauffeur sauf le
+        klaxon ; livraison : nom, note, numéro et appel dans les deux sens.
+      parameters:
+        - {name: code, in: path, required: true, schema: {type: string, example: GN}}
+      responses:
+        "200":
+          description: Privacy policy, both verticals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountryPrivacy"
+        "404": {description: unknown_country}
+    put:
+      tags: [admin, countries]
+      summary: "Régler UN sens d'UN métier (v4.49.0)"
+      description: >-
+        ⚠️ **UN SEUL SENS PAR APPEL, exprès.** Un formulaire qui enverrait les
+        quatre divulgations d'un coup rendrait impossible de dire, dans le
+        journal d'audit, laquelle vient de changer — et c'est précisément la
+        question qu'on posera après un incident. L'entrée d'audit nomme le
+        métier, le public et l'état obtenu.
+
+
+        `vertical` et `audience` sont obligatoires ; le reste est facultatif —
+        on change un champ sans réécrire les autres. Un corps sans aucun champ
+        réglable est refusé (`422`).
+      parameters:
+        - {name: code, in: path, required: true, schema: {type: string, example: GN}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vertical, audience]
+              properties:
+                vertical: {type: string, enum: [vtc, food]}
+                audience:
+                  type: string
+                  enum: [client, agent]
+                  description: QUI REGARDE — `client` voit l'agent, `agent` voit son client.
+                name:
+                  type: string
+                  enum: [full, first, initials, hidden]
+                  description: >-
+                    Quatre niveaux et non un interrupteur : « A. D. » laisse
+                    reconnaître la personne qui arrive sans la nommer.
+                first_name: {type: boolean, description: Le prénom d'état civil, distinct du nom d'affichage}
+                last_name: {type: boolean, description: Le nom de famille — ce qui identifie vraiment dans une ville}
+                photo: {type: boolean}
+                gender: {type: boolean, description: Servi nulle part par défaut ; à n'ouvrir que si un marché l'exige}
+                rating: {type: boolean, description: Une PERMISSION — la note vit dans la verticale}
+                phone: {type: boolean, description: Le numéro est AFFICHÉ}
+                direct_call: {type: boolean, description: Un BOUTON D'APPEL est proposé}
+                in_app_alert: {type: boolean, description: On peut faire SONNER l'application de l'autre}
+      responses:
+        "200":
+          description: Privacy policy, both verticals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountryPrivacy"
+        "404": {description: unknown_country}
+        "422": {description: nothing to update, or an unknown level}
   /admin/countries/{code}/security:
     get:
       tags: [admin, countries]
@@ -2480,6 +2586,41 @@ components:
         modes: {type: array, items: {type: string}}
         periods: {type: array, items: {type: string}}
         schedules: {type: array, items: {type: string}}
+    CountryDisclosure:
+      type: object
+      description: >-
+        Ce qu'un public a le droit de voir d'une personne. Tous les champs sont
+        posés — un pays jamais réglé rend les défauts de son métier.
+      required: [name, first_name, last_name, photo, gender, rating, phone, direct_call, in_app_alert]
+      properties:
+        name: {type: string, enum: [full, first, initials, hidden]}
+        first_name: {type: boolean}
+        last_name: {type: boolean}
+        photo: {type: boolean}
+        gender: {type: boolean}
+        rating: {type: boolean}
+        phone: {type: boolean, description: Le numéro est AFFICHÉ}
+        direct_call: {type: boolean, description: Un BOUTON D'APPEL est proposé}
+        in_app_alert: {type: boolean, description: On peut faire SONNER l'application de l'autre}
+    CountryExchange:
+      type: object
+      description: Les deux sens d'un métier. `audience` nomme QUI REGARDE.
+      required: [to_client, to_agent]
+      properties:
+        to_client:
+          allOf:
+            - $ref: "#/components/schemas/CountryDisclosure"
+            - description: Ce qu'un CLIENT voit de l'agent qui le sert.
+        to_agent:
+          allOf:
+            - $ref: "#/components/schemas/CountryDisclosure"
+            - description: Ce qu'un AGENT — chauffeur, livreur — voit de son client.
+    CountryPrivacy:
+      type: object
+      required: [vtc, food]
+      properties:
+        vtc: {$ref: "#/components/schemas/CountryExchange"}
+        food: {$ref: "#/components/schemas/CountryExchange"}
     Country:
       type: object
       properties:

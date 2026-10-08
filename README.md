@@ -280,6 +280,61 @@ a repository that does not serve a single ride route.
 > existent. Avant cette version, cette connexion répondait **500** : l'empreinte
 > vide faisait échouer la vérification.
 
+> ### 🔒 QUI VOIT QUOI DE QUI — par pays et par MÉTIER
+>
+> `GET · PUT /admin/countries/{code}/privacy` (`internal/country/privacy.go`),
+> appliqué par `POST /internal/accounts/disclose`
+> (`internal/serviceapi/disclose.go`).
+>
+> Ce qu'un client et l'agent qui le sert voyaient l'un de l'autre était décidé
+> dans le code, et il y avait **quatre réponses différentes** à la même
+> question, dans quatre fichiers, aucune réglable : course, passager → chauffeur
+> (le nom et la note) ; course, chauffeur → passager (**rien**) ; livraison,
+> dans les deux sens (le nom **et** le numéro). Ce n'était pas une incohérence
+> mais quatre arbitrages pris séparément, chacun défendable — il manquait un
+> endroit pour les lire.
+>
+> ⚠️ **LA PORTE N'ENVOIE PAS CE QU'ON N'A PAS LE DROIT DE MONTRER.** Filtrer
+> après coup — lire le contact nu puis cacher des champs à l'affichage — aurait
+> fait traverser le fil à un numéro que l'exploitation venait de fermer, pour le
+> laisser dormir dans un journal de requêtes ou un cache. Un champ qu'on
+> n'envoie pas ne fuit pas. Elle reste **distincte** de
+> `/internal/accounts/contact`, qui rend tout sans filtre : celle-là est la
+> vérité du back-office, celle que le support doit voir. Appeler la mauvaise des
+> deux divulgue exactement ce qu'on venait de fermer.
+>
+> ⚠️ **TROIS CANAUX DE CONTACT, TROIS PERMISSIONS.** `phone` **affiche** le
+> numéro — il sort de la plateforme dès qu'il est à l'écran. `direct_call`
+> propose un **bouton d'appel**. `in_app_alert` fait **sonner** l'application de
+> l'autre — c'est le **klaxon** des courses, qui existe précisément parce
+> qu'aucun numéro ne s'échange, et qui obéit désormais au réglage
+> (`403 honk_not_available`).
+>
+> ⚠️ **`direct_call` SANS `phone` EST DE LA FRICTION, PAS DU SECRET** : pour
+> composer, le téléphone doit connaître le numéro, qui atterrit donc dans son
+> journal d'appels. Ce que le réglage retire, c'est l'affichage, la recopie et
+> la capture d'écran. Le seul masquage réel serait un relais chez un opérateur,
+> qui n'est pas branché — la même honnêteté que pour le verrou des applications.
+>
+> ⚠️ **LE DÉFAUT REPRODUIT EXACTEMENT CE QUI S'ÉCHANGEAIT AVANT**, et un test le
+> pose comme contrat de non-régression, ligne par ligne. Des **pointeurs** et
+> non des booléens nus : « non réglé » et « refusé » ne sont pas la même chose,
+> et un `bool` nu aurait coupé les téléphones de la livraison le jour du
+> déploiement.
+>
+> ⚠️ **LE TROU QUI ANNULAIT TOUT** : l'inscription par code pose le **numéro**
+> comme nom d'affichage tant que la personne n'en a pas donné un. Servir ce
+> « nom » avec le téléphone fermé donnait le numéro quand même, à l'écran, sous
+> un libellé qui ne le dit pas — et le niveau `first` est le pire, puisqu'un
+> numéro sans espace y passe entier.
+>
+> ⚠️ **LE PAYS EST CELUI DE L'OPÉRATION**, passé explicitement par la verticale :
+> un Togolais qui prend une course à Dakar relève de la politique sénégalaise,
+> parce que c'est la loi de ce marché qui s'applique.
+>
+> ⚠️ **UN MÉTIER OU UN PUBLIC INCONNU NE DIVULGUE RIEN** : la règle se ferme. La
+> troisième verticale n'héritera pas de la politique de la livraison.
+
 > ⚠️ **ON EFFACE LA PERSONNE, PAS L'OPÉRATION** — `DELETE /me` et
 > `DELETE /admin/users/{id}` (voir `internal/user/erasure.go`).
 >
