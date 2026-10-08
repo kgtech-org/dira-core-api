@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.52.0** · 8 octobre 2026
+> **Version 4.53.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -2922,11 +2922,89 @@ Aucune conséquence : il n'y a personne à déconnecter, et rien ne s'affiche.
 
 ## 8. ⚠️ Ce que la maquette demande et que l'API ne sert PAS
 
-### ❌ Les documents de conformité (`ch_docs`)
+### ✅ Les documents de conformité (`ch_docs`) — SERVIS (v4.53.0)
 
-**Aucune route.** Permis, pièce d'identité, carte grise, assurance : l'écran
-n'a rien derrière côté courses. La livraison a l'équivalent
-(`/food/agent/documents`) ; le partage des deux est en cours.
+> ⚠️ **CETTE SECTION DISAIT « AUCUNE ROUTE », ET C'ÉTAIT FAUX.** Le partage
+> annoncé a eu lieu : les courses servent la conformité par la même mécanique que
+> la livraison, et l'écran `ch_docs` a tout ce qu'il lui faut. La spec a continué
+> d'annoncer un trou — c'est-à-dire qu'une équipe a pu laisser l'écran de côté
+> pour rien.
+
+```
+GET  /driver/documents                                       mon état de conformité
+POST /driver/documents   { kind, file_url, vehicle_id?, expires_at? }
+```
+
+Dix pièces, et **le type décide de son propriétaire** :
+
+| Pièce | Rattachée à | `vehicle_id` | `expires_at` |
+|---|---|---|---|
+| `id_card` — pièce d'identité | la personne | **refusé** | facultatif |
+| `selfie` — photo du visage | la personne | **refusé** | facultatif |
+| `criminal_record` — casier judiciaire | la personne | **refusé** | ⚠️ **obligatoire** |
+| `licence` — permis de conduire | la personne | **refusé** | facultatif |
+| `registration` — carte grise | le véhicule | **requis** | facultatif |
+| `insurance` — assurance | le véhicule | **requis** | facultatif |
+| `inspection` — contrôle technique | le véhicule | **requis** | facultatif |
+| `vehicle_front` — photo avant, **plaque lisible** | le véhicule | **requis** | facultatif |
+| `vehicle_rear` — photo arrière | le véhicule | **requis** | facultatif |
+| `vehicle_side` — photo de côté | le véhicule | **requis** | facultatif |
+
+> ⚠️ **`criminal_record` EXIGE UNE DATE D'EXPIRATION**, et lui seul. Un casier est
+> un **instantané** : il dit ce qu'on savait le jour de sa délivrance, et rien du
+> lendemain. Sans date il vaudrait pour toujours, et un extrait de 2019 marqué
+> « valide » rendrait le contrôle décoratif. Le dépôt est refusé (`422`) avec le
+> champ nommé. **Demandez la date à l'écran**, en expliquant qu'il s'agit de la
+> validité de l'extrait — sinon la personne la cherche et redépose la même image.
+
+> ⚠️ **`selfie` N'EST PAS LA PHOTO DE PROFIL.** Celle du profil est choisie
+> librement et sert à être reconnu ; le selfie est une pièce qu'un **humain
+> compare** à la pièce d'identité. Prenez-le dans l'application, caméra avant, et
+> ne proposez **pas** de choisir une image de la galerie : une photo choisie ne
+> prouve rien.
+
+> ⚠️ **TROIS PHOTOS DE VÉHICULE, TROIS PIÈCES DISTINCTES.** Une pièce porte **une**
+> image et un dépôt **remplace** celle du même type : si vous envoyez les trois
+> sous `vehicle_front`, il n'en restera qu'une — sans message et sans trace.
+> Envoyez trois `POST`, un par angle.
+
+> ⚠️ **ET C'EST CE QUI PERMET DE DIRE QUEL ANGLE MANQUE.** `missing` les nomme un
+> par un : `vehicle_rear:<vehicle_id>`. « Il manque une photo » n'indique pas
+> laquelle reprendre ; « il manque la photo de l'arrière » se règle en trente
+> secondes.
+
+> ⚠️ **LE CASIER ET LE SELFIE SONT DUS PAR TOUT LE MONDE**, même sans véhicule
+> motorisé — contrairement au permis, qui suit la motorisation. Transporter des
+> gens ou leur argent est ce qui crée l'obligation : un livreur à vélo manipule
+> des espèces et entre dans des cours d'immeubles.
+
+> ⚠️ **UN VÉHICULE NON MOTORISÉ N'ATTEND RIEN**, photos comprises. Ne réclamez pas
+> la photo d'un vélo : `missing` ne la demande pas, et un écran qui l'exigerait
+> laisserait un cycliste bloqué sur une étape qu'il ne peut pas franchir.
+
+> Un chauffeur avec deux véhicules a **deux assurances**, et **deux jeux de
+> photos**. Vendre une voiture n'invalide pas son permis.
+
+**`state` est ce qu'il faut afficher**, calculé à la lecture : `pending` (déposée,
+personne ne l'a regardée) · `valid` · `expiring` (valide, périme sous **15 jours**
+— un rappel, **pas** un défaut) · `expired` · `rejected` (`rejected_reason` dit
+quoi refaire — **affichez-le**).
+
+> ⚠️ **`pending` RESTE `pending` QUELLE QUE SOIT LA DATE.** Une pièce que personne
+> n'a regardée n'a jamais compté : ne l'affichez pas « expirée ».
+
+> ⚠️ **UN DÉPÔT REMPLACE ET REPASSE EN `pending`**, même si l'ancienne pièce était
+> validée. Dites-le avant l'envoi : le chauffeur doit savoir qu'il repart en
+> vérification.
+
+> ⚠️ **RIEN N'EST BLOQUÉ CÔTÉ SERVEUR.** `compliant` est **informatif** — une
+> pièce expirée n'empêche ni l'appel ni l'acceptation, et c'est l'exploitation qui
+> suspend. **Votre bannière est donc la seule barrière qui existe** : en tête
+> d'écran, pas en badge discret au fond d'un onglet.
+
+⚠️ **Tout chauffeur déjà inscrit devient `compliant: false`** à l'arrivée des
+cinq pièces nouvelles. Prévoyez un écran qui liste ce qui manque et permette de
+tout envoyer en une fois.
 
 ### ❌ Les statistiques « depuis », « taux d'acceptation », « heures en ligne »
 
