@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.54.0** · 8 octobre 2026
+> **Version 4.55.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -778,6 +778,7 @@ ceux des deux specs métier, qui restent à jour.
 | | ⚠️ **La course PARTAGÉE cherche le CO-PASSAGER *avant* le chauffeur** — c'est le seul mode qui le fasse, et l'écran d'attente en dépend : pendant la première étape (`dispatch_state: "pooling"`, jusqu'à 5 min) **aucun chauffeur n'est appelé**. Principe complet, chronologie des deux passagers, conditions d'appariement, ordre de route et les quatre fins possibles : `VTC-CLIENT` §4 quater, **à lire avant de câbler un écran** |
 | Commander | `POST /rides` · `GET /rides` · `GET /rides/{id}` · `POST /rides/{id}/cancel` · `POST /rides/{id}/relaunch` |
 | | 💸 **ANNULER PEUT COÛTER (v4.50.0)** — `cancellation` voyage avec la course : `fee_xof`, `step`, `why`, `grace_left_s`. ⚠️ **Retenir de l'argent à quelqu'un qui n'a pas pu le lire AVANT est indéfendable** : l'écran de confirmation dit le montant, ou dit que c'est gratuit **et jusqu'à quand**. Jamais de bouton « Annuler » nu quand `fee_xof > 0`. Détail : `VTC-CLIENT` §5 |
+| | 🏷️ **LE MOTIF D'ANNULATION EST NOMMÉ (v4.55.0)** — `POST /rides/{id}/cancel { "reason_code": "…", "reason": "…" }`, et la liste se **demande** : `GET /rides/cancel-reasons` → `{ by, items: [{ code, grave }] }`. ⚠️ **N'écrivez pas les codes en dur** : la liste dépend du rôle du jeton, et le serveur refuse un code de l'autre rôle (`422`, `fields: ["reason_code"]`). ⚠️ **Traduisez-les chez vous** : la route sert des codes, pas des phrases. ⚠️ **Le code s'AJOUTE à la phrase libre**, il ne la remplace pas — le code se compte, la phrase explique le cas ; `other` existe pour ce qu'aucun code ne couvre. 🔎 **`driver_asked` (« le chauffeur m'a demandé d'annuler ») est un signal de FRAUDE** : proposez-le en clair, sinon le geste est indistinguable d'un renoncement. Détail : `VTC-CLIENT` §5 |
 | En route | `PATCH /rides/{id}/stops` · socket du suivi (§11) |
 | Reçu, relevé | 🧾 `GET /rides/{id}/receipt.pdf` · `GET /rides/statement.pdf?from=&to=` **(v4.52.0)** — distance **réellement parcourue** et sa source ; une course annulée porte désormais `cancel_fee_xof` |
 | Parler, noter | `GET/POST /rides/{id}/messages` · `POST /rides/{id}/rating` |
@@ -917,6 +918,45 @@ du métier.
 ---
 
 ## 15. Journal
+
+### 4.55.0 — 8 octobre 2026
+
+🏷️ **LE MOTIF D'ANNULATION D'UNE COURSE EST NOMMÉ.** Il était un texte libre et
+ne se comptait pas : « changé d'avis », « Changé d'avis », « chg avis » — trois
+façons d'écrire un fait.
+
+```
+GET /rides/cancel-reasons   → { "by": "rider", "items": [ { "code": "changed_mind", "grave": false }, … ] }
+POST /rides/{id}/cancel       { "reason_code": "wait_too_long", "reason": "…" }
+```
+
+⚠️ **DEMANDEZ LA LISTE, N'ÉCRIVEZ PAS LES CODES EN DUR.** Elle dépend du rôle du
+jeton, et le serveur refuse un code de l'autre rôle (`422`, `fields:
+["reason_code"]`). Les sept motifs du passager ne sont pas ceux du chauffeur.
+
+⚠️ **TRADUISEZ-LES CHEZ VOUS** : la route sert des codes, pas des phrases.
+
+⚠️ **LE CODE S'AJOUTE À LA PHRASE, IL NE LA REMPLACE PAS.** Le code se compte, la
+phrase explique le cas précis. Les deux restent facultatifs — forcer un choix
+fait cocher le premier élément de la liste, et `other` existe pour le reste.
+
+🔎 **`driver_asked` EST LE MOTIF QU'IL FAUT VRAIMENT PROPOSER.** « Le chauffeur
+m'a demandé d'annuler » est un **signal de fraude** : il évite ainsi les frais
+d'annulation **et** garde sa place dans le vivier. Sans ce choix, le geste est
+indistinguable d'un passager qui renonce, et il ne se compte nulle part.
+
+⚠️ **AUCUN MOTIF DU PASSAGER N'EST `grave`**, et `grave` vous est pourtant
+servi : lisez-le plutôt que de supposer `false`. Une agression passe par le
+**support**, pas par une case à cocher.
+
+⚠️ **ET LES COURSES ANNULÉES AVANT CETTE VERSION N'ONT QUE LA PHRASE** :
+`cancelled_reason_code` est absent sur elles. Affichez `cancelled_reason` telle
+quelle, ne traduisez pas l'absence par `other`.
+
+> **Rien ne change côté commandes** : `POST /orders/{id}/cancel` n'a pas de
+> taxonomie, et ce n'est pas un oubli — une commande s'annule avant d'être
+> préparée, où le seul motif utile est « je n'en veux plus ».
+
 
 ### 4.52.0 — 8 octobre 2026
 

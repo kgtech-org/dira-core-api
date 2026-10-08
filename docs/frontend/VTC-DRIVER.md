@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.54.0** · 8 octobre 2026
+> **Version 4.55.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -443,7 +443,7 @@ et leur date.
 
 ```
 GET   /drivers/me                   → crée le profil au premier appel
-GET   /drivers/me/stats?date=YYYY-MM-DD&tz=Africa/Lome   → { rides, driver_xof, online_s }   (v3.1.0)
+GET   /drivers/me/stats?date=YYYY-MM-DD&tz=Africa/Lome   → { rides, driver_xof, online_s, acceptance? }   (v3.1.0, acceptance v4.55.0)
 PATCH /drivers/me/online            { "online": true | false }
 GET   /drivers/me/vehicles
 POST  /drivers/me/vehicles          { class_key, brand, model, license_plate, color, seats, photo_url?, images? }
@@ -493,6 +493,48 @@ PATCH /drivers/me/active-vehicle    { "vehicle_id": "…" }
 > fuseau** (`tz`, défaut `Africa/Lome`) ; `online_s` est le temps en ligne du
 > jour, période en cours comprise. Remplace le calcul depuis
 > `GET /rides?limit=50` et le compteur local du téléphone.
+
+### 📞 CE QUE VOUS AVEZ FAIT DES APPELS REÇUS — `acceptance` (v4.55.0)
+
+`GET /drivers/me/stats` porte un bloc de plus :
+
+```json
+{ "date": "2026-10-08", "tz": "Africa/Lome",
+  "rides": 7, "driver_xof": 14500, "online_s": 23400,
+  "acceptance": { "called": 10, "accepted": 6, "declined": 3, "missed": 1, "rate": 60 } }
+```
+
+⚠️ **AFFICHEZ LE TAUX AVEC LES QUATRE NOMBRES, jamais seul.** « 60 % » ne se
+discute pas ; « 6 acceptés sur 10 reçus · 3 refusés · 1 sans réponse » se
+discute — et c'est un chiffre dont on juge quelqu'un. Un chauffeur qui voit
+tomber son taux sans voir d'où il vient appelle le support, et le support non
+plus n'a rien à lui dire.
+
+⚠️ **`rate` EST ABSENT QUAND `called` VAUT 0, ET CE N'EST PAS UN ZÉRO.** Un
+chauffeur qui n'a reçu aucun appel aujourd'hui n'a **pas** un taux de 0 % :
+il n'en a pas. « 0 % » se lit « il refuse tout » — l'inverse exact — et c'est
+le premier écran d'un nouveau chauffeur qui attend sa première course.
+Affichez « — » ou « aucun appel reçu aujourd'hui ». **Ne calculez pas
+`accepted / called` vous-même** : vous retomberiez sur la division par zéro
+que le serveur vient d'éviter.
+
+⚠️ **`acceptance` TOUT ENTIER PEUT MANQUER**, et ce n'est pas « zéro appel » :
+c'est « on n'a pas pu demander ». Les appels sont journalisés par le service de
+suivi ; s'il ne répond pas, le bloc est **omis** plutôt que rendu à zéro — un
+zéro ferait passer la journée du chauffeur pour mauvaise à cause d'une panne de
+notre côté. Masquez la carte, ou dites « indisponible », mais **n'affichez pas
+0 %**.
+
+⚠️ **`declined` ET `missed` RESTENT SÉPARÉS — ne les additionnez pas.** Refuser
+est un **geste** ; laisser sonner est autre chose (téléphone dans une poche,
+réseau perdu, écran verrouillé). Les additionner mélangerait un choix et une
+panne, et le chauffeur n'aurait aucun moyen de corriger ce qu'on lui reproche.
+
+⚠️ **`called` NE COMPTE QUE LES APPELS QUI VOUS SONT VRAIMENT PARVENUS** :
+prévenu, et non écarté en amont. Hors ligne, suspendu, dette au plafond,
+véhicule immobilisé — vous n'avez rien vu passer, et cela ne compte pas contre
+vous. C'est pourquoi un taux peut rester haut un jour où vous avez peu
+travaillé.
 
 > **`GET /rides?limit=&cursor=`** — VOS courses, **les plus récentes
 > d'abord** (date de création puis identifiant, v4.12.1) ; `?cursor=` est
@@ -939,7 +981,7 @@ POST https://tracking-staging.dira.llc/track/calls/{call_id}/decline  { "vehicle
 ```
 PATCH /rides/{id}/status                   { "status": "picking_up" | "arrived" | "in_transit" | "completed" }
 POST  /rides/{id}/stops/{index}/reached
-POST  /rides/{id}/decline                  { "reason": "…" }
+POST  /rides/{id}/decline                  { "reason_code": "rider_no_show", "reason": "…" }
 GET   /rides/{id}
 GET   /rides?cursor=…                      # l'historique de VOS courses
 ```
@@ -948,6 +990,89 @@ GET   /rides?cursor=…                      # l'historique de VOS courses
 accepted → picking_up → arrived → in_transit → completed
         ↘ cancelled
 ```
+
+
+### 🏷️ LE MOTIF, NOMMÉ — `reason_code` et `GET /rides/cancel-reasons` (v4.55.0)
+
+Le motif d'annulation était un **texte libre**, et il ne se comptait pas :
+« changé d'avis », « Changé d'avis », « chg avis », « il est pas venu » — quatre
+façons d'écrire deux faits, et aucun moyen de répondre à « combien de
+passagers posés par un chauffeur cette semaine ? ». Un champ qu'on ne peut pas
+grouper n'existe que pour celui qui l'a tapé.
+
+**Demandez la liste, n'inventez pas les codes :**
+
+```
+GET /rides/cancel-reasons
+→ { "by": "driver", "items": [ { "code": "rider_no_show", "grave": false }, … ] }
+```
+
+```jsonc
+{ "by": "driver", "items": [
+  { "code": "rider_no_show",   "grave": false },   // le passager n'est pas venu
+  { "code": "rider_left",      "grave": false },   // il a renoncé sur place, de vive voix
+  { "code": "pickup_too_far",  "grave": false },   // le départ est trop loin
+  { "code": "vehicle_problem", "grave": false },   // panne, pneu, carburant
+  { "code": "accident",        "grave": true  },   // ⚠️
+  { "code": "unsafe",          "grave": true  },   // ⚠️ agression, menace, passager dangereux
+  { "code": "wrong_address",   "grave": false },   // l'adresse donnée n'existe pas
+  { "code": "other",           "grave": false } ] }
+```
+
+⚠️ **LA LISTE DÉPEND DU RÔLE DU JETON**, et le serveur **refuse** un code de
+l'autre rôle. Avec votre jeton de chauffeur vous recevez les motifs du CHAUFFEUR ; « le prix ne me convient pas » n'y est pas, et l'envoyer serait refusé. Les deux listes ne décrivent pas les mêmes faits — proposer « le passager n'est pas venu » à un passager est absurde. Appelez la route, mettez le résultat en cache pour la
+session, et composez la liste depuis elle — un code écrit en dur dans
+l'application sera refusé le jour où la taxonomie change.
+
+⚠️ **TRADUISEZ LES CODES CHEZ VOUS.** La route sert les codes et leur gravité,
+**pas des phrases** : à vous de les afficher dans la langue de l'utilisateur.
+Un serveur qui renverrait du français vous obligerait à l'ignorer de toute
+façon.
+
+⚠️ **LE CODE RESTE FACULTATIF, ET LA PHRASE LIBRE RESTE À CÔTÉ.** Les deux
+ensemble, parce qu'ils ne disent pas la même chose : le code **se compte**, la
+phrase **explique le cas**. Une taxonomie ne couvre jamais tout, et forcer un
+choix fait cocher le premier élément de la liste — ce qui est pire qu'un champ
+vide, parce qu'on le croit. `other` existe pour ça.
+
+⚠️ **UN CODE INVENTÉ EST REFUSÉ** — `422` avec `fields: ["reason_code"]` et la
+liste `allowed`. N'envoyez rien plutôt qu'un code approximatif : une annulation
+refusée pour un détail de formulaire laisse l'utilisateur coincé sur une course
+dont il veut sortir.
+
+⚠️ **ET LE MOTIF SE RELIT** : la course rend `cancelled_reason_code` à côté de
+`cancelled_reason`. Les courses **annulées avant la 4.55.0** n'ont que la
+phrase — ne traduisez pas son absence par `other`, et affichez-la telle quelle :
+c'est leur seule explication.
+
+### ⚠️ DEUX MOTIFS APPELLENT QUELQU'UN TOUT DE SUITE — `grave: true` (v4.55.0)
+
+`accident` et `unsafe` ne sont pas des motifs à totaliser en fin de mois : ils
+ouvrent un **ticket de support critique** rattaché à la course, et quelqu'un les
+regarde dans l'heure. C'est pour cela que `grave` vous est dit.
+
+**Ce que votre écran en fait :**
+
+> - **Une confirmation à part**, pas la même que « panne de véhicule ». Un
+>   chauffeur qui déclare un accident ne doit pas se demander s'il a bien appuyé.
+> - **Dites que le support a été alerté**, et proposez-lui de l'appeler. Sans
+>   cela, il croit avoir annulé une course de plus et n'attend rien de personne.
+> - **N'exigez pas la phrase libre**, proposez-la. Il est peut-être au bord de
+>   la route.
+
+⚠️ **L'ANNULATION ABOUTIT MÊME SI LE TICKET ÉCHOUE.** Le serveur ne bloque
+jamais une annulation parce qu'un ticket n'a pas pu s'ouvrir : vous êtes
+peut-être immobilisé, et rester coincé dans un écran serait indéfendable. Donc
+**n'attendez pas de confirmation du ticket** et ne réessayez pas l'annulation —
+elle a eu lieu.
+
+⚠️ **ET `grave` NE SE DEVINE PAS.** Lisez-le dans la réponse de
+`GET /rides/cancel-reasons` au lieu de tester `code === "accident"` : le jour où
+un motif grave s'ajoute, votre application le traitera déjà correctement.
+
+⚠️ **LA LISTE EST COURTE EXPRÈS.** Deux motifs, parce qu'une liste large
+remplirait la file critique de pannes de pneu — et une file critique qui sonne
+dix fois par jour cesse d'être lue. Ne décorez pas d'autres motifs en « urgent ».
 
 ### ⚠️ Signaler l'arrivée — `arrived`, et l'attente facturée (v4.14.0)
 
@@ -2296,6 +2421,7 @@ GET /drivers/me/statement?limit=50
 ```json
 { "balance_xof": -4500, "owing": true, "over_limit": false,
   "max_debt_xof": 10000,
+  "max_debt_source": "country", "max_debt_by": "",
   "entries": [ { "id": "…", "ride_id": "…", "kind": "commission",
                  "amount_xof": -450, "reason": "…", "created_at": "…" } ] }
 ```
@@ -2321,6 +2447,45 @@ cesse de recevoir des courses sans comprendre pourquoi croit à une panne.
 `owing` et `over_limit` sont **rendus calculés** : le signe d'un nombre se lit
 mal en un coup d'œil, et « dois-je de l'argent ? » ne doit pas dépendre d'une
 comparaison que chaque application refait à sa façon.
+
+### 🧱 LE PLAFOND N'EST PLUS LE MÊME POUR TOUT LE MONDE (v4.55.0)
+
+`max_debt_xof` était **la même constante pour tous les pays** : 10 000, dans la
+monnaie de chacun. En Guinée, où le franc guinéen vaut quinze fois moins, cela
+coupait un chauffeur de Conakry **après une seule course en espèces**. Le
+plafond est désormais réglé **par pays**, et deux champs disent d'où il vient :
+
+| Champ | Ce qu'il dit |
+|---|---|
+| `max_debt_xof` | le plafond **effectif** — celui qui s'applique vraiment à vous |
+| `max_debt_source` | `country` (décidé par l'exploitation de votre pays) ou `partner` (votre flotte, plus serrée) |
+| `max_debt_by` | qui l'a demandé, quand on le sait (le partenaire) |
+
+⚠️ **AFFICHEZ `max_debt_xof`, N'EN ÉCRIVEZ AUCUN EN DUR.** Un « plafond :
+10 000 F » codé dans l'application mentirait à tous les chauffeurs d'un pays le
+jour où l'exploitation le change — et ce jour est arrivé.
+
+⚠️ **DEUX BORNES, ET LA PLUS SERRÉE MORD.** Votre partenaire de flotte peut
+demander une limite **pour vous seul**, en plus de celle du pays : il répond des
+espèces que vous encaissez avec son véhicule. `max_debt_xof` est déjà le résultat
+des deux, vous n'avez rien à comparer.
+
+⚠️ **ET C'EST `max_debt_source` QUI REND LE MESSAGE UTILE.** « Vous ne recevez
+plus d'appels » sans dire **quelle** borne a mordu envoie le chauffeur au
+support, qui lit le plafond du pays et n'y comprend rien — alors que c'est son
+partenaire qui a posé 5 000. Dites-le :
+>
+> - `country` → « Vous avez atteint le plafond de dette (**{max_debt_xof}**).
+>   Réglez votre commission pour recevoir à nouveau des courses. »
+> - `partner` → « Votre partenaire **{max_debt_by}** a fixé une limite de
+>   **{max_debt_xof}**. » — et, s'il n'y a pas de nom, « Une limite a été fixée
+>   par votre partenaire ».
+>
+> Dans les deux cas, le geste est le même (régler), mais **l'interlocuteur
+> change** : l'exploitation d'un côté, le propriétaire du véhicule de l'autre.
+
+⚠️ **`max_debt_source` PEUT MANQUER** sur un chauffeur sans dette : traitez
+l'absence comme `country`, n'affichez pas de source inventée.
 
 ---
 
