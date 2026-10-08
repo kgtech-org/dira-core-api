@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.47.0** · 7 octobre 2026
+> **Version 4.48.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -529,13 +529,32 @@ PATCH /drivers/me/active-vehicle    { "vehicle_id": "…" }
 | `402 equipment_overdue` | une échéance de **matériel** est en retard au-delà du seuil du contrat — voir §6 bis (v4.11.0) |
 
 ⚠️ **La classe du véhicule décide de ce que vous pouvez prendre (v4.6.0).**
-Un véhicule sert les courses de **son mode et des modes avant lui** dans
-`GET /classes` — l'ordre de la liste est une hiérarchie : eco < confort <
-van. Une confort est appelée pour une course eco (le passager monte dans
-mieux) ; une eco **n'est jamais appelée** pour une course confort, et une
-citadine ne sert pas une course « van » : l'accepter mettrait six personnes
-dans quatre places. Le serveur trie **avant** de sonner ; forcer
-l'acceptation répond `409 vehicle_class_mismatch`.
+Un véhicule sert les courses de **son mode et des modes qu'il INCLUT**. Chez
+les voitures, c'est une hiérarchie : eco < confort < van. Une confort est
+appelée pour une course eco (le passager monte dans mieux) ; une eco **n'est
+jamais appelée** pour une course confort, et une citadine ne sert pas une
+course « van » : l'accepter mettrait six personnes dans quatre places. Le
+serveur trie **avant** de sonner ; forcer l'acceptation répond
+`409 vehicle_class_mismatch`.
+
+⚠️ **CE N'EST PLUS L'ORDRE DE LA LISTE QUI DÉCIDE, MAIS CE QUE CHAQUE MODE
+DÉCLARE.** Ne déduisez donc rien du rang d'affichage : l'exploitation peut
+remonter un mode pour le mettre en avant sans changer qui sonne.
+
+⚠️ **LE MOTO-TAXI EST EN DEHORS DE CETTE HIÉRARCHIE (v4.48.0).** `moto` ne sert
+**que** les courses `moto`, et **aucune voiture** n'est appelée pour une course
+`moto` — même la plus petite citadine. Ce n'est pas un oubli de réglage :
+
+- le prix est **figé au devis**, donc une citadine qui répondrait à un appel de
+  moto roulerait au **tarif d'une moto** — vous perdriez de l'argent sur une
+  course que vous n'auriez pas pu refuser de voir ;
+- et le passager qui a choisi une moto l'a choisie pour **passer** là où une
+  voiture attend. Lui envoyer une voiture, c'est lui vendre l'inverse de ce
+  qu'il a demandé.
+
+À la déclaration, une moto se déclare avec `class_key: "moto"` et
+**`seats: 1`** : c'est ce nombre qui dit au passager qu'il voyage seul, et un
+`seats: 4` sur une moto le ferait commander pour quatre.
 
 Les classes proposées à la déclaration viennent de `GET /classes` (public) :
 `key`, `name`, `icon_url` (image), `map_icon_url`, `nav_icon_url` /

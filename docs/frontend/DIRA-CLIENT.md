@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.47.0** · 7 octobre 2026
+> **Version 4.48.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -668,6 +668,7 @@ ceux des deux specs métier, qui restent à jour.
 | Ce que vous faites | Routes |
 |---|---|
 | Choisir | `GET /classes?near=` · `GET /settings/modes?near=` |
+| | 🛵 **Le MOTO-TAXI est un mode du catalogue (v4.48.0)**, ouvert dans tous les pays et **en tête** de la liste : `seats: 1`, pas de course partagée (`modes` n'a pas de clé `pool`), `icon_url` `null` le temps que l'exploitation pose son image — dessinez la silhouette `map_icon` (`moto`). ⚠️ **Aucune voiture ne répond à un appel de moto** : ne promettez pas « une voiture si aucune moto n'est libre ». Détail : `VTC-CLIENT` §2 |
 | Chiffrer | `POST /rides/quote` · `POST /rides/pool/quote` · `POST /rides/rental/quote` |
 | | ⚠️ **La course PARTAGÉE cherche le CO-PASSAGER *avant* le chauffeur** — c'est le seul mode qui le fasse, et l'écran d'attente en dépend : pendant la première étape (`dispatch_state: "pooling"`, jusqu'à 5 min) **aucun chauffeur n'est appelé**. Principe complet, chronologie des deux passagers, conditions d'appariement, ordre de route et les quatre fins possibles : `VTC-CLIENT` §4 quater, **à lire avant de câbler un écran** |
 | Commander | `POST /rides` · `GET /rides` · `GET /rides/{id}` · `POST /rides/{id}/cancel` · `POST /rides/{id}/relaunch` |
@@ -808,6 +809,15 @@ du métier.
 ---
 
 ## 15. Journal
+
+### 4.48.0 — 8 octobre 2026
+
+🛵 **LE MOTO-TAXI** — `moto` arrive dans `GET /classes`, **en tête** du
+catalogue et dans **tous les pays** : `seats: 1` (ni 2 passagers, ni bagage),
+pas de course partagée (`modes` n'a pas de clé `pool`), `icon_url` `null` le
+temps que l'exploitation pose son image — dessinez la silhouette `map_icon`
+(`moto`). ⚠️ **Aucune voiture ne répond à un appel de moto** : ne promettez pas
+« une voiture si aucune moto n'est libre ». Détail : `VTC-CLIENT` §2.
 
 ### 4.47.0 — 7 octobre 2026
 

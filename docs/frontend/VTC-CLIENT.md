@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.47.0** · 7 octobre 2026
+> **Version 4.48.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -445,6 +445,43 @@ défaut (`null`), `map_icon` nomme une silhouette de repli (`voiture` ·
 sans image ni silhouette connue, dessinez `voiture`. Mettez les images en
 cache par URL : elles changent d'URL quand elles changent. La `key`
 reste l'identifiant technique (devis, course) — jamais un libellé.
+
+### 🛵 LE MOTO-TAXI — un mode à part, ouvert dans tous les pays (v4.48.0)
+
+```json
+{ "key": "moto", "name": "Moto", "note": "Moto-taxi · 1 passager", "seats": 1,
+  "map_icon": "moto", "icon_url": null,
+  "modes": { "free": { … }, "rental": { … } } }
+```
+
+Il arrive **en tête du catalogue** — c'est la course la moins chère et la plus
+courante de la région. Il était jusqu'ici rangé dans `eco`, avec les
+citadines.
+
+⚠️ **`seats` VAUT 1, ET CE N'EST PAS DÉCORATIF.** Ne proposez pas « 2
+passagers », ni bagage, ni siège enfant sur un mode à une place. Lisez `seats`
+plutôt que de le déduire de la `key` : le jour où un tricycle arrive, il en
+portera trois.
+
+⚠️ **PAS DE COURSE PARTAGÉE SUR UNE MOTO**, et vous le savez **sans règle
+spéciale** : `modes` ne porte pas la clé `pool`. C'est déjà la règle générale —
+une clé absente = mode non vendu par ce véhicule —, et c'est pour cela qu'il
+n'y a rien à coder de particulier. N'écrivez surtout pas « si key == moto
+alors… » : c'est le serveur qui décide, mode par mode et pays par pays.
+
+⚠️ **`icon_url` EST `null` AU DÉPART**, le temps que l'exploitation pose son
+image. Dessinez alors la silhouette `map_icon` (`moto`) — **pas** l'icône d'une
+voiture, et surtout pas une image en dur de votre côté : elle resterait là le
+jour où la vraie arrive. C'est la même règle que pour tous les modes, et c'est
+le premier mode qui la met vraiment à l'épreuve.
+
+⚠️ **UNE MOTO N'EST JAMAIS ENVOYÉE SUR UNE COURSE DE VOITURE, NI L'INVERSE.**
+Le reste du catalogue est une hiérarchie — une berline prend une course éco, le
+passager monte dans mieux que ce qu'il a payé — mais la moto est **en dehors** :
+elle ne sert qu'elle-même, et aucune voiture ne répond à un appel de moto. Rien
+à faire de votre côté : c'est le serveur qui trie avant de sonner. Ne promettez
+donc pas « une voiture si aucune moto n'est libre » — cela n'arrivera pas, et
+l'écran d'attente doit dire la vérité.
 
 > ### 🧭 ⚠️ LES DEUX PINS D'UN VÉHICULE, ET LEUR ORIENTATION (v4.20.0)
 >
