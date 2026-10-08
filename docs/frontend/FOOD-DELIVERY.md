@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.50.0** · 8 octobre 2026
+> **Version 4.51.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -1215,6 +1215,7 @@ Depuis la v1.2.0, une course **attribuée** porte :
 
 - `cash_to_collect_xof` est ce qu'il **réclame au client** à l'arrivée. **Zéro sur une commande prépayée** : n'affichez alors rien — un montant ferait redemander une somme déjà payée.
 - ⚠️ **À ne pas confondre avec `cash_required_xof`**, qui est ce qu'il **avance** aux marchands. L'un sort de sa poche, l'autre y entre. Deux libellés distincts, deux endroits distincts.
+- 🎟️ ⚠️ **`cash_to_collect_xof` PEUT ÊTRE PLUS BAS QUE LA SOMME DES PLATS (v4.51.0).** Le client a pu saisir un **code promo** : la remise sort de la poche de la plateforme, et le total encaissé en tient compte. **Encaissez ce que ce champ dit**, jamais un total recalculé depuis les lignes — un livreur qui additionne les plats réclame une somme que le client n'a pas vue, et c'est lui qui porte la discussion sur le pas de la porte. Votre jeton, lui, ne change pas : un code ne vous coûte rien.
 
 > ⚠️ **Ces champs n'apparaissent QUE sur une course attribuée** — acceptation, collecte, complétion, détail. **Jamais sur `/deliveries/available`.** Un livreur qui parcourt les offres ne moissonne pas des numéros ; celui qui porte la commande voit son client. N'affichez aucun contact sur une carte de la liste.
 

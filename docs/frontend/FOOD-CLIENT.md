@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.50.0** · 8 octobre 2026
+> **Version 4.51.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -514,6 +514,58 @@ DELETE /me/addresses/{id}
 
 ---
 
+## 🎁 INVITER UN AMI — le parrainage (v4.51.0)
+
+```
+GET /me/referral
+→ { "enabled": true, "code": "AWA7K2M",
+    "invitee_xof": 1000, "sponsor_xof": 500, "max_sponsored": 10,
+    "ends_at": "2027-10-08T00:00:00Z", "uses": 3 }
+```
+
+Un seul appel, et il dit tout ce que l'écran doit afficher : le code à partager,
+ce que gagne celui qui arrive, ce que gagne celui qui invite, et combien de
+personnes ont déjà utilisé ce code.
+
+> ⚠️ **`enabled` EST EXPLICITE — NE LE DÉDUISEZ PAS DE L'ABSENCE DE CODE.** Le
+> parrainage se règle **pays par pays**, et il est **éteint par défaut** : tant
+> qu'une direction ne l'a pas décidé et budgété, il ne distribue rien. Quand
+> `enabled` est faux, il n'y a **pas** de code — et il faut **cacher l'entrée**
+> « inviter un ami », pas afficher un écran vide ni un bouton qui ne copie rien.
+
+```json
+{ "enabled": false, "invitee_xof": 0, "sponsor_xof": 0, "max_sponsored": 0 }
+```
+
+> ⚠️ **LE CODE EST TIRÉ À LA DEMANDE**, au premier appel de cette route. Il ne
+> change plus ensuite : c'est le même code toute l'année, celui qu'on peut
+> imprimer, dicter au téléphone ou coller dans un statut. Appelez cette route
+> quand l'écran s'ouvre, et gardez le résultat.
+
+> ⚠️ **AFFICHEZ LES DEUX MONTANTS, ET DITES QUI REÇOIT QUOI.** `invitee_xof` est
+> une **remise** sur la première opération du filleul ; `sponsor_xof` est un
+> **crédit** sur le solde du parrain. Les confondre — « gagnez 1 500 F » — fait
+> attendre 1 500 F à tout le monde, et produit deux déceptions au lieu d'un
+> parrainage.
+
+> ⚠️ **LE PARRAIN N'EST PAYÉ QUE QUAND LA REMISE EST VRAIMENT CONSOMMÉE** — la
+> course terminée, la commande livrée. Jamais à la saisie du code. Écrivez-le sur
+> l'écran : sans cela, quelqu'un qui voit son filleul commander et son solde ne
+> pas bouger pensera que le parrainage ne marche pas. La bonne phrase est
+> **« crédité quand votre filleul aura terminé sa première course »**.
+
+> ⚠️ **`max_sponsored` EST UN PLAFOND, ET `uses` DIT OÙ ON EN EST.** À
+> `max_sponsored` atteint, le code cesse de valoir : montrez
+> « 3 / 10 » plutôt qu'un compteur nu, sinon le dixième filleul découvrira un
+> refus que rien n'annonçait. Quand `max_sponsored` vaut `0`, il n'y a pas de
+> plafond — n'affichez alors aucun rapport.
+
+**Le code de parrainage est un code promo comme un autre** : le filleul le saisit
+dans le même champ que n'importe quel autre code, et les mêmes refus s'appliquent
+— avec un de plus, pour celui qui essaie le sien.
+
+---
+
 ## 🔒 LE VERROU DE L'APPLICATION — `app_lock` (v4.46.0)
 
 Biométrie ou code secret devant l'application : qui ouvre le téléphone de
@@ -787,7 +839,8 @@ POST /orders
                "variant_id": "…", "option_ids": ["…"] } ],
   "delivery": { "address": "Rue 12, Hédzranawoé", "geo": [1.2255, 6.1319] },
   "payment_method": "online" | "cash" | "wallet",
-  "scheduled_for": null
+  "scheduled_for": null,
+  "code": "DIRA2000"
 }
 ```
 
@@ -799,6 +852,85 @@ POST /orders
 - `variant_id` est **obligatoire** quand le plat a des variantes, **refusé** sinon.
 - `option_ids` mélange tous les groupes ; le serveur retrouve le groupe de chacune et vérifie les bornes.
 - **Les prix sont résolus côté serveur.** Ceux que vous affichez sont indicatifs jusqu'à la réponse.
+
+### 🎟️ LE CODE PROMO — celui qu'on TAPE (v4.51.0)
+
+Une promotion s'applique d'elle-même aux plats qui la portent ; un **code** se
+saisit. Il vient d'une affiche, d'un influenceur ou du parrainage d'un proche, et
+il est **unique pour toute la plateforme** : le même mot ne peut pas valoir une
+chose sur une commande et une autre sur une course.
+
+**Un seul champ, à la commande** :
+
+```
+POST /orders
+{ "items": [ … ], "delivery": { … }, "payment_method": "cash",
+  "code": "DIRA2000" }
+```
+
+La réponse porte le code et ce qu'il a retiré :
+
+```json
+{ "subtotal": 4500, "discount": 0,
+  "promo_code": "DIRA2000", "promo_code_xof": 500,
+  "total": 4500 }
+```
+
+> ⚠️ **`total` EST DÉJÀ REMISÉ.** Ne soustrayez **rien** : `promo_code_xof` sert
+> à **afficher** la réduction, pas à la calculer. C'est aussi `total` que le
+> livreur réclamera en espèces — un écran qui recalculerait ferait demander une
+> autre somme que celle qu'on encaisse.
+
+> ⚠️ **`promo_code_xof` N'EST PAS `discount`.** `discount` porte un **crédit de
+> tombola** — de l'argent que le client a déjà gagné. `promo_code_xof` est une
+> **remise** offerte par la plateforme. Les mêler rendrait impossible de dire au
+> client d'où vient sa réduction, et les deux peuvent apparaître sur la même
+> commande : le crédit s'applique d'abord, la remise ensuite, sur ce qu'il reste
+> à payer.
+
+#### ⚠️ UN CODE REFUSÉ FAIT ÉCHOUER LA COMMANDE
+
+Et ne la crée **pas** au prix plein. C'est délibéré : le client aurait payé sans
+remise en croyant en avoir une, et l'aurait découvert sur son solde — la pire
+façon de l'apprendre.
+
+| Code | Ce que l'écran dit |
+|---|---|
+| `promo_code_invalid` | « vérifiez le code » — garder le champ ouvert |
+| `promo_code_unknown` | « ce code n'existe pas » |
+| `promo_code_expired` | « cette offre est terminée » |
+| `promo_code_wrong_country` | « ce code vaut au Togo, pas ici » (`meta.valid_in`) |
+| `promo_code_wrong_service` | « ce code est pour les courses » (`meta.valid_for`) |
+| `promo_code_amount_too_low` | « à partir de 3 000 F » (`meta.min_amount_xof`) |
+| `promo_code_exhausted` | « cette offre est épuisée » |
+| `promo_code_already_used` | « vous avez déjà utilisé ce code » (`meta.max_uses_per_user`) |
+| `promo_code_own_referral` | « partagez-le : il est pour vos proches » |
+| `promo_code_unavailable` | « commandez sans code, et réessayez plus tard » |
+
+> ⚠️ **N'AFFICHEZ PAS « CODE INVALIDE » POUR TOUT.** C'est le message qui envoie
+> tout le monde au support, et le support n'en saura pas plus que l'écran. Chacun
+> de ces refus a une suite différente : corriger une faute de frappe, renoncer,
+> attendre un panier plus gros. `message` est déjà traduit par l'API —
+> affichez-le.
+
+> ⚠️ **`promo_code_unavailable` EST UNE PANNE DE NOTRE CÔTÉ**, pas une erreur du
+> client : le registre des codes n'est pas joignable. Proposez explicitement de
+> **commander sans le code** — c'est la seule action utile, et laisser le client
+> deviner lui fait perdre son panier.
+
+> ⚠️ **`promo_code_own_referral` N'EST PAS UNE ERREUR DE L'UTILISATEUR.** C'est le
+> premier geste de tout le monde : on reçoit son code, on l'essaie. Accueillez-le
+> comme une explication, pas comme un échec.
+
+**Le code est engagé à la commande**, et **rendu** si la commande est annulée ou
+refusée par le marchand : le code redevient alors utilisable.
+
+> **Le marchand n'y perd rien, et le livreur non plus.** La remise sort de la
+> poche de la plateforme : le versement au marchand ne bouge pas, et le jeton du
+> livreur non plus. Rien à expliquer de ce côté dans l'application cliente, mais
+> c'est ce qui permet qu'un code existe sans l'accord de deux cents enseignes.
+
+---
 
 ### Les trois moyens de paiement
 

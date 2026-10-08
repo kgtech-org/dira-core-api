@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.50.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.51.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -326,6 +326,87 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.51.0 — 8 octobre 2026
+
+🎟️ **LES CODES PROMO — ce qu'on TAPE.** Jusqu'ici, une remise ne pouvait
+qu'arriver toute seule : une promotion s'applique à qui remplit ses conditions.
+Un **code** se saisit — il vient d'une affiche, d'un influenceur, du parrainage
+d'un proche — et c'est un objet différent : il est **unique pour toute la
+plateforme**, il a une **enveloppe**, et on veut savoir ce qu'il a **rapporté**.
+
+**Un seul champ, dans les deux métiers** : `POST /rides/quote { …, "code" }` et
+`POST /orders { …, "code" }`. Le prix servi — `fare_xof`, `total` — est **déjà
+remisé** : ne soustrayez **rien**.
+
+⚠️ **SUR UNE COURSE, LA REMISE REVIENT PAR CLASSE.** 20 % d'une moto et 20 % d'un
+van ne font pas le même nombre de francs, et un code peut être plafonné. Affichez
+`promo_code_xof` **ligne par ligne** — une remise unique en tête de liste serait
+fausse sur trois classes sur quatre. Le code, lui, est validé **une fois** : il
+ne peut pas être « accepté pour la moto et refusé pour le van » dans le même
+écran.
+
+⚠️ **JAMAIS DEUX REMISES SUR UNE MÊME OPÉRATION.** `promo_title` et `promo_code`
+ne sont jamais servis ensemble. C'est la **meilleure des deux** qui gagne, pour
+le client — et quand c'est l'offre automatique, la course revient avec
+**`promo_code_ignored: true`**.
+
+⚠️ **`promo_code_ignored` DOIT ÊTRE DIT.** Un code accepté qui ne change pas le
+prix se lit comme un code cassé : on le ressaisit, on vérifie les majuscules,
+puis on appelle le support — qui n'en saura pas plus. La seule phrase vraie est
+**« gardez-le : une meilleure offre s'applique déjà »**, et le code n'a rien
+consommé : il servira une autre fois.
+
+⚠️ **LES DEUX MÉTIERS NE REFUSENT PAS AU MÊME MOMENT.** Sur une course, le refus
+arrive **au devis** : on corrige avant de commander. Sur une commande, il arrive
+**à la création**, et la commande n'est **pas** créée au prix plein — le client
+aurait payé sans remise en croyant en avoir une, et l'aurait découvert sur son
+solde. Conséquence pour l'application : **gardez le panier à l'écran**, et
+proposez de réessayer ou de commander sans code.
+
+⚠️ **NEUF REFUS NOMMÉS, ET N'AFFICHEZ PAS « CODE INVALIDE » POUR TOUT** :
+`promo_code_invalid` · `_unknown` · `_expired` · `_wrong_country` (`meta.valid_in`)
+· `_wrong_service` (`meta.valid_for`) · `_amount_too_low` (`meta.min_amount_xof`)
+· `_exhausted` · `_already_used` (`meta.max_uses_per_user`) · `_own_referral`.
+Chacun a une suite différente — corriger une faute, renoncer, attendre un panier
+plus gros, aller dans l'autre onglet. `message` est déjà traduit : affichez-le.
+`promo_code_unavailable` (livraison) est une **panne de notre côté** : proposez
+de commander sans code.
+
+🎁 **LE PARRAINAGE — `GET /me/referral`.** Un appel qui dit tout : le code à
+partager, ce que gagne celui qui arrive, ce que gagne celui qui invite, et
+combien de personnes l'ont déjà utilisé.
+
+⚠️ **`enabled` EST EXPLICITE : NE LE DÉDUISEZ PAS DE L'ABSENCE DE CODE.** Le
+parrainage se règle **pays par pays** et il est **éteint par défaut** — tant
+qu'une direction ne l'a pas décidé et budgété, il ne distribue rien. À faux,
+**cachez l'entrée** « inviter un ami » : un bouton qui ne copie rien, ou un code
+partagé de bonne foi qui répond « invalide » aux proches de quelqu'un, coûtent
+plus cher que l'absence du bouton.
+
+⚠️ **DEUX MONTANTS, DEUX BÉNÉFICIAIRES.** `invitee_xof` est une **remise** pour
+le filleul ; `sponsor_xof` un **crédit** sur le solde du parrain. « Gagnez
+1 500 F » fait attendre 1 500 F à tout le monde et produit deux déceptions.
+
+⚠️ **LE PARRAIN EST PAYÉ QUAND LA REMISE EST CONSOMMÉE** — course terminée,
+commande livrée —, jamais à la saisie du code. Écrivez-le sur l'écran : sinon
+quelqu'un qui voit son filleul commander et son solde ne pas bouger croira que
+le parrainage ne marche pas.
+
+⚠️ **ET SON PROPRE CODE EST REFUSÉ, NOMMÉMENT** (`promo_code_own_referral`).
+C'est le premier geste de tout le monde : on reçoit son code, on l'essaie.
+Accueillez-le comme une explication — « ce code est celui que vous donnez à vos
+proches » — pas comme un échec.
+
+**Côté agents, rien ne change dans les montants, et c'est le message à faire
+passer** : la remise sort de la **commission de la plateforme**, plafonnée à
+elle. `driver_xof` est exactement ce qu'il aurait été sans le code, et
+`store_amount` ne bouge pas. ⚠️ **Mais `cash_to_collect` et
+`cash_to_collect_xof` PEUVENT ÊTRE PLUS BAS que la somme des plats** : ce sont
+ces champs qui font foi. Un livreur qui additionne le panier réclame une somme
+que le client n'a pas vue, et c'est lui qui porte la discussion sur le pas de la
+porte.
+
 
 ### 4.50.0 — 8 octobre 2026
 

@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.50.0** · 8 octobre 2026
+> **Version 4.51.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -636,6 +636,112 @@ offriraient la course sans que ni l'une ni l'autre ne l'ait voulu.
 > combien.
 
 ---
+
+### 🎟️ LE CODE PROMO — celui qu'on TAPE (v4.51.0)
+
+Une promotion s'applique d'elle-même ; un **code** se saisit. Il vient d'une
+affiche, d'un influenceur ou du parrainage d'un proche, et il est **unique pour
+toute la plateforme** : le même mot ne peut pas valoir une chose sur une course
+et une autre sur une commande de repas.
+
+**Un seul champ, au devis** :
+
+```
+POST /rides/quote
+{ "stops": [ … ], "code": "DIRA2000" }
+```
+
+La réponse ne change pas de forme : chaque classe porte son prix, déjà remisé,
+plus ce que le code a donné **sur cette classe**.
+
+```json
+{ "items": [ {
+  "class_key": "eco", "fare_xof": 2000,
+  "promo_code": "DIRA2000", "promo_code_xof": 500,
+  "expires_at": "2026-10-08T12:43:20Z"
+} ] }
+```
+
+> ⚠️ **`fare_xof` EST DÉJÀ REMISÉ**, comme avec une promotion automatique. Ne
+> soustrayez **rien** : `promo_code_xof` sert à **afficher** la remise, pas à
+> la calculer.
+
+> ⚠️ **LA REMISE N'EST PAS LA MÊME SUR TOUTES LES CLASSES**, et c'est normal :
+> 20 % d'une moto et 20 % d'un van ne font pas le même nombre de francs, et un
+> code peut être plafonné. Affichez `promo_code_xof` **ligne par ligne**, jamais
+> une remise unique en tête de liste — elle serait fausse sur trois classes sur
+> quatre.
+
+> ⚠️ **UN SEUL APPEL, POUR LES QUATRE CLASSES.** Le serveur valide le code
+> **une fois** et calcule une remise par prix. C'est ce qui garantit qu'un code
+> ne peut pas être « accepté pour la moto et refusé pour le van » dans le même
+> écran : le verdict est unique, seule la remise varie.
+
+#### ⚠️ JAMAIS DEUX REMISES SUR UNE COURSE
+
+`promo_title` et `promo_code` ne sont **jamais servis en même temps**. Une
+application qui additionnerait les deux afficherait un montant que personne ne
+paie.
+
+C'est **la meilleure des deux** qui gagne, pour le passager. Et quand c'est
+l'offre automatique qui gagne, le code n'est pas effacé pour autant — il revient
+avec un drapeau :
+
+```json
+{ "fare_xof": 2100, "promo_title": "Soirée", "promo_discount_xof": 400,
+  "promo_code": "DIRA2000", "promo_code_ignored": true }
+```
+
+> ⚠️ **`promo_code_ignored` DOIT ÊTRE DIT À L'ÉCRAN.** Un code accepté qui ne
+> change pas le prix se lit comme un code cassé : le passager le ressaisit,
+> vérifie les majuscules, puis appelle le support — qui n'en saura pas plus. La
+> seule phrase vraie est **« gardez-le : une meilleure offre s'applique déjà »**,
+> et ce champ est la seule chose qui permet de l'écrire. Ne le traitez pas comme
+> un refus : il n'y a rien à corriger, et le code n'a **rien consommé** — il
+> servira une autre fois.
+
+#### Les refus, et ce que l'écran doit en faire
+
+Un code saisi mérite une réponse qui dit **quoi faire**. Le devis échoue avec un
+code nommé plutôt que de servir le prix plein en silence — sans quoi le passager
+croirait que son code marche et qu'il ne donne rien.
+
+| Code | Ce qui se passe | Ce que l'écran dit |
+|---|---|---|
+| `promo_code_invalid` | la saisie n'a pas la forme d'un code | « vérifiez le code » — garder le champ ouvert |
+| `promo_code_unknown` | ce code n'existe pas | « ce code n'existe pas » |
+| `promo_code_expired` | hors de sa fenêtre, ou éteint | « cette offre est terminée » |
+| `promo_code_wrong_country` | valable ailleurs — `meta.valid_in` porte le pays | « ce code vaut au Togo, pas ici » |
+| `promo_code_wrong_service` | valable pour l'autre métier — `meta.valid_for` | « ce code est pour les commandes » |
+| `promo_code_amount_too_low` | sous le minimum — `meta.min_amount_xof` | « à partir de 3 000 F » |
+| `promo_code_exhausted` | l'enveloppe de l'offre est consommée | « cette offre est épuisée » |
+| `promo_code_already_used` | la limite par personne est atteinte — `meta.max_uses_per_user` | « vous avez déjà utilisé ce code » |
+| `promo_code_own_referral` | c'est **son propre** code de parrainage | « partagez-le : il est pour vos proches » |
+
+> ⚠️ **N'AFFICHEZ PAS « CODE INVALIDE » POUR TOUT.** C'est le message qui envoie
+> tout le monde au support, et le support n'en saura pas plus que l'écran. Les
+> neuf refus ci-dessus ont chacun une suite différente : l'un demande de corriger
+> une faute de frappe, l'autre de renoncer, l'autre d'attendre d'avoir une course
+> plus longue. `message` est déjà traduit par l'API — affichez-le.
+
+> ⚠️ **`promo_code_own_referral` N'EST PAS UNE ERREUR DE L'UTILISATEUR.** C'est
+> le premier geste de tout le monde : on reçoit son code, on l'essaie. L'écran
+> doit l'accueillir comme une explication, pas comme un échec — « ce code est
+> celui que vous donnez à vos proches ».
+
+#### Le code est FIGÉ avec le devis, et engagé à la commande
+
+Comme la majoration et la promotion : **ce qui a été affiché est ce qui est
+payé**. Le code, son libellé et son montant restent sur la course, et le reçu
+pourra l'expliquer des semaines plus tard.
+
+L'enveloppe de l'offre, elle, n'est **engagée qu'à la commande** — un passager
+demande dix prix et en commande un. Conséquence : un code encore valable au
+devis peut voir son enveloppe se vider entre deux écrans. **Le prix promis ne
+change pas pour autant** : la course part au prix affiché. Vous ne verrez jamais
+un prix bouger sous les yeux du passager à cause de notre comptabilité.
+
+Annuler la course **rend** l'enveloppe : le code redevient utilisable.
 
 ### ⚠️ Une course se fait DANS une ville (v3.6.0)
 
@@ -2851,6 +2957,58 @@ positions pour un seul véhicule**, et que le vivier d'appel le lit comme deux
 véhicules. Rien de tel chez un passager, qui ne pousse aucune position — et l'appliquer « par prudence » à un public qui
 n'a pas ce problème coûterait des déconnexions quotidiennes pour rien.
 
+
+---
+
+## 🎁 INVITER UN AMI — le parrainage (v4.51.0)
+
+```
+GET /me/referral
+→ { "enabled": true, "code": "AWA7K2M",
+    "invitee_xof": 1000, "sponsor_xof": 500, "max_sponsored": 10,
+    "ends_at": "2027-10-08T00:00:00Z", "uses": 3 }
+```
+
+Un seul appel, et il dit tout ce que l'écran doit afficher : le code à partager,
+ce que gagne celui qui arrive, ce que gagne celui qui invite, et combien de
+personnes ont déjà utilisé ce code.
+
+> ⚠️ **`enabled` EST EXPLICITE — NE LE DÉDUISEZ PAS DE L'ABSENCE DE CODE.** Le
+> parrainage se règle **pays par pays**, et il est **éteint par défaut** : tant
+> qu'une direction ne l'a pas décidé et budgété, il ne distribue rien. Quand
+> `enabled` est faux, il n'y a **pas** de code — et il faut **cacher l'entrée**
+> « inviter un ami », pas afficher un écran vide ni un bouton qui ne copie rien.
+
+```json
+{ "enabled": false, "invitee_xof": 0, "sponsor_xof": 0, "max_sponsored": 0 }
+```
+
+> ⚠️ **LE CODE EST TIRÉ À LA DEMANDE**, au premier appel de cette route. Il ne
+> change plus ensuite : c'est le même code toute l'année, celui qu'on peut
+> imprimer, dicter au téléphone ou coller dans un statut. Appelez cette route
+> quand l'écran s'ouvre, et gardez le résultat.
+
+> ⚠️ **AFFICHEZ LES DEUX MONTANTS, ET DITES QUI REÇOIT QUOI.** `invitee_xof` est
+> une **remise** sur la première opération du filleul ; `sponsor_xof` est un
+> **crédit** sur le solde du parrain. Les confondre — « gagnez 1 500 F » — fait
+> attendre 1 500 F à tout le monde, et produit deux déceptions au lieu d'un
+> parrainage.
+
+> ⚠️ **LE PARRAIN N'EST PAYÉ QUE QUAND LA REMISE EST VRAIMENT CONSOMMÉE** — la
+> course terminée, la commande livrée. Jamais à la saisie du code. Écrivez-le sur
+> l'écran : sans cela, quelqu'un qui voit son filleul commander et son solde ne
+> pas bouger pensera que le parrainage ne marche pas. La bonne phrase est
+> **« crédité quand votre filleul aura terminé sa première course »**.
+
+> ⚠️ **`max_sponsored` EST UN PLAFOND, ET `uses` DIT OÙ ON EN EST.** À
+> `max_sponsored` atteint, le code cesse de valoir : montrez
+> « 3 / 10 » plutôt qu'un compteur nu, sinon le dixième filleul découvrira un
+> refus que rien n'annonçait. Quand `max_sponsored` vaut `0`, il n'y a pas de
+> plafond — n'affichez alors aucun rapport.
+
+**Le code de parrainage est un code promo comme un autre** : le filleul le saisit
+dans le même champ que n'importe quel autre code, et les mêmes refus s'appliquent
+— avec un de plus, pour celui qui essaie le sien.
 
 ---
 

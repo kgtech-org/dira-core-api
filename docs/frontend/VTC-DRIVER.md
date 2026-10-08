@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.50.0** · 8 octobre 2026
+> **Version 4.51.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -1108,6 +1108,32 @@ remisé** — c'est ce montant que vous encaissez en espèces, pas le prix plein
 
 `fare_xof = commission_xof + driver_xof` reste vrai dans tous les cas. Si la
 somme ne retombe pas chez vous, c'est un bogue — signalez-le.
+
+### 🎟️ Une course avec un CODE PROMO (v4.51.0)
+
+Le passager a parfois **tapé un code** — venu d'une affiche, d'un influenceur ou
+du parrainage d'un proche. La course porte alors `promo_code` et
+`promo_code_xof`, et `fare_xof` est **déjà le prix remisé** : c'est ce montant
+que vous encaissez en espèces, pas le prix plein.
+
+> ⚠️ **UN CODE NE VOUS COÛTE RIEN, ET C'EST GARANTI PAR LE SERVEUR.** La remise
+> sort de la **commission de la plateforme**, et elle est **plafonnée à cette
+> commission** : elle ne peut pas mordre sur votre part. `driver_xof` est
+> exactement ce qu'il aurait été sans le code. Si la remise demandée dépassait la
+> commission, c'est la remise qui est rabotée — jamais votre revenu.
+>
+> C'est la même règle que pour une promotion automatique, et la raison est la
+> même : une dépense de croissance de la plateforme n'est pas une baisse de votre
+> revenu décidée sans vous.
+
+> ⚠️ **`promo_code` ET `promo_title` NE SONT JAMAIS SERVIS ENSEMBLE** : une seule
+> remise par course. Si votre écran affiche l'origine de la réduction, il n'a
+> qu'un seul champ à lire — celui qui est là.
+
+`fare_xof = commission_xof + driver_xof` reste vrai, code ou pas. Si la somme ne
+retombe pas chez vous, c'est un bogue — signalez-le.
+
+
 
 ### La course peut changer SOUS vous (v4.0.0)
 
