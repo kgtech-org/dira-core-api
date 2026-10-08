@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.55.0** · 8 octobre 2026
+> **Version 4.56.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -832,6 +832,115 @@ un jour, une course « en route » qu'un `GET` dit terminée.
 
 ---
 
+## 🆘 LE BOUTON D'ALERTE — SOS (v4.56.0) — **SOCLE** (sans `/vtc` ni `/food`)
+
+Un bouton, les **deux** métiers, **une seule** file côté exploitation. C'est
+l'un des rares endroits où l'application unifiée n'a rien à réunir : le socle
+sert déjà le même SOS pour une course et pour une livraison.
+
+```
+GET  /sos/settings          → ce que ce pays décide (détections, délai, numéros)
+POST /sos                   → DÉCLENCHER
+GET  /sos/me                → mon alerte en cours (200 avec `alert: null`)
+POST /sos/{id}/position     → où je suis MAINTENANT
+POST /sos/{id}/cancel       → « fausse alerte »
+```
+
+```jsonc
+POST /sos
+{ "source": "button", "confirmed": true,
+  "lat": 14.6928, "lng": -17.4467, "accuracy_m": 15, "battery": 7,
+  "vertical": "vtc", "ride_id": "…",       // ou "food" + delivery_id
+  "note": "un homme me suit" }
+→ 201 { "id": "…", "status": "open", "trigger": "bouton pressé", … }
+```
+
+⚠️⚠️ **LA RÈGLE QUI GOUVERNE TOUT : UNE ALERTE NE SE PERD JAMAIS.** Aucun champ
+n'est obligatoire — **pas même la position**. N'attendez pas un point GPS pour
+envoyer : « on ne sait pas où il est » est une alarme qu'un opérateur traite en
+premier, pas une requête à compléter. Envoyez d'abord, poussez la position
+ensuite. Et **réessayez en boucle jusqu'à un `2xx`**, en tête de votre file
+hors-ligne et sans attendre la fenêtre de synchronisation : une alerte remise
+trois minutes plus tard ne sert plus à personne.
+
+⚠️ **N'AJOUTEZ AUCUNE VALIDATION DE VOTRE CÔTÉ.** Pas de position obligatoire,
+pas de motif à choisir, pas de formulaire. Tout ce qui est bancal est **corrigé
+par le serveur**, jamais rejeté.
+
+⚠️ **LE DOUBLE APPUI N'EST PAS UNE ERREUR** : le serveur rend la même alerte et
+y ajoute la position. Ne désactivez donc **pas** le bouton après le premier
+appui, et n'affichez pas « déjà envoyé » comme une erreur — appuyer encore
+*améliore* l'alerte et rassure.
+
+⚠️ **APPELEZ `GET /sos/me` AU DÉMARRAGE, TOUJOURS.** Un téléphone qui redémarre
+après un choc, une application tuée par le système : sans cela, la personne
+croit avoir appelé alors que non. `200` avec `alert: null` est le cas **normal**,
+pas une erreur.
+
+⚠️ **ANNULER NE SUPPRIME PAS L'ALERTE**, et l'exploitation la voit encore
+quinze minutes. Dites-le (« l'exploitation a été prévenue et vous rappellera
+peut-être ») : une annulation peut être **contrainte**, et promettre que « tout
+est effacé » serait un mensonge. Pas de deuxième confirmation pour annuler — un
+appui suffit.
+
+### ⚠️ `numbers` PEUT ÊTRE VIDE : n'affichez alors AUCUN bouton d'appel
+
+Aucun numéro d'urgence n'est préchargé, pour aucun pays. Un numéro approximatif
+serait **composé par quelqu'un en danger**, et « probablement le 17 » n'est pas
+une valeur par défaut acceptable. **N'inventez rien** — pas de 112, pas de
+numéro codé dans l'application.
+
+Et **composez `number` tel quel** : `17`, `118`, `1515` ne sont pas des numéros
+E.164. Ne les préfixez pas de l'indicatif du pays.
+
+### ⚠️ LES DÉTECTIONS PROPOSENT, ELLES N'ENVOIENT PAS
+
+`shake`, `crash`, `voice` ouvrent un **compte à rebours** de
+`countdown_seconds` (défaut 10 s) avec **un** bouton « Annuler ». À
+l'expiration, l'alerte part avec `confirmed: false`.
+
+Un envoi direct remplirait la file de dos-d'âne, l'opérateur apprendrait à les
+ignorer, et la vraie alerte se noierait. Et le compte à rebours part quand
+personne n'annule parce que c'est tout l'intérêt : après un choc violent,
+**personne n'annule parce que personne ne peut**.
+
+⚠️ **`confirmed: false` EST PLUS GRAVE, PAS MOINS** — l'intuition dit l'inverse.
+Le serveur le traite comme tel. Ne le présentez jamais comme « envoyé par
+erreur ».
+
+⚠️ **PENDANT LE COMPTE À REBOURS, PRÉPAREZ TOUT** (GPS, batterie, corps de la
+requête) : un compte à rebours qui finit sur « recherche du GPS… » a gaspillé
+dix secondes.
+
+⚠️ **CÔTÉ CLIENT, SEULE `shake` A DU SENS.** Vous n'êtes pas au volant :
+`crash` mesurerait un téléphone qui tombe du canapé. Lisez `GET /sos/settings`
+et n'activez que celle-là.
+
+### Où vit le bouton, dans une application qui fait les deux métiers
+
+> - Sur l'écran de **suivi d'une course** : pendant toute la course, en deux
+>   appuis au plus. Le passager est la partie la plus exposée — seul, dans le
+>   véhicule de quelqu'un d'autre, sur un trajet qu'il ne choisit pas.
+> - Sur l'écran de **suivi d'une livraison** : un livreur se présente à une
+>   porte, parfois le soir, parfois à quelqu'un qui est seul.
+> - **Pas sur l'accueil** : hors opération, il n'a pas de contexte à donner — et
+>   le serveur l'accepte quand même, si vous choisissez de l'y mettre.
+>
+> ⚠️ **ET PAS DE VERROU D'APPLICATION SUR CET ÉCRAN** (`app_lock`) : un code
+> secret entre quelqu'un et son bouton d'alerte serait indéfendable.
+
+⚠️ **NE LE CONFONDEZ PAS AVEC LE SUPPORT.** Le support est une conversation
+qu'on relit le lendemain ; le SOS est une alarme qu'un opérateur prend dans la
+minute. Deux portes qui se ressemblent font perdre le temps qu'on n'a pas.
+
+⚠️ **ET LE SOS N'ANNULE RIEN.** On peut déclencher l'alerte et rester dans le
+véhicule — c'est même le cas le plus fréquent. N'enchaînez pas sur une
+annulation.
+
+Détail complet, écran par écran : `VTC-CLIENT` et `FOOD-CLIENT`, section 🆘.
+
+---
+
 ## 12. ⚠️ Une seule boîte, deux vocabulaires
 
 `GET /notifications` (socle) rend **tout** : les commandes et les courses, dans
@@ -918,6 +1027,38 @@ du métier.
 ---
 
 ## 15. Journal
+
+### 4.56.0 — 8 octobre 2026
+
+🆘 **LE BOUTON D'ALERTE**, au socle (`…/api/v1/sos`) et commun aux deux
+métiers — l'un des rares endroits où cette application n'a rien à réunir.
+Section 🆘 pour le détail ; l'essentiel :
+
+⚠️⚠️ **UNE ALERTE NE SE PERD JAMAIS.** Aucun champ obligatoire, **pas même la
+position** : n'attendez pas un point GPS pour envoyer. Réessayez en boucle
+jusqu'à un `2xx`, en tête de la file hors-ligne. **N'ajoutez aucune validation
+de votre côté.**
+
+⚠️ **LE DOUBLE APPUI ENRICHIT LA MÊME ALERTE** : laissez le bouton actif.
+
+⚠️ **`GET /sos/me` AU DÉMARRAGE** — `200` avec `alert: null` est le cas normal.
+
+⚠️ **LES DÉTECTIONS PROPOSENT** via un compte à rebours de `countdown_seconds`
+avec un seul bouton « Annuler ». À l'expiration, l'alerte part avec
+`confirmed: false` — **plus grave, pas moins** : personne n'a annulé parce que
+personne ne pouvait. Côté client, **seule `shake` a du sens**.
+
+⚠️ **`numbers` PEUT ÊTRE VIDE → aucun bouton d'appel, et aucun numéro
+inventé.** Composez `number` tel quel : 17 n'est pas +228 17.
+
+⚠️ **ANNULER NE SUPPRIME PAS L'ALERTE** (quinze minutes à l'écran de
+l'exploitation) : dites « l'exploitation a été prévenue », pas « effacé ». Une
+annulation peut être contrainte.
+
+Le bouton vit sur le **suivi d'une course** et sur le **suivi d'une livraison**,
+en deux appuis au plus, **sans verrou d'application**. Il n'annule rien, et ce
+n'est pas le support.
+
 
 ### 4.55.0 — 8 octobre 2026
 

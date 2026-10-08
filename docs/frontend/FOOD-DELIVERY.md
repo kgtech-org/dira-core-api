@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.55.0** · 8 octobre 2026
+> **Version 4.56.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -1884,6 +1884,254 @@ reste dû passe `completed`.
 | `equipment_returned` | retour enregistré, caution rendue | idem |
 
 `data.contract_id` ouvre le contrat ; toutes viennent avec `data.type: "equipment"`.
+
+---
+
+## 🆘 LE BOUTON D'ALERTE — SOS (v4.56.0)
+
+Un bouton, dans **toutes** les applications. Il ne se coupe pas, il ne se règle
+pas, il n'a pas de condition : ce qui se règle, c'est ce qui le propose **sans
+qu'on le touche**.
+
+```
+GET  /sos/settings          → ce que ce pays décide (détections, délai, numéros)
+POST /sos                   → DÉCLENCHER
+GET  /sos/me                → mon alerte en cours (200 avec `alert: null` s'il n'y en a pas)
+POST /sos/{id}/position     → où je suis MAINTENANT
+POST /sos/{id}/cancel       → « fausse alerte »
+```
+
+> ⚠️ **AU SOCLE** (`…/api/v1/sos`, **sans** `/vtc` ni `/food`). Le même bouton
+> pour un passager de course, un client de livraison, un chauffeur et un
+> livreur : l'exploitation doit les voir dans la même file.
+
+### ⚠️ LA RÈGLE QUI GOUVERNE TOUT CE QUI SUIT
+
+**Une alerte ne se perd jamais.** `POST /sos` n'a **aucun champ obligatoire** —
+pas même la position.
+
+```jsonc
+POST /sos
+{ "source": "button",        // button | shake | crash | voice. Absent = button
+  "confirmed": true,         // une DÉTECTION validée par la personne
+  "lat": 6.1319, "lng": 1.2255, "accuracy_m": 18,
+  "battery": 7,              // le pourcentage de batterie
+  "vertical": "vtc",         // vtc | food, quand il y a une opération
+  "ride_id": "…",            // ou delivery_id
+  "note": "un homme me suit" }
+→ 201  { "id": "…", "status": "open", "trigger": "bouton pressé", … }
+```
+
+⚠️ **ENVOYEZ CE QUE VOUS AVEZ, TOUT DE SUITE — N'ATTENDEZ RIEN.** C'est la
+consigne la plus importante de cette section : n'attendez **pas** un point GPS
+pour envoyer. Le serveur accepte une alerte **sans position**, et « on ne sait
+pas où il est » est une alarme qu'un opérateur traite en premier — pas une
+requête à compléter. Attendre un fix de dix secondes au fond d'un parking
+souterrain, c'est perdre les dix secondes qui comptent. Envoyez d'abord,
+**poussez la position ensuite** (`POST /sos/{id}/position`).
+
+⚠️ **ET RÉESSAYEZ, EN BOUCLE, JUSQU'À UN `2xx`.** Le seul échec possible de
+cette route est un serveur ou un réseau en panne. Mettez l'appel dans la file
+que vous avez déjà pour le hors-ligne, mais **en tête** et sans attendre la
+fenêtre de synchronisation : une alerte remise trois minutes plus tard ne sert
+plus à personne.
+
+⚠️ **N'AJOUTEZ AUCUNE VALIDATION DE VOTRE CÔTÉ.** Pas de « position
+obligatoire », pas de « choisissez un motif », pas d'écran de confirmation à
+deux champs. Tout ce qui est bancal est **corrigé par le serveur**, jamais
+rejeté : source inconnue → `button`, coordonnées impossibles → position
+ignorée (l'alerte reste), note trop longue → coupée proprement.
+
+### 📍 LE DOUBLE APPUI N'EST PAS UNE ERREUR
+
+Quelqu'un qui panique appuie cinq fois. Le serveur rend **la même alerte** et y
+ajoute la position — une seule alerte ouverte par personne.
+
+⚠️ **NE DÉSACTIVEZ DONC PAS LE BOUTON** après le premier appui, et n'affichez
+pas « déjà envoyé » comme une erreur. Laissez-le actif : appuyer encore
+**améliore** l'alerte (une position de plus) et rassure. Ce que vous devez
+montrer, c'est que c'est **parti** — pas que c'est interdit.
+
+### 🧭 POUSSEZ LA POSITION PENDANT TOUTE L'ALERTE
+
+```
+POST /sos/{id}/position   { "lat": …, "lng": …, "accuracy_m": … }   → 204
+```
+
+⚠️ **L'OPÉRATEUR A BESOIN DE SAVOIR OÙ LA PERSONNE EST, PAS OÙ ELLE A APPUYÉ.**
+Un véhicule continue de rouler. Poussez toutes les **5 à 10 secondes** tant que
+l'alerte est vivante, plus souvent que votre cadence habituelle : c'est le seul
+moment du produit où la fraîcheur d'une position vaut la batterie qu'elle coûte.
+
+Le serveur ignore silencieusement un point envoyé après la fermeture (`204`) :
+**ne traitez pas cela comme une erreur** et n'arrêtez pas votre boucle sur un
+refus — relisez `GET /sos/me` pour savoir si c'est fini.
+
+### 🔁 RETROUVEZ L'ÉCRAN APRÈS UN REDÉMARRAGE — `GET /sos/me`
+
+```
+GET /sos/me → { "alert": { … } }   ou   { "alert": null }
+```
+
+⚠️ **APPELEZ-LA AU DÉMARRAGE, TOUJOURS.** Un téléphone qui redémarre après un
+choc, une application tuée par le système, un réseau qui revient : sans cela, la
+personne ne sait plus si son alerte est partie, et elle appuie encore — ou, bien
+pire, elle croit avoir appelé alors que non.
+
+⚠️ `200` **avec `alert: null`**, et non `404` : « je n'ai pas d'alerte en
+cours » est le cas NORMAL.
+
+### 🛑 ANNULER — et ce que ça ne fait pas
+
+```
+POST /sos/{id}/cancel → l'alerte, refermée
+```
+
+⚠️ **L'ALERTE N'EST PAS SUPPRIMÉE, ET L'EXPLOITATION LA VOIT ENCORE PENDANT
+QUINZE MINUTES.** Dites-le à la personne : « l'exploitation a été prévenue et
+vous rappellera peut-être pour vérifier ». Une annulation peut être
+**contrainte** — c'est le scénario même que ce bouton existe pour couvrir —, et
+promettre que « tout est effacé » serait un mensonge.
+
+⚠️ **PAS DE DEUXIÈME CONFIRMATION POUR ANNULER.** Un appui, c'est annulé. Un
+« êtes-vous sûr ? » à ce moment-là fait rester une fausse alerte dans la file de
+l'exploitation, qui appelle pour rien, et la prochaine vraie sera prise moins au
+sérieux.
+
+### ⚙️ CE QUE LE PAYS DÉCIDE — `GET /sos/settings`
+
+```jsonc
+{ "button": true,              // TOUJOURS true
+  "shake": true,               // la secousse propose l'alerte
+  "crash": true,               // la détection de choc la propose
+  "voice": false,              // le mot-clé vocal — ÉTEINT par défaut
+  "countdown_seconds": 10,     // le délai d'annulation d'une DÉTECTION
+  "numbers": [                 // ⚠️ PEUT ÊTRE VIDE
+    { "kind": "police", "label": "Police secours", "number": "17" },
+    { "kind": "platform", "label": "Astreinte Dira", "number": "+22890000001" } ] }
+```
+
+⚠️ **RELISEZ-LA À CHAQUE OUVERTURE**, et n'écrivez aucune de ces valeurs en
+dur : elles changent depuis la console, sans redéploiement, et un pays peut
+couper une détection du jour au lendemain.
+
+⚠️⚠️ **`numbers` PEUT ÊTRE VIDE, ET C'EST VOULU. N'AFFICHEZ ALORS AUCUN BOUTON
+D'APPEL.** Aucun numéro d'urgence n'est préchargé, pour aucun pays : un numéro
+approximatif serait **composé par quelqu'un en danger**, et « probablement le
+17 » n'est pas une valeur par défaut acceptable. **N'inventez rien** — pas de
+112, pas de numéro codé dans l'application, pas de repli « au cas où ». Un
+bouton absent envoie chercher le secours autrement ; un bouton qui compose un
+mauvais numéro fait perdre les trente secondes qui comptent.
+
+⚠️ **COMPOSEZ `number` TEL QUEL.** Les numéros courts (`17`, `118`, `1515`) ne
+sont **pas** des numéros E.164 : ne les préfixez pas de l'indicatif du pays, ne
+les « corrigez » pas, ne les reformatez pas. `kind` sert à choisir l'icône,
+`label` à écrire le bouton (et s'il est vide, nommez le genre vous-même).
+
+### 🫨 LES DÉTECTIONS — ⚠️ ELLES PROPOSENT, ELLES N'ENVOIENT PAS
+
+C'est la règle la plus importante de cette partie, et elle vaut pour les trois
+(`shake`, `crash`, `voice`).
+
+**Une détection ouvre un compte à rebours de `countdown_seconds`, visible et
+sonore, avec UN bouton « Annuler ». À l'expiration, l'alerte part** avec
+`confirmed: false`.
+
+```
+secousse / choc / mot-clé  →  écran plein, compte à rebours, vibration + son
+                           →  « Annuler »   : rien ne part
+                           →  « Envoyer »   : POST /sos  { confirmed: true }
+                           →  rien du tout  : POST /sos  { confirmed: false }
+```
+
+⚠️ **POURQUOI UN COMPTE À REBOURS, ET NON UN ENVOI IMMÉDIAT.** Un dos-d'âne,
+un téléphone qui tombe, un sac qu'on pose : l'envoi direct remplirait la file de
+faux, l'opérateur apprendrait à les ignorer, et la vraie alerte se noierait
+dedans. **Un faux positif traité comme une vraie alerte coûte plus cher qu'un
+faux positif annulé.**
+
+⚠️ **POURQUOI IL PART QUAND PERSONNE N'ANNULE.** C'est tout l'intérêt : après
+un choc violent, **personne n'annule parce que personne ne peut**. Un compte à
+rebours qui s'arrêterait sans rien envoyer serait un bouton de plus, pas une
+détection.
+
+⚠️ **`confirmed: false` EST PLUS GRAVE, PAS MOINS — et dites-le-vous bien, parce
+que l'intuition dit l'inverse.** Le serveur le traite comme tel (`grave: true`,
+et `trigger` vaut `"choc détecté, PERSONNE N'A ANNULÉ"`). Ne le présentez donc
+jamais à la personne comme « envoyé par erreur », et ne le rangez pas plus bas
+dans vos écrans.
+
+⚠️ **PENDANT LE COMPTE À REBOURS, PRÉPAREZ TOUT.** Démarrez l'acquisition GPS,
+lisez la batterie, composez le corps de la requête : à l'expiration, l'envoi
+doit partir en une milliseconde. Un compte à rebours qui finit sur « recherche
+du GPS… » a gaspillé dix secondes.
+
+⚠️ **UN SEUL BOUTON PENDANT LE COMPTE À REBOURS : ANNULER.** Pas de champ de
+texte obligatoire, pas de choix de motif, pas de liste de contacts. La note est
+facultative, et elle s'ajoute **après** l'envoi si la personne en a le temps.
+
+#### Les trois, et ce que chacune coûte
+
+| Détection | Ce qu'elle écoute | Ce qu'elle coûte |
+|---|---|---|
+| `shake` | l'accéléromètre déjà allumé | rien — aucune permission, aucune batterie en plus |
+| `crash` | un pic d'accélération | rien de plus que `shake` |
+| `voice` | **le micro, en permanence** | une permission, de la batterie, et une surveillance |
+
+⚠️ **LA SECOUSSE EST LA PLUS UTILE DU LOT, et pas la plus gadget.** Elle existe
+pour le cas où **on ne peut pas regarder l'écran** : téléphone en poche, main
+sur le volant, quelqu'un à côté qui ne doit pas voir. C'est précisément quand
+viser un bouton est impossible qu'on en a besoin. Réglez le seuil pour qu'une
+marche rapide ou un nid-de-poule ne suffise pas : trois secousses franches,
+pas un mouvement.
+
+⚠️ **LE VOCAL NE S'ALLUME PAS EN SILENCE.** `voice: false` par défaut, et quand
+un pays l'active : demandez la permission du micro **en expliquant**, montrez un
+indicateur visible quand l'écoute tourne, et offrez de la couper dans vos
+réglages. Une application qui écoute sans le dire est un problème plus grave que
+celui qu'elle résout. La reconnaissance se fait **sur l'appareil** : n'envoyez
+aucun flux audio à nos serveurs — aucune route ne l'accepte.
+
+### 🖥️ CE QUE L'ÉCRAN D'ALERTE DOIT MONTRER
+
+Pendant qu'une alerte est vivante :
+
+> - **« L'exploitation a été prévenue »** — la seule chose que la personne
+>   cherche à savoir. Dites-le dès le `201`, pas après un aller-retour.
+> - **Les boutons d'appel** de `numbers`, en grand — et rien quand la liste est
+>   vide.
+> - **Annuler**, en un appui.
+> - **De quoi ajouter une note**, facultatif et secondaire.
+>
+> ⚠️ **ET RIEN D'AUTRE.** Pas de menu, pas de navigation, pas de retour
+> accidentel vers la course. Cet écran se tient devant quelqu'un dont les mains
+> tremblent.
+
+⚠️ **PAS DE VERROU D'APPLICATION SUR CET ÉCRAN** (`app_lock`, v4.46.0) : un
+code secret entre quelqu'un et son bouton d'alerte serait indéfendable. La règle
+est déjà écrite dans la section du verrou — elle vaut ici littéralement.
+
+⚠️ **LE BOUTON SOS RESTE ATTEIGNABLE EN DEUX APPUIS MAXIMUM**, depuis n'importe
+quel écran d'une opération en cours. Enterré dans un menu « Aide › Sécurité », il
+n'existe pas.
+
+---
+
+> ⚠️ **ENVOYEZ `vertical: "food"` ET `delivery_id`** quand une course est en
+> cours : c'est ce qui ouvre la livraison en un clic sur l'écran de
+> l'exploitation, et ce qui dirige l'alerte vers les opérateurs de la
+> livraison. Sans opération, l'alerte part quand même — elle est alors vue par
+> **toute** l'exploitation, ce qui est le bon comportement.
+>
+> ⚠️ **POUR UN LIVREUR À DEUX ROUES, LA DÉTECTION DE CHOC EST LA FONCTION QUI
+> COMPTE LE PLUS** de tout ce document : c'est la seule qui travaille quand
+> vous êtes à terre. Ne la cachez pas derrière un réglage enfoui, et ne la
+> coupez pas « pour économiser la batterie » — le serveur dit si le pays
+> l'autorise, et c'est la seule décision à respecter.
+>
+> ⚠️ **ET LE SOS N'EST PAS LE SUPPORT** (ci-dessous). Un colis abîmé, un client
+> introuvable, un objet oublié : c'est le support, et ça attend. Le SOS est une
+> alarme qu'un opérateur prend dans la minute.
 
 ---
 
