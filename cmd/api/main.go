@@ -40,6 +40,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/internal/marker"
 	"github.com/kgtech-org/dira-core-api/internal/notify"
 	"github.com/kgtech-org/dira-core-api/internal/payment"
+	"github.com/kgtech-org/dira-core-api/internal/promocode"
 	"github.com/kgtech-org/dira-core-api/internal/rating"
 	"github.com/kgtech-org/dira-core-api/internal/serviceapi"
 	"github.com/kgtech-org/dira-core-api/internal/staff"
@@ -551,6 +552,15 @@ func run(logger *slog.Logger) error {
 		// arrêt — lus par toute application qui dessine une carte, réglés
 		// depuis la console à côté des modes de véhicule.
 		marker.NewHandler(marker.NewService(mongo, auditRec)).Mount(r, authMW)
+		// LES CODES PROMO de toute la plateforme — campagnes, influenceurs,
+		// parrainage. ⚠️ AU SOCLE parce qu'un code doit être unique partout et
+		// porter UNE seule enveloppe : le code d'un influenceur vaut sur une
+		// course ET sur une commande. Voir `internal/promocode`.
+		promoSvc := promocode.NewService(promocode.NewRepository(mongo), auditRec)
+		promoSvc.SetCredits(promoCredits{tokens: tokenSvc})
+		promoH := promocode.NewHandler(promoSvc)
+		promoH.Mount(r, authMW)
+		promoH.MountService(r, middleware.Service(cfg.ServiceToken))
 		// L'ENVOI DE FICHIERS, pour tout rôle connecté : avatar, véhicule,
 		// document de conformité, et les objets des verticales (plat, point de
 		// vente, enseigne, vidéo de feed, bannière). Une porte, une règle.
@@ -855,6 +865,20 @@ func (a erasureAnnouncer) AccountErased(ctx context.Context, userID, phone strin
 		slog.ErrorContext(ctx, "core: account-erased not queued — the verticals keep what this person wrote",
 			"user_id", userID, "error", err)
 	}
+}
+
+// promoCredits crédite le solde d'un PARRAIN quand son filleul a vraiment
+// commandé.
+//
+// ⚠️ UN CRÉDIT OFFERT, et pas de l'argent versé : il passe par `promo_xof` du
+// portefeuille — dépensé avant l'argent réel, et non remboursable. Un
+// parrainage payé en argent réel serait retirable en espèces, et le parrainage
+// deviendrait un distributeur.
+type promoCredits struct{ tokens *token.Service }
+
+func (c promoCredits) PromoCredit(ctx context.Context, userID string, amountXOF int, reason string) error {
+	_, err := c.tokens.PromoByOperator(ctx, "", userID, amountXOF, "parrainage : "+reason)
+	return err
 }
 
 // retainFailedCallbacks garde les tâches abouties assez longtemps pour qu'on

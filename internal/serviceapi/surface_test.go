@@ -91,6 +91,21 @@ var declaredSurface = []string{
 	"/internal/notifications/send",
 	"/internal/notifications/staff",
 	"/internal/payments/initiate",
+	// LES CODES PROMO de la plateforme — campagnes, influenceurs, parrainage.
+	//
+	// ⚠️ QUATRE ROUTES ET PAS UNE, parce qu'une remise a quatre moments : la
+	// CHIFFRER (sans rien consommer), la RÉSERVER (l'opération est commandée),
+	// la RÉGLER (l'argent est sorti) et la RENDRE (annulation). Une seule
+	// route qui « applique » aurait consommé l'enveloppe au devis — et le code
+	// aurait été épuisé par des gens qui regardaient le prix.
+	//
+	// ⚠️ ET C'EST LE SOCLE QUI LES TIENT, pas chaque verticale : un code doit
+	// être unique partout et porter UNE seule enveloppe, puisque celui d'un
+	// influenceur vaut sur une course ET sur une commande.
+	"/internal/promo-codes/quote",
+	"/internal/promo-codes/redeem",
+	"/internal/promo-codes/release",
+	"/internal/promo-codes/settle",
 	// Le SIGNAL d'un appel : réveiller l'application d'un chauffeur dont le
 	// socket est mort, par FCM, sans notification système.
 	"/internal/push/data",

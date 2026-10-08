@@ -393,3 +393,49 @@ other = "Les données de ce compte sont déjà effacées : il ne peut plus être
 
 [errors.erasure_unavailable]
 other = "La suppression de compte n'est pas disponible sur ce déploiement. Prévenez l'équipe technique."
+
+# --- LES CODES PROMO (voir internal/promocode) ---
+# ⚠️ « CODE INVALIDE » EST LE PIRE DES MESSAGES. Quelqu'un qui saisit un code
+# dont il a lu l'affiche veut savoir LAQUELLE des raisons s'applique : il s'est
+# trompé d'un caractère, l'opération est finie, il l'a déjà utilisé, ou elle ne
+# vaut pas sur ce qu'il commande. Un seul refus pour tout cela envoie tout le
+# monde au support, qui n'en saura pas plus.
+
+[errors.promo_code_unknown]
+other = "Ce code n'existe pas. Vérifiez les caractères — il n'y a ni O ni I dans nos codes, seulement des zéros et des uns quand il y en a."
+
+[errors.promo_code_expired]
+other = "Ce code n'est plus valable : l'opération est terminée."
+
+[errors.promo_code_wrong_country]
+other = "Ce code ne s'utilise pas dans ce pays."
+
+[errors.promo_code_wrong_service]
+other = "Ce code ne s'applique pas à ce type de commande."
+
+[errors.promo_code_amount_too_low]
+other = "Le montant est trop faible pour ce code."
+
+[errors.promo_code_exhausted]
+other = "Ce code a atteint sa limite : l'offre est épuisée."
+
+[errors.promo_code_already_used]
+other = "Vous avez déjà utilisé ce code."
+
+[errors.promo_code_own_referral]
+other = "Vous ne pouvez pas utiliser votre propre code de parrainage. Partagez-le avec vos proches."
+
+[errors.promo_code_taken]
+other = "Ce code est déjà pris. Choisissez-en un autre."
+
+[errors.promo_code_undrawable]
+other = "Impossible de tirer un code libre avec ce préfixe. Essayez-en un autre."
+
+[errors.influencer_exists]
+other = "Ce compte est déjà influenceur."
+
+[errors.influencer_handle_taken]
+other = "Ce pseudonyme est déjà pris."
+
+[errors.influencer_not_found]
+other = "Influenceur introuvable"
