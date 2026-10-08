@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.56.0** · 8 octobre 2026
+> **Version 4.57.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -1860,7 +1860,73 @@ Le loyer (`rental`) se règle de la même façon, période après période.
   contrat, `overdue_since` + `due_xof`, avec le bouton **payer**. Le blocage
   se lève dès que plus rien n'est en retard.
 
+### 🆕 CONCLURE LE RETOUR EN SCANNANT LE CONSTAT DU COMPTOIR (v4.57.0)
+
+Le symétrique de la remise — **et pas son miroir**.
+
+```
+POST /equipment/return   { "code": "<ce que le scanner a rendu>" }   → le contrat, RENDU
+```
+
+⚠️ **CE QUE CE SCAN PROUVE N'EST PAS CE QUE PROUVE CELUI DE LA REMISE.** À la
+remise, la question était « l'article a-t-il vraiment été remis ? », parce que la
+remise **démarre** l'échéancier. Au retour, elle s'inverse et se pose de **votre**
+côté : « j'ai rendu le sac le 3, pourquoi me prélève-t-on encore le 20 ? ».
+
+⚠️ **ET LE QR PORTE LE CONSTAT, PAS SEULEMENT UNE PRÉSENCE.** Le comptoir examine
+l'article, écrit l'état et les dégâts, et le code affiché vient **avec** ce qu'il
+a écrit. Ce que vous scannez, c'est ce constat-là.
+
+**Ce que votre écran doit montrer AVANT le scan** — l'exploitation l'a sous les
+yeux sur son écran, et vous devez pouvoir le lire sur le vôtre :
+
+> - l'**état** constaté,
+> - les **dégâts** facturés,
+> - ce qui sera **rendu de la caution**.
+>
+> ⚠️ **Si vous ne montrez que « scanner pour rendre »**, la personne accepte un
+> montant qu'elle n'a pas lu — ce qui vaut **moins** qu'un clic d'agent, parce
+> que ça en a l'air plus.
+
+⚠️ **RIEN N'EST ÉCRIT TANT QUE PERSONNE N'A SCANNÉ.** Un code qui expire sans
+être scanné ne laisse **aucune trace** sur l'argent : le comptoir recommence, et
+le contrat est intact. C'est la différence entre « voici ce que nous allons
+retenir » et « nous avons retenu ».
+
+⚠️ **VOUS ACCEPTEZ, VOUS NE NÉGOCIEZ PAS.** La requête ne prend **que** le code :
+il n'y a pas d'endroit où envoyer un constat. N'essayez pas d'ajouter un état ou
+un montant — ce serait ignoré, et la route refuserait un corps qu'elle ne
+comprend pas. Pour contester, c'est le **support** (§ support), pas le scan.
+
+⚠️ **TROIS REFUS, TROIS GESTES**, comme pour la remise :
+`equipment_return_code_unknown` et `_expired` veulent dire « demandez un nouveau
+code au comptoir » ; `equipment_return_not_yours` veut dire **« regardez le bon
+écran »** — deux porteurs au comptoir, deux écrans ouverts, et ça arrive pour de
+bon.
+
+⚠️ **UN CODE DE REMISE N'EST PAS UN CODE DE RETOUR.** Les deux gestes ont deux
+codes distincts : scanner son ancien code de remise échoue proprement
+(`equipment_return_code_unknown`). N'en gardez aucun en mémoire d'un geste à
+l'autre.
+
+⚠️ **CINQ MINUTES, UN SEUL USAGE**, un nouveau révoque le précédent, et un double
+appui est sans effet — le second appel échoue, et un retour déjà conclu rend
+simplement le contrat. Vous pouvez laisser le bouton actif.
+
+🆕 **`returned_via` sur le contrat** : `scan` (vous avez accepté le constat) ou
+`staff` (l'exploitation a enregistré seule). ⚠️ **Absent sur un contrat rendu
+avant que le scan existe — « on ne sait pas » n'est pas « sans preuve »** : ne
+traduisez pas l'absence par `staff`. Affichez-le au moins quand il vaut `scan` :
+c'est la trace que vous pouvez invoquer si une caution est contestée.
+
+⚠️ **ET LE SCAN N'EST PAS OBLIGATOIRE** : l'exploitation peut toujours enregistrer
+le retour elle-même — comptoir sans réseau, téléphone sans caméra, sac renvoyé par
+un collègue. Le contrat porte alors `staff`.
+
 ### Le retour
+
+Que le retour soit conclu par un **scan** (ci-dessus) ou par l'exploitation,
+c'est le même chemin et le même argent — seul `returned_via` les distingue.
 
 L'exploitation enregistre le retour : le contrat passe `returned`,
 `return_condition` décrit l'état, une ligne `damage` apparaît si des dégâts
@@ -2416,6 +2482,29 @@ Dix pièces, et **le type décide de son propriétaire** :
 | `vehicle_rear` — photo arrière | le véhicule | **requis** | facultatif |
 | `vehicle_side` — photo de côté | le véhicule | **requis** | facultatif |
 
+> 🆕 **UN VÉHICULE NON MOTORISÉ ATTEND SA PHOTO DE CÔTÉ (v4.57.0)** — et c'est le
+> **seul** endroit où le non-motorisé demande **plus**, pas moins.
+>
+> **Parce qu'un vélo n'a pas de plaque.** Pour une moto, « AB-1234-CD » identifie
+> l'engin : un client qui attend s'entend dire le numéro, et l'exploitation
+> retrouve le véhicule par là. Un vélo n'a rien de tel. La photo est alors la
+> **seule** façon de dire à quelqu'un ce qu'il doit chercher dans la rue, et la
+> seule preuve que le véhicule déclaré existe. **L'absence de papiers n'est pas
+> une absence d'identité.**
+>
+> ⚠️ **UNE SEULE, ET C'EST LE CÔTÉ.** Trois vues d'un vélo seraient trois fois le
+> même objet — rien à l'arrière, et l'avant d'un deux-roues sans plaque ne montre
+> rien. Le côté porte la couleur, le cadre, le panier : ce qui le fait reconnaître.
+> Ne demandez **pas** `vehicle_front` pour un vélo : la pièce est documentée
+> « plaque lisible », une attente qu'il ne peut pas satisfaire.
+>
+> ⚠️ **AUCUN PAPIER, EN REVANCHE** : ni carte grise, ni assurance, ni contrôle
+> technique. `missing` ne les demande pas, et un écran qui les exigerait
+> laisserait un cycliste bloqué sur une étape qu'il ne peut pas franchir.
+>
+> ⚠️ **ET UN LIVREUR À PIED N'A PAS DE VÉHICULE DU TOUT** : aucune photo ne lui
+> est demandée, parce qu'il n'y a rien à photographier.
+
 > ⚠️ **`criminal_record` EXIGE UNE DATE D'EXPIRATION**, et lui seul. Un casier est
 > un **instantané** : il dit ce qu'on savait le jour de sa délivrance, et rien du
 > lendemain. Sans date il vaudrait pour toujours, et un extrait de 2019 marqué
@@ -2444,10 +2533,6 @@ Dix pièces, et **le type décide de son propriétaire** :
 > gens ou leur argent est ce qui crée l'obligation : un livreur à vélo manipule
 > des espèces et entre dans des cours d'immeubles.
 
-> ⚠️ **UN VÉHICULE NON MOTORISÉ N'ATTEND RIEN**, photos comprises. Ne réclamez pas
-> la photo d'un vélo : `missing` ne la demande pas, et un écran qui l'exigerait
-> laisserait un cycliste bloqué sur une étape qu'il ne peut pas franchir.
-
 > Un livreur avec deux motos a **deux assurances**, et **deux jeux de photos**.
 > Vendre une moto n'invalide pas son permis ; une moto non assurée devient
 > inutilisable **sans le mettre à l'arrêt** — il bascule sur l'autre.
@@ -2458,6 +2543,34 @@ et les trois photos du véhicule. ⚠️ **Tout livreur déjà inscrit devient d
 le serveur n'a jamais bloqué —, mais votre bannière va s'allumer pour tout le
 monde le jour du déploiement : prévoyez un écran qui liste ce qui manque et
 permette de tout envoyer en une fois, pas un refus.
+
+🆕 **UNE RELANCE ARRIVE PAR NOTIFICATION — `documents_missing` (v4.57.0).**
+L'exploitation lance la collecte ; chacun reçoit **la liste de SES pièces
+manquantes**, nommées en clair (trois au plus dans le texte, le reste compté).
+
+```jsonc
+{ "key": "documents_missing",
+  "title": "Dossier incomplet — 2 pièce(s)",
+  "body":  "Il manque : Casier judiciaire, Photo de côté. Envoyez-les depuis Mon compte › Documents.",
+  "data":  { "type": "documents_missing", "driver_id": "…" } }
+```
+
+⚠️ **ROUTEZ-LA VERS L'ÉCRAN DES DOCUMENTS**, pas vers l'accueil ni vers une
+bannière muette. Le message dit ce qui manque ; il faut qu'un appui mène à
+l'endroit où on l'envoie, sinon la relance ne sert à rien.
+
+⚠️ **CE N'EST PAS UNE MENACE DE SUSPENSION, et ne l'écrivez pas comme telle.**
+Rien ne bloque le travail de quelqu'un dont le dossier est incomplet — le
+serveur n'a jamais bloqué. Un écran qui annoncerait une suspension qui n'arrive
+pas use sa propre crédibilité, et la prochaine alerte, celle qui compte, ne sera
+pas prise au sérieux.
+
+⚠️ **CATÉGORIE `support`, DONC NON COUPABLE** : elle ne peut pas être éteinte
+dans les préférences. C'est voulu — quelqu'un qui la couperait ne saurait jamais
+ce qu'on lui demande — **et c'est pour cela qu'elle est rare** : au plus une
+toutes les **72 h** par personne, même si l'exploitation relance plus souvent.
+N'en faites donc pas une bannière permanente : une relance qui se répète cesse
+d'être lue.
 
 **`state` est ce qu'il faut afficher**, calculé à la lecture :
 

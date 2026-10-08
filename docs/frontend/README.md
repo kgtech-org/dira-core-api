@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.56.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.57.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -256,6 +256,9 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] 🔑 **Porte par code** (v4.46.0, applications de CLIENT) : compte à rebours rendu depuis `expires_at`, bouton « renvoyer » gouverné par `resend_after`, nom demandé **seulement** si `created: true`, et l'écran fonctionne **sans** `dev_code` — il disparaîtra. Les applications d'agent et de marchand gardent `POST /auth/login` (`403 otp_not_available` sinon)
 - [ ] 📱 **Appareils** : `device_id` envoyé à la connexion **par toutes les applications** (il ne va pas dans le jeton d'un client, il reconnaît le même téléphone qui revient) ; un `401` au rafraîchissement se traite comme une session expirée, sans message d'erreur technique
 - [ ] 💸 **Annulation** (v4.50.0, applications de CLIENT) : `cancellation` lu **avant** d'afficher le bouton ; montant dit à l'écran de confirmation quand `fee_xof > 0`, jamais un « Annuler » nu ; `why` affiché quand c'est gratuit ; compte à rebours rendu depuis `grace_left_s` et **relu à chaque rafraîchissement** (le chauffeur peut arriver avant la fin de la grâce) ; « remboursement intégral » jamais promis sur une course en **espèces** — les frais y deviennent une dette
+- [ ] 📄 **COLLECTE DES PIÈCES** (v4.57.0, applications d'AGENT) : `documents_missing` **routée vers l'écran des documents**, jamais vers l'accueil ni une bannière muette ; **pas présentée comme une menace de suspension** (rien ne bloque le travail, le serveur n'a jamais bloqué) ; catégorie `support` donc **non coupable**, et rare (72 h par personne) → **pas** de bannière permanente
+- [ ] 📷 **PHOTO D'UN VÉHICULE NON MOTORISÉ** (v4.57.0, LIVRAISON) : `vehicle_side` **demandée** pour un vélo — c'est le seul endroit où le non-motorisé demande *plus* (pas de plaque, donc la photo est la seule identification) ; **aucun papier** en revanche (ni carte grise, ni assurance, ni contrôle) ; `vehicle_front` **jamais** pour un vélo (« plaque lisible » est une attente qu'il ne peut pas satisfaire) ; un livreur **à pied** n'a aucune photo à envoyer
+- [ ] 📦 **RETOUR SCANNÉ** (v4.57.0, applications d'AGENT) : l'écran montre **l'état, les dégâts et ce qui sera rendu de la caution AVANT** le scan — un « scanner pour rendre » nu fait accepter un montant qu'on n'a pas lu, ce qui vaut moins qu'un clic d'agent parce que ça en a l'air plus ; `POST /equipment/return` ne prend **que** le code (on accepte, on ne négocie pas — contester passe par le support) ; trois refus → trois gestes (`_unknown`/`_expired` = nouveau code, `_not_yours` = **bon écran**) ; un code de REMISE n'est pas un code de RETOUR ; `returned_via` **absent** sur un contrat rendu avant le scan → ne pas traduire par `staff`
 - [ ] 🆘 **BOUTON D'ALERTE** (v4.56.0, **toutes** les applications) : `POST /sos` appelé avec **ce qu'on a**, sans attendre un point GPS — aucun champ n'est obligatoire, pas même la position ; **réessai en boucle jusqu'à un `2xx`**, en tête de la file hors-ligne et sans attendre la fenêtre de synchronisation ; **aucune validation côté application** (pas de motif, pas de formulaire, pas de position exigée) ; bouton **laissé actif** après le premier appui (le double appui enrichit la même alerte) ; `GET /sos/me` appelé **au démarrage** (`200` + `alert: null` est le cas normal, pas un `404`) ; position poussée **toutes les 5–10 s** tant que l'alerte vit ; `numbers` **vide → aucun bouton d'appel**, et **aucun numéro inventé** (ni 112, ni codé en dur) ; `number` **composé tel quel** (17 n'est pas +228 17) ; détections (`shake`/`crash`/`voice`) qui **proposent** via un compte à rebours de `countdown_seconds` avec **un seul** bouton « Annuler », GPS et batterie **préparés pendant** le rebours ; `confirmed: false` traité comme **plus** grave, jamais comme « envoyé par erreur » ; annulation **en un appui, sans seconde confirmation**, et dite comme « l'exploitation a été prévenue » — pas comme « effacé » ; **pas de verrou d'application** sur cet écran ; `vertical` + `ride_id`/`delivery_id` envoyés quand il y a une opération
 - [ ] 🏷️ **Motif d'annulation** (v4.55.0, applications de CLIENT **et** de CHAUFFEUR) : liste **demandée** à `GET /rides/cancel-reasons`, jamais écrite en dur — elle dépend du rôle du jeton, et un code de l'autre rôle est refusé (`422`, `fields: ["reason_code"]`) ; codes **traduits chez vous** (la route sert des codes, pas des phrases) ; `reason_code` **s'ajoute** à `reason`, il ne le remplace pas ; `grave` lu dans la réponse plutôt que testé sur `code === "accident"` ; côté chauffeur, un motif grave ouvre un ticket critique → confirmation à part, « le support a été alerté », et **l'annulation aboutit même si le ticket échoue** (pas de réessai) ; `cancelled_reason_code` **absent** sur les courses d'avant la 4.55.0 → affichez `cancelled_reason` telle quelle, ne traduisez pas l'absence par `other`
 - [ ] 📞 **Taux d'acceptation** (v4.55.0, application de CHAUFFEUR) : `rate` **absent** quand `called` vaut 0 → « — » ou « aucun appel reçu », **jamais 0 %** (qui se lit « il refuse tout ») ; `acceptance` **tout entier** peut manquer quand le suivi ne répond pas → masquez ou dites « indisponible », jamais zéro ; `declined` et `missed` **jamais additionnés** (un geste et une panne) ; ne recalculez pas le taux vous-même
@@ -330,6 +333,99 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.57.0 — 8 octobre 2026
+
+Trois ajouts aux applications d'**AGENT** (chauffeur, livreur). Les applications
+de client et de marchand n'ont rien à changer.
+
+---
+
+📦 **CONCLURE LE RETOUR D'UN MATÉRIEL EN SCANNANT LE CONSTAT DU COMPTOIR.** Le
+symétrique de la remise (v4.54.0) — **et pas son miroir**.
+
+```
+POST /equipment/return   { "code": "<ce que le scanner a rendu>" }
+```
+
+⚠️ **CE QUE CE SCAN PROUVE N'EST PAS CE QUE PROUVE CELUI DE LA REMISE.** À la
+remise, la question était « l'article a-t-il vraiment été remis ? », parce que la
+remise **démarre** l'échéancier. Au retour, elle s'inverse et se pose du côté du
+**porteur** : « j'ai rendu le sac le 3, pourquoi me prélève-t-on encore le 20 ? ».
+
+⚠️ **LE QR PORTE LE CONSTAT**, pas seulement une présence : le comptoir écrit
+l'état et les dégâts, et le code vient avec. **Montrez l'état, les dégâts et ce
+qui sera rendu de la caution AVANT le scan.** Un « scanner pour rendre » nu fait
+accepter un montant que la personne n'a pas lu — ce qui vaut **moins** qu'un clic
+d'agent, parce que ça en a l'air plus.
+
+⚠️ **RIEN N'EST ÉCRIT TANT QUE PERSONNE N'A SCANNÉ** : un code qui expire ne
+laisse aucune trace sur l'argent. C'est la différence entre « voici ce que nous
+allons retenir » et « nous avons retenu ».
+
+⚠️ **ON ACCEPTE, ON NE NÉGOCIE PAS.** La requête ne prend **que** le code — il n'y
+a pas d'endroit où envoyer un constat. Contester passe par le **support**.
+
+⚠️ **TROIS REFUS, TROIS GESTES** : `equipment_return_code_unknown` et `_expired`
+→ « demandez un nouveau code » ; `equipment_return_not_yours` → **« regardez le
+bon écran »** (deux porteurs au comptoir, ça arrive pour de bon).
+
+⚠️ **UN CODE DE REMISE N'EST PAS UN CODE DE RETOUR** : scanner l'ancien échoue
+proprement. N'en gardez aucun d'un geste à l'autre.
+
+🆕 **`returned_via`** : `scan` ou `staff`. ⚠️ **Absent** sur un contrat rendu avant
+que le scan existe — « on ne sait pas » n'est pas « sans preuve ».
+
+---
+
+📷 **UN VÉHICULE NON MOTORISÉ ATTEND SA PHOTO DE CÔTÉ** (livraison seulement).
+
+C'est le **seul** endroit du dispositif de conformité où le non-motorisé demande
+**plus**, pas moins — et la raison est qu'**un vélo n'a pas de plaque**. Pour une
+moto, « AB-1234-CD » identifie l'engin ; un vélo n'a rien de tel. La photo est
+alors la seule façon de dire à un client ce qu'il doit chercher dans la rue, et
+la seule preuve que le véhicule déclaré existe. **L'absence de papiers n'est pas
+une absence d'identité.**
+
+⚠️ **UNE SEULE, ET C'EST LE CÔTÉ** : il porte la couleur, le cadre, le panier.
+Ne demandez **pas** `vehicle_front` pour un vélo — la pièce est documentée
+« plaque lisible », une attente qu'il ne peut pas satisfaire.
+
+⚠️ **AUCUN PAPIER EN REVANCHE** : ni carte grise, ni assurance, ni contrôle
+technique. Et un livreur **à pied** n'a aucune photo à envoyer : il n'y a rien à
+photographier.
+
+---
+
+📄 **UNE RELANCE ARRIVE QUAND IL MANQUE DES PIÈCES — `documents_missing`.**
+
+Six types de pièces ont été ajoutés en deux jours (v4.53.0 et celle-ci). Tous les
+chauffeurs et livreurs déjà inscrits ont donc des pièces manquantes **sans que
+personne ne leur ait demandé de les envoyer**. L'exploitation lance la collecte ;
+chacun reçoit la liste de **ses** pièces, nommées en clair.
+
+```jsonc
+{ "key": "documents_missing",
+  "title": "Dossier incomplet — 2 pièce(s)",
+  "body":  "Il manque : Casier judiciaire, Photo de côté. Envoyez-les depuis Mon compte › Documents.",
+  "data":  { "type": "documents_missing", "driver_id": "…" } }
+```
+
+⚠️ **ROUTEZ-LA VERS L'ÉCRAN DES DOCUMENTS**, pas vers l'accueil. Le message dit ce
+qui manque ; il faut qu'un appui mène à l'endroit où on l'envoie.
+
+⚠️ **CE N'EST PAS UNE MENACE DE SUSPENSION, et ne l'écrivez pas comme telle.**
+Rien ne bloque le travail de quelqu'un dont le dossier est incomplet — le serveur
+n'a jamais bloqué. Un écran qui annoncerait une suspension qui n'arrive pas use sa
+propre crédibilité, et la prochaine alerte, celle qui compte, ne sera pas prise au
+sérieux.
+
+⚠️ **CATÉGORIE `support`, DONC NON COUPABLE** — quelqu'un qui la couperait ne
+saurait jamais ce qu'on lui demande. **Et c'est pour cela qu'elle est rare** : au
+plus une toutes les **72 h** par personne, même si l'exploitation relance plus
+souvent. N'en faites donc pas une bannière permanente : une relance qui se répète
+cesse d'être lue.
+
 
 ### 4.56.0 — 8 octobre 2026
 
