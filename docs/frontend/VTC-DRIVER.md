@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.49.0** · 8 octobre 2026
+> **Version 4.50.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -2187,6 +2187,33 @@ C'est le seul cas où un ticket **vient à vous** sans que vous l'ayez ouvert.
    réapparaît.
 5. `lost_item.found` reste `null` tant que vous n'avez pas répondu : c'est
    l'état « à traiter » à mettre en évidence dans votre liste.
+
+---
+
+### 💸 UNE ANNULATION DU PASSAGER PEUT VOUS DÉDOMMAGER (v4.50.0)
+
+Quand un passager renonce après que vous avez accepté, un barème — réglé par
+pays et par véhicule — retient une part du tarif. **Elle vous revient**, moins
+la commission de la course, et apparaît à votre relevé sous
+`cancel_fee` — **pas** sous `earning`.
+
+⚠️ **SA PROPRE LIGNE AU RELEVÉ, et c'est voulu** : vous devez pouvoir
+distinguer ce qu'une course vous a rapporté de ce qu'un dédommagement vous a
+rendu. Les mêler ferait croire à des gains sur des courses qui n'ont jamais eu
+lieu.
+
+⚠️ **VOUS N'EN VOYEZ AUCUN MONTANT AVANT.** Le barème s'affiche chez le
+passager, pas chez vous : afficher « cette annulation vous rapporterait 800 F »
+serait une incitation à attendre plutôt qu'à partir.
+
+⚠️ **ET SI C'EST VOUS QUI ANNULEZ, LE PASSAGER NE PAIE RIEN.** Aucun barème ne
+s'applique à une annulation de votre côté — ni à une annulation du système. Ne
+construisez pas d'écran qui laisse croire le contraire : un chauffeur qui croit
+faire payer son passager en renonçant n'annule pas quand il le devrait.
+
+⚠️ **RIEN N'EST DÛ TANT QUE VOUS N'AVEZ PAS ACCEPTÉ**, et rien non plus pendant
+le **délai de grâce** qui suit votre acceptation. C'est normal : le passager
+qui se corrige en dix secondes ne vous a rien coûté.
 
 ---
 

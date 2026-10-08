@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.49.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.50.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -255,6 +255,7 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] Auth : stockage sécurisé, refresh **sérialisé**, déconnexion au second échec
 - [ ] 🔑 **Porte par code** (v4.46.0, applications de CLIENT) : compte à rebours rendu depuis `expires_at`, bouton « renvoyer » gouverné par `resend_after`, nom demandé **seulement** si `created: true`, et l'écran fonctionne **sans** `dev_code` — il disparaîtra. Les applications d'agent et de marchand gardent `POST /auth/login` (`403 otp_not_available` sinon)
 - [ ] 📱 **Appareils** : `device_id` envoyé à la connexion **par toutes les applications** (il ne va pas dans le jeton d'un client, il reconnaît le même téléphone qui revient) ; un `401` au rafraîchissement se traite comme une session expirée, sans message d'erreur technique
+- [ ] 💸 **Annulation** (v4.50.0, applications de CLIENT) : `cancellation` lu **avant** d'afficher le bouton ; montant dit à l'écran de confirmation quand `fee_xof > 0`, jamais un « Annuler » nu ; `why` affiché quand c'est gratuit ; compte à rebours rendu depuis `grace_left_s` et **relu à chaque rafraîchissement** (le chauffeur peut arriver avant la fin de la grâce) ; « remboursement intégral » jamais promis sur une course en **espèces** — les frais y deviennent une dette
 - [ ] 🔒 **Confidentialité** (v4.49.0) : **aucune** règle d'affichage en dur — ni par pays, ni par métier. `show_phone` lu **avant** d'écrire un numéro à l'écran ; `direct_call` sans `show_phone` = un bouton qui appelle et le numéro **nulle part** ; `in_app_alert` lu pour **cacher** (et non désactiver) le bouton du klaxon ; nom affiché **tel que servi**, jamais reconstruit depuis `first_name` + `last_name` ; un champ absent traité comme fermé, **sans réessai** ; véhicule et argent à encaisser toujours montrés ; tout fermé → l'écran mène à la **conversation**
 - [ ] 🗑️ **Suppression de compte** (v4.47.0) : `DELETE /me` dans les applications de **CLIENT** — écran de conséquences **avant** la preuve d'identité (`password` ou `code`), **`erase_at` affiché**, « les courses et les commandes passées restent, anonymes » dit **avant** le bouton, `409 wallet_not_empty` renvoyé vers le solde. Les applications d'**agent** et de **marchand** n'affichent **pas** de bouton (`403 erasure_not_self_serve`) mais mettent « écrire au support ». **Toutes** traitent `403 account_closed` comme une fin de session **définitive** — pas comme une suspension
 - [ ] 🔒 **Verrou de l'application** (v4.46.0) : `app_lock` relu à **chaque** réponse qui le porte, y compris le **rafraîchissement**, et appliqué à chaud ; code de secours toujours possible à côté de la biométrie ; au-delà de `max_attempts`, **déconnexion** (jamais blocage) ; **jamais de verrou sur un écran d'appel ni sur l'urgence**
@@ -325,6 +326,52 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.50.0 — 8 octobre 2026
+
+💸 **UN BARÈME D'ANNULATION, réglé par pays et par véhicule.** Jusqu'ici :
+annulation à tout moment, remboursement intégral, aucun barème. C'est tenable
+tant qu'un chauffeur ne s'est pas déplacé ; passé ce moment, il a brûlé du
+carburant, refusé les appels qui tombaient pendant qu'il venait, et parfois
+attendu dix minutes devant un portail — pour rien.
+
+⚠️ **CE BARÈME NE PUNIT PAS, IL COMPENSE** : ce qui est retenu va au
+**chauffeur**, moins la commission de la course. À dire dans l'application :
+c'est ce qui change la façon dont les frais sont reçus.
+
+**Trois échelons** : gratuit tant qu'aucun chauffeur n'a répondu (toujours, et
+non réglable) · gratuit pendant le **délai de grâce** qui suit l'acceptation ·
+puis une part du tarif, **plus haute** quand le chauffeur attend sur place (et
+là, sans grâce : il est là).
+
+⚠️ **`cancellation` VOYAGE AVEC LA COURSE** — `fee_xof`, `pct`, `step`, `why`,
+`grace_left_s` — et **l'écran de confirmation doit le dire**. Retenir de
+l'argent à quelqu'un qui n'a pas pu le lire avant est indéfendable, et c'est la
+réclamation qu'on ne peut pas gagner. Jamais de bouton « Annuler » nu quand
+`fee_xof > 0`.
+
+⚠️ **`grace_left_s` ÉVITE LA RÉCLAMATION** : annoncer « gratuit » sans dire
+jusqu'à quand fait découvrir les frais après le geste. Rendez le compte à
+rebours depuis ce nombre, et **relisez-le à chaque rafraîchissement** — le
+chauffeur peut arriver avant la fin de la grâce, et la grâce tombe alors d'un
+coup.
+
+⚠️ **AFFICHEZ `why` QUAND C'EST GRATUIT.** « C'est gratuit » sans dire pourquoi
+laisse croire à une faveur, et la prochaine fois que ce sera payant, personne
+ne comprendra ce qui a changé.
+
+⚠️ **COMMENT C'EST PERÇU** : sur une course déjà payée, le remboursement est
+**amputé** des frais, en un seul mouvement. En **espèces**, personne n'a rien
+versé : les frais deviennent une **dette** réglée à la prochaine recharge. Un
+écran qui promettrait « remboursement intégral » dans le second cas annoncerait
+un mouvement qui n'existe pas.
+
+🧾 **CÔTÉ CHAUFFEUR** : le dédommagement apparaît au relevé sous `cancel_fee`,
+**pas** sous `earning` — on doit distinguer ce qu'une course a rapporté de ce
+qu'une annulation a rendu. ⚠️ Et aucun montant ne s'affiche **avant** :
+annoncer « cette annulation vous rapporterait 800 F » serait une incitation à
+attendre plutôt qu'à partir. ⚠️ Une annulation **du chauffeur** ne fait rien
+payer au passager.
 
 ### 4.49.0 — 8 octobre 2026
 
