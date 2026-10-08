@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.51.0** · 8 octobre 2026
+> **Version 4.52.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -2339,6 +2339,94 @@ redessiner le trajet, comme pour tout signal.
 
 `409 ride_not_reroutable` : pas de chauffeur (encore `searching`) ou
 course finie — pendant la recherche, annulez et recommandez.
+
+---
+
+## 🧾 LE REÇU ET LE RELEVÉ, EN PDF (v4.52.0)
+
+Deux documents téléchargeables, pensés pour être envoyés à un employeur, à un
+comptable ou à une assurance.
+
+```
+GET /rides/{id}/receipt.pdf
+GET /rides/statement.pdf?from=2026-09-01&to=2026-09-30
+```
+
+Les deux rendent `application/pdf` avec `Content-Disposition: attachment` et un
+nom de fichier déjà daté — `dira-course-2026-10-08-718293.pdf`. **Ne les ouvrez
+pas dans une WebView** : laissez le système les enregistrer ou les partager, c'est
+ce que la personne veut en faire.
+
+> ⚠️ **`Cache-Control: no-store`, ET CE N'EST PAS DÉCORATIF.** Un reçu porte un
+> nom, un trajet et un montant. Ne le gardez pas dans un cache disque applicatif :
+> sur un téléphone partagé, il se relit après la déconnexion. Téléchargez à la
+> demande.
+
+### Ce que le reçu dit de la distance — et pourquoi c'est le cœur du document
+
+Le reçu imprime la **distance réellement parcourue**, celle mesurée sur le trajet
+du chauffeur, et **nomme sa source** :
+
+| `distance_source` | Ce que le document écrit |
+|---|---|
+| `tracked` | « mesurée sur le trajet réel » |
+| `planned` (ou absent) | « estimée — le suivi n'a rien enregistré » |
+
+> ⚠️ **LE SECOND CAS EST COURANT, PAS RARE** : il suffit que le téléphone du
+> chauffeur ait perdu le réseau pendant la course. C'est pourquoi la source est
+> écrite sur le document plutôt que sous-entendue — « 11,4 km » présenté comme
+> mesuré alors qu'il vient d'une estimation est la phrase d'un reçu qu'on ne peut
+> plus défendre devant une réclamation.
+
+> ⚠️ **L'ESTIMATION DU DEVIS FIGURE À CÔTÉ**, jamais à la place : l'écart entre
+> les deux est exactement ce qu'un litige examine (« il a fait un détour »).
+
+> ⚠️ **ET L'APPROCHE EST SÉPARÉE.** Ce que le chauffeur a roulé pour venir est
+> imprimé à part. Les additionner ferait lire « 10,3 km » pour une course de
+> 8,2 km — avec un prix qui ne colle plus avec la distance affichée juste
+> au-dessus.
+
+### Ce que le reçu garantit
+
+- **Le détail s'additionne jusqu'au prix payé.** Si ce n'est pas le cas, le
+  serveur **ne sert rien** (500) plutôt qu'un document faux : un reçu dont les
+  lignes ne tombent pas juste prouve une erreur, sous notre nom, devant le
+  comptable du client.
+- La **majoration** est une ligne d'information, sans montant : elle est déjà dans
+  le tarif, et l'ajouter la compterait deux fois.
+- **Une seule remise** par course, et le libellé dit laquelle — code ou promotion.
+- Le **pourboire** est une note, pas une ligne : il n'est pas dans le prix de la
+  course.
+- Une **course annulée** imprime ce qui a été **retenu**, pas le tarif d'une
+  course qui n'a pas eu lieu. Rien à payer ⇒ le document le dit en une phrase.
+- La **monnaie** est celle du pays de la course, et l'**heure** celle de son
+  fuseau.
+
+### Le relevé d'une période
+
+Une ligne par course — date, trajet, distance réellement parcourue, montant —
+puis le nombre de courses, la distance totale et la somme.
+
+> ⚠️ **`from` ET `to` SONT OBLIGATOIRES, SANS DÉFAUT.** Un défaut implicite
+> produirait un document dont la période n'est pas celle qu'on croyait demander —
+> et c'est un document qu'on additionne. Format `2026-09-01` ou RFC 3339. Une date
+> illisible est **refusée** (`422`), pas ignorée.
+
+> ⚠️ **IL REFUSE AU LIEU DE TRONQUER.** Au delà de **500 courses** ou d'une
+> fenêtre de **366 jours** : `409 statement_too_large`, avec `meta.max_rows`.
+> Proposez de **découper la période** — c'est la seule suite utile. Un relevé qui
+> s'arrêterait en silence à la cinq-centième ligne produirait une somme fausse,
+> présentée comme vraie.
+
+> ⚠️ **SI LA PÉRIODE COUVRE PLUSIEURS PAYS**, le total mêle des monnaies et le
+> document le dit. Il reste servi : le retirer priverait du relevé quelqu'un qui
+> n'a roulé qu'une fois à l'étranger.
+
+### Où mettre le bouton
+
+- Sur une course terminée ou annulée : « Reçu » dans l'écran de détail. Pas sur
+  une course en cours — il n'y a pas encore de prix définitif.
+- Dans l'historique : « Exporter la période », avec deux dates à choisir.
 
 ---
 
