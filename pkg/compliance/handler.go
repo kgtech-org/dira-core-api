@@ -68,9 +68,45 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		// main » voudrait dire « personne ne suspend », parce que personne ne
 		// saurait qui est en défaut.
 		g.With(admin).Get("/admin/compliance", h.complianceQueue)
+		// LA COLLECTE — voir `campaign.go`. ⚠️ DEUX ROUTES, et c'est délibéré :
+		// on REGARDE qui serait relancé avant de relancer. Un seul bouton
+		// « relancer tout le monde » aurait envoyé des centaines de messages
+		// sans que personne ne sache à qui.
+		g.With(admin).Get("/admin/compliance/missing", h.missing)
+		g.With(admin).Post("/admin/compliance/remind", h.remind)
 		g.With(admin).Get(owner, h.ownerCompliance)
 		g.With(admin).Patch("/admin/documents/{id}", h.reviewDocument)
 	})
+}
+
+// GET /admin/compliance/missing?after=&limit= — qui a des pièces manquantes.
+//
+// ⚠️ ELLE EXISTE POUR ÊTRE LUE AVANT D'AGIR. Relancer sans avoir vu la liste,
+// c'est envoyer des centaines de notifications à l'aveugle — et découvrir
+// ensuite qu'on a réclamé une pièce à des gens qui l'avaient déjà envoyée.
+func (h *Handler) missing(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	items, next, err := h.svc.MissingSweep(r.Context(), r.URL.Query().Get("after"), limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": items, "next_after": next})
+}
+
+// POST /admin/compliance/remind?after=&limit= — relancer.
+//
+// ⚠️ LA MÊME PAGINATION QUE `missing`, EXPRÈS : on relance la page qu'on vient
+// de regarder. Une relance qui balaierait tout le parc d'un coup aurait fait
+// d'un clic une opération qu'on ne peut ni arrêter ni vérifier.
+func (h *Handler) remind(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	out, err := h.svc.Remind(r.Context(), r.URL.Query().Get("after"), limit)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }
 
 // GET /{agent|driver}/documents — l'état de conformité de l'appelant.

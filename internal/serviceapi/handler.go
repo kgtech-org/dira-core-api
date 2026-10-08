@@ -148,6 +148,9 @@ type BackOffice interface {
 // Notifier sends one templated message to one person.
 type Notifier interface {
 	Notify(ctx context.Context, userID, key string, vars map[string]string, data map[string]string)
+	// NotifyOnce n'envoie que si le même message n'est pas déjà parti dans la
+	// fenêtre, et dit s'il est parti — pour les RELANCES.
+	NotifyOnce(ctx context.Context, userID, key string, within time.Duration, vars, data map[string]string) bool
 	// Signal réveille les appareils d'une personne avec des données seules —
 	// le signal d'un appel de course quand le socket est mort. Rend le nombre
 	// d'appareils atteints.
@@ -648,14 +651,33 @@ func (h *Handler) notify(w http.ResponseWriter, r *http.Request) {
 		Key    string            `json:"key" validate:"required,max=60"`
 		Vars   map[string]string `json:"vars"`
 		Data   map[string]string `json:"data"`
+		// OnceWithinS : ne pas renvoyer ce message si le même est déjà parti
+		// à cette personne dans les N dernières secondes. Zéro = toujours
+		// envoyer, comme avant.
+		//
+		// ⚠️ IL EXISTE POUR LES RELANCES. Une campagne qui redit la même chose
+		// chaque jour devient un fond sonore : la personne apprend à balayer
+		// la bannière, et c'est la relance SUIVANTE — celle qui compte — qui
+		// ne sera pas lue. La fenêtre est décidée par l'appelant, parce que
+		// « un document manquant » et « une panne » ne se redisent pas au même
+		// rythme.
+		OnceWithinS int `json:"once_within_s" validate:"omitempty,min=1,max=2592000"`
 	}
 	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	// `Notify` ne rend PAS d'erreur, et c'est délibéré côté socle : une
-	// notification perdue ne doit jamais faire échouer ce qui l'a déclenchée.
-	// La verticale n'a donc rien à attendre non plus.
+	// ⚠️ LA RÉPONSE DIT SI LE MESSAGE EST PARTI, et c'est pourquoi elle a un
+	// corps. `Notify` ne rend pas d'erreur — une notification perdue ne doit
+	// jamais faire échouer ce qui l'a déclenchée —, mais une RELANCE est
+	// comptée : « 0 envoyé » sans distinguer « déjà relancés » de « panne »
+	// ferait passer le garde-fou pour une erreur.
+	if req.OnceWithinS > 0 {
+		sent := h.notifier.NotifyOnce(r.Context(), req.UserID, req.Key,
+			time.Duration(req.OnceWithinS)*time.Second, req.Vars, req.Data)
+		httpx.JSON(w, http.StatusOK, map[string]any{"sent": sent})
+		return
+	}
 	h.notifier.Notify(r.Context(), req.UserID, req.Key, req.Vars, req.Data)
 	w.WriteHeader(http.StatusAccepted)
 }

@@ -212,6 +212,13 @@ const (
 	KeyEquipmentOverdue    = "equipment_overdue"
 	KeyEquipmentBlocked    = "equipment_blocked"
 	KeyEquipmentReturned   = "equipment_returned"
+	// LA COLLECTE DES PIÈCES (`pkg/compliance`) — « il vous manque… ».
+	//
+	// ⚠️ ELLE PARLE À L'AGENT, PAS AU STAFF, et c'est ce qui la distingue de
+	// `staff_document_submitted` : l'une dit à un opérateur qu'il y a une pièce
+	// à vérifier, l'autre dit à un livreur ce qu'il doit envoyer. Les confondre
+	// aurait envoyé la liste des manques à l'équipe, qui n'a rien à déposer.
+	KeyDocumentsMissing    = "documents_missing"
 	KeyStaffEquipOverdue   = "staff_equipment_overdue"
 	KeyStaffEquipRequested = "staff_equipment_requested"
 	// L'ALERTE SOS (`internal/sos`) — quelqu'un est en danger.
@@ -685,6 +692,27 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "Equipment overdue — [who]", Body: "[amount] unpaid for [item]."},
 		},
 	},
+	KeyDocumentsMissing: {
+		Key: KeyDocumentsMissing,
+		Description: "AGENT — il manque des pièces à son dossier : lesquelles, et " +
+			"quoi faire. ⚠️ Ce n'est PAS un blocage : rien ne coupe le travail de " +
+			"quelqu'un dont le dossier est incomplet.",
+		Enabled: true,
+		Locales: map[string]Text{
+			// ⚠️ LE MESSAGE NOMME LES PIÈCES. « Vous n'êtes pas en règle »
+			// n'appelle aucun geste ; « il vous manque votre casier judiciaire »
+			// en appelle un. Et il ne menace PAS d'une suspension qui n'arrive
+			// pas : un message qui use sa crédibilité ne sera plus lu.
+			LocaleFR: {
+				Title: "Dossier incomplet — [count] pièce(s)",
+				Body:  "Il manque : [documents]. Envoyez-les depuis Mon compte › Documents.",
+			},
+			LocaleEN: {
+				Title: "Incomplete file — [count] document(s)",
+				Body:  "Missing: [documents]. Upload them from My account › Documents.",
+			},
+		},
+	},
 	KeyStaffSOS: {
 		Key: KeyStaffSOS,
 		Description: "STAFF — ALERTE SOS : quelqu'un a déclenché le bouton d'urgence. " +
@@ -855,6 +883,7 @@ var provided = map[string][]string{
 	KeyEquipmentBlocked:      {"item", "amount"},
 	KeyEquipmentReturned:     {"item", "refund", "owed"},
 	KeyStaffEquipOverdue:     {"who", "item", "amount"},
+	KeyDocumentsMissing:      {"count", "documents"},
 	KeyStaffSOS:              {"who", "trigger", "where"},
 	KeyStaffSOSClosed:        {"who", "outcome", "by"},
 	KeyStaffEquipRequested:   {"who", "item", "mode"},

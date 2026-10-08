@@ -95,15 +95,23 @@ func TestAdminSegmentIsSeparate(t *testing.T) {
 	}
 }
 
-// La surface est CLOSE : quatre routes, pas une de plus. Une route ajoutée
-// sans y penser — un effacement, une liste globale — apparaîtrait ici.
-func TestSurfaceIsExactlyFourRoutes(t *testing.T) {
+// La surface est CLOSE : sept routes, pas une de plus. Une route ajoutée sans y
+// penser — un effacement, une liste globale — apparaîtrait ici.
+//
+// ⚠️ LES DEUX ROUTES DE COLLECTE SONT SÉPARÉES, et c'est délibéré : on REGARDE
+// qui serait relancé (`GET .../missing`) avant de relancer (`POST .../remind`).
+// Un seul bouton « relancer tout le monde » aurait envoyé des centaines de
+// messages sans que personne ne sache à qui — et on l'aurait découvert en
+// lisant les réclamations de gens qui avaient déjà tout envoyé.
+func TestSurfaceIsExactlyTheSevenRoutes(t *testing.T) {
 	vtc, _ := mountAs(t, Routes{Self: "driver", Owners: "drivers"}, auth.RoleAdmin)
 	assert.Equal(t, []string{
 		"GET /admin/compliance",
+		"GET /admin/compliance/missing",
 		"GET /admin/drivers/{id}/documents",
 		"GET /driver/documents",
 		"PATCH /admin/documents/{id}",
+		"POST /admin/compliance/remind",
 		"POST /driver/documents",
 	}, mounted(t, vtc))
 }
