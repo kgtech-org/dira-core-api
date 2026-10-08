@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/kgtech-org/dira-core-api/internal/config"
+	icountry "github.com/kgtech-org/dira-core-api/internal/country"
 	"github.com/kgtech-org/dira-core-api/internal/equipment"
 	"github.com/kgtech-org/dira-core-api/internal/indexes"
 	"github.com/kgtech-org/dira-core-api/internal/marker"
@@ -158,6 +159,15 @@ func run(logger *slog.Logger) error {
 			return fmt.Errorf("seed: ensure ops staff %s: %w", ops.country, err)
 		}
 		logger.Info("seed: country ops ready", "country", ops.country, "email", ops.email, "phone", ops.phone)
+	}
+
+	// --- LE PARRAINAGE, ALLUMÉ DANS CHAQUE PAYS OUVERT ---
+	//
+	// ⚠️ Après les comptes, et pas avant : `MyReferral` tire le code d'un
+	// client au premier appel, et un pays sans compte n'a personne à parrainer.
+	// Voir `referral.go` pour les montants et pour ce que ce pas NE fait pas.
+	if err := seedReferral(ctx, logger, icountry.NewRepository(mongo)); err != nil {
+		return fmt.Errorf("seed: referral: %w", err)
 	}
 
 	// --- LE CATALOGUE DU MATÉRIEL, par pays ---
