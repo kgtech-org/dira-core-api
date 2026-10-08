@@ -2,6 +2,7 @@ package promocode
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/bson"
@@ -11,6 +12,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
 	"github.com/kgtech-org/dira-core-api/pkg/httpx"
 	"github.com/kgtech-org/dira-core-api/pkg/middleware"
+	"github.com/kgtech-org/dira-core-api/pkg/promo"
 )
 
 type Handler struct{ svc *Service }
@@ -165,6 +167,20 @@ func (h *Handler) patch(w http.ResponseWriter, r *http.Request) {
 // ⚠️ `remaining_xof` EST CALCULÉ ICI, et il vaut -1 quand il n'y a pas de
 // budget. « Pas de plafond » n'est pas « zéro restant », et les confondre
 // afficherait une enveloppe épuisée sur une campagne sans budget.
+//
+// ⚠️ ET L'ENVELOPPE EST SERVIE DANS LA MÊME FORME QUE CELLE D'UNE PROMOTION
+// (`uses_reserved`, `uses_spent`, `uses_released`, `progress_pct`,
+// `exhausted`). Les deux objets ne sont pas les mêmes — une promotion s'applique
+// d'elle-même, un code se tape — mais LEUR ARGENT SE COMPTE PAREIL, par le même
+// moteur (`pkg/promo`). Deux formes auraient obligé la console à deux lectures
+// du même chiffre, donc à deux composants, donc à deux façons de se tromper ; et
+// la première divergence serait passée inaperçue puisque les deux écrans auraient
+// l'air de marcher.
+//
+// ⚠️ `uses` RESTE À CÔTÉ de `uses_reserved` + `uses_spent` dont il est la somme.
+// C'est une redondance assumée : une liste de codes n'a la place que d'un seul
+// nombre, et le faire calculer par chaque appelant est exactement la façon dont
+// un total finit par différer d'un écran à l'autre.
 func codeRow(c *Code) map[string]any {
 	return map[string]any{
 		"code": c.Code, "kind": c.Kind, "label": c.Label,
@@ -175,8 +191,14 @@ func codeRow(c *Code) map[string]any {
 		"max_uses_per_user": c.MaxUsesPerUser,
 		"remaining_xof":     c.Limits.Remaining(c.Counters),
 		"uses":              c.Counters.Uses(),
+		"uses_reserved":     c.UsesReserved,
+		"uses_spent":        c.UsesSpent,
+		"uses_released":     c.UsesReleased,
 		"spent_xof":         c.AmountSpent,
 		"committed_xof":     c.Counters.Committed(),
+		"progress_pct":      promo.Progress(c.Limits, c.Counters),
+		"exhausted":         promo.Exhausted(c.Limits, c.Counters),
+		"live":              c.Live(time.Now()),
 		"starts_at":         c.StartsAt, "ends_at": c.EndsAt,
 		"active": c.Active, "created_at": c.CreatedAt,
 	}

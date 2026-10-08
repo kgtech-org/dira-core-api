@@ -1,10 +1,14 @@
 package promocode
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/kgtech-org/dira-core-api/pkg/promo"
 )
@@ -195,4 +199,61 @@ func TestReferralIsOffUntilSomeoneSetsIt(t *testing.T) {
 	assert.Zero(t, DefaultReferral.InviteeXOF)
 	assert.Zero(t, DefaultReferral.SponsorXOF)
 	assert.Positive(t, DefaultReferral.ValidDays, "mais un code tiré doit avoir une fin")
+}
+
+// ⚠️ LA FICHE D'UN INFLUENCEUR PART TELLE QUELLE DANS L'API, donc ses balises
+// `json` font partie du contrat. Sans elles, le socle servait `"Handle"` quand
+// tout le reste de l'API sert `"handle"` — et le jour où quelqu'un les aurait
+// ajoutées par souci d'homogénéité, c'est la console qui serait tombée, sans
+// que rien ici ne l'ait prévenu.
+func TestAnInfluencerIsServedInTheHouseStyle(t *testing.T) {
+	raw, err := json.Marshal(Influencer{
+		ID: primitive.NewObjectID(), UserID: primitive.NewObjectID(),
+		Handle: "awa.lome", Network: "tiktok", Audience: 42000, Active: true,
+	})
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(raw, &got))
+	for _, k := range []string{"id", "user_id", "handle", "network", "audience", "active", "created_at"} {
+		assert.Contains(t, got, k)
+	}
+	// Et surtout : plus aucune clé en capitales. C'est l'assertion qui mord,
+	// parce qu'elle attrape AUSSI le champ qu'on ajoutera demain sans balise.
+	for k := range got {
+		assert.Equal(t, strings.ToLower(k), k, "clé servie hors style maison : %s", k)
+	}
+}
+
+// ⚠️ L'ENVELOPPE D'UN CODE SE LIT COMME CELLE D'UNE PROMOTION. Les deux objets
+// ne sont pas les mêmes — une promotion s'applique d'elle-même, un code se
+// tape — mais leur ARGENT se compte par le même moteur (`pkg/promo`). Deux
+// formes auraient obligé la console à deux lectures du même chiffre, donc à deux
+// composants, donc à deux façons de se tromper ; et la première divergence
+// serait passée inaperçue, puisque les deux écrans auraient eu l'air de marcher.
+func TestACodeEnvelopeIsReadLikeAPromotionEnvelope(t *testing.T) {
+	c := percentCode(10, 0)
+	c.BudgetXOF = 10_000
+	c.Counters = promo.Counters{
+		UsesReserved: 1, AmountReserved: 400,
+		UsesSpent: 2, AmountSpent: 800,
+		UsesReleased: 3,
+	}
+	row := codeRow(c)
+	for _, k := range []string{
+		"budget_xof", "max_uses", "max_uses_per_user",
+		"committed_xof", "spent_xof", "remaining_xof",
+		"uses_reserved", "uses_spent", "uses_released",
+		"progress_pct", "exhausted", "live",
+	} {
+		assert.Contains(t, row, k, "la console lit ce champ sur une promotion")
+	}
+	assert.Equal(t, 1200, row["committed_xof"], "engagé = dépensé + promis")
+	assert.Equal(t, 800, row["spent_xof"], "c'est CE chiffre qui va dans un rapport")
+	// ⚠️ `uses` reste à côté de la somme dont il est le total : une liste n'a la
+	// place que d'un nombre, et le faire recalculer par chaque appelant est
+	// exactement la façon dont un total finit par différer d'un écran à l'autre.
+	assert.Equal(t, 3, row["uses"])
+	assert.Equal(t, row["uses"], row["uses_reserved"].(int)+row["uses_spent"].(int))
+	// Les rendus ne comptent dans AUCUNE limite — ils sont là pour être lus.
+	assert.Equal(t, 3, row["uses_released"])
 }
