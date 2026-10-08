@@ -257,3 +257,35 @@ func TestACodeEnvelopeIsReadLikeAPromotionEnvelope(t *testing.T) {
 	// Les rendus ne comptent dans AUCUNE limite — ils sont là pour être lus.
 	assert.Equal(t, 3, row["uses_released"])
 }
+
+// --- LE DEVIS À PLUSIEURS MONTANTS ---------------------------------------
+
+// ⚠️ LE PLUS GRAND MONTANT VALIDE LE CODE, et non le premier venu. Un devis de
+// course porte quatre prix : si le plus petit est sous le minimum du code, le
+// code vaut quand même pour les autres — et refuser l'ensemble aurait fait lire
+// « montant trop faible » à quelqu'un dont la course de van était largement au
+// dessus.
+func TestTheLargestAmountValidatesTheCode(t *testing.T) {
+	c := percentCode(10, 0)
+	c.MinAmountXOF = 3000
+
+	// Le plus petit n'y a pas droit, le plus grand oui.
+	assert.Zero(t, c.DiscountOn(1500))
+	assert.Equal(t, 400, c.DiscountOn(4000))
+}
+
+// Les remises se décident PAR MONTANT : un code dont l'enveloppe se termine
+// remise encore les petites courses — ce qui est exactement ce qu'on veut d'un
+// budget qui s'épuise.
+func TestADiscountIsDecidedPerAmount(t *testing.T) {
+	c := percentCode(20, 0)
+	c.Limits = promo.Limits{BudgetXOF: 1000}
+	c.Counters = promo.Counters{AmountSpent: 600}
+
+	// 20 % de 1 500 = 300 : il reste 400, ça passe.
+	_, ok := promo.Allows(c.Limits, c.Counters, 0, c.DiscountOn(1500))
+	assert.True(t, ok)
+	// 20 % de 5 000 = 1 000 : il ne reste pas assez.
+	_, ok = promo.Allows(c.Limits, c.Counters, 0, c.DiscountOn(5000))
+	assert.False(t, ok)
+}

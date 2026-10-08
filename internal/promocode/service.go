@@ -75,22 +75,79 @@ type Grant struct {
 	OwnerID string `json:"owner_id,omitempty"`
 }
 
-// Quote dit ce qu'un code accorderait sur un montant, SANS rien réserver.
+// QuoteMany dit ce qu'un code accorderait sur PLUSIEURS montants, en un seul
+// appel et sans rien réserver.
 //
-// ⚠️ SANS RÉSERVER, et c'est la distinction qui fait tout : un devis se
-// recalcule à chaque frappe, à chaque changement d'adresse, à chaque retour
-// sur l'écran. Réserver au devis aurait épuisé une enveloppe avec des gens qui
-// regardent, et le code aurait été « épuisé » sans qu'une seule course ne soit
-// partie.
-func (s *Service) Quote(ctx context.Context, raw, userID, vertical string, amountXOF int) (*Grant, error) {
-	code, c, err := s.resolve(ctx, raw, userID, vertical, amountXOF)
+// ⚠️ PLUSIEURS MONTANTS, ET C'EST LE CHEMIN CHAUD QUI L'EXIGE. Un devis de
+// course calcule quatre prix — un par véhicule — et chacun donnerait une remise
+// différente. Interroger le socle quatre fois par devis aurait mis quatre
+// allers-retours sur l'écran le plus regardé de la plateforme, pour une
+// arithmétique qui tient en trois lignes.
+//
+// ⚠️ ET LE CALCUL RESTE ICI, et non recopié dans chaque verticale. Rendre la
+// RÈGLE (« 10 %, plafonné à 1 000 ») aurait fait écrire deux fois le même
+// calcul — et le jour où l'un arrondit vers le haut, deux services affichent
+// deux prix pour le même code.
+//
+// Les refus de l'enveloppe se décident PAR MONTANT : une remise qui ne tient
+// plus dans ce qui reste rend zéro pour ce montant-là, sans faire échouer les
+// autres. Un code dont l'enveloppe se termine remise donc encore les petites
+// courses — ce qui est exactement ce qu'on veut d'un budget qui s'épuise.
+func (s *Service) QuoteMany(ctx context.Context, raw, userID, vertical string, amounts []int) (*ManyGrant, error) {
+	if len(amounts) == 0 {
+		return nil, apperr.Validation("send at least one amount")
+	}
+	// Le premier montant sert à valider le code lui-même : s'il est inconnu,
+	// expiré ou déjà utilisé, le refus NOMMÉ remonte jusqu'à l'écran — et
+	// c'est la seule façon de dire « déjà utilisé » plutôt que « invalide ».
+	//
+	// ⚠️ LE PLUS GRAND MONTANT, et non le premier venu. Un petit montant sous
+	// le minimum du code aurait fait refuser le code entier alors qu'il vaut
+	// pour les autres courses du même devis.
+	largest := amounts[0]
+	for _, a := range amounts {
+		if a > largest {
+			largest = a
+		}
+	}
+	code, _, err := s.resolve(ctx, raw, userID, vertical, largest)
 	if err != nil {
 		return nil, err
 	}
-	return &Grant{
+	out := &ManyGrant{
 		Code: code.Code, Label: code.Label, Kind: code.Kind,
-		DiscountXOF: c, OwnerID: ownerHex(code),
-	}, nil
+		OwnerID: ownerHex(code), Discounts: make([]int, len(amounts)),
+	}
+	userUses := -1
+	if userID != "" {
+		byCode, err := s.repo.Ledger().UsesByUser(ctx, userID)
+		if err != nil {
+			return nil, apperr.Internal(err)
+		}
+		userUses = byCode[code.Code]
+	}
+	for i, a := range amounts {
+		d := code.DiscountOn(a)
+		if d <= 0 {
+			continue
+		}
+		if _, ok := promo.Allows(code.Limits, code.Counters, userUses, d); !ok {
+			continue
+		}
+		out.Discounts[i] = d
+	}
+	return out, nil
+}
+
+// ManyGrant est ce qu'un code accorde sur plusieurs montants.
+type ManyGrant struct {
+	Code    string `json:"code"`
+	Label   string `json:"label,omitempty"`
+	Kind    string `json:"kind"`
+	OwnerID string `json:"owner_id,omitempty"`
+	// Discounts est aligné sur les montants demandés. Zéro = rien à accorder
+	// sur CE montant-là — sous le minimum, ou l'enveloppe ne le tient plus.
+	Discounts []int `json:"discounts"`
 }
 
 // Redeem réserve l'usage d'un code pour une opération.
