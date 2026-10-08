@@ -3,6 +3,7 @@ package notify
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -68,6 +69,13 @@ func categoryOf(key string) string {
 		// Ce qu'on doit et ce qu'on a payé : pas coupable, comme le support.
 		return CategorySupport
 	case KeyLostItemReported, KeyLostItemFound, KeyLostItemNotFound, KeyTicketReply, KeyTicketResolved:
+		return CategorySupport
+	case KeyDocumentsMissing:
+		// ⚠️ RANGÉE DANS `support`, DONC NON COUPABLE. Un livreur qui couperait
+		// cette catégorie ne saurait jamais ce qu'on lui demande d'envoyer, et
+		// resterait « dossier incomplet » sans comprendre pourquoi. C'est aussi
+		// ce qui oblige la relance à être RARE : on ne peut pas l'éteindre, donc
+		// elle ne doit pas devenir du bruit — voir `RemindEvery`.
 		return CategorySupport
 	case KeySessionSuperseded:
 		return CategorySecurity
@@ -150,6 +158,23 @@ func (r *Repository) CountUnread(ctx context.Context, userID primitive.ObjectID)
 	return n, nil
 }
 
+// SentSince dit si ce compte a DÉJÀ reçu ce message depuis `since`.
+//
+// ⚠️ ELLE LIT LA BOÎTE, ET C'EST TOUT L'INTÉRÊT. Savoir « quand a-t-on relancé
+// cette personne ? » demandait sinon une table de relances à tenir, à purger et
+// à borner par pays — alors que la réponse est déjà écrite là, puisque toute
+// notification poussée laisse une entrée. Une seconde source aurait pu mentir ;
+// celle-ci est la même que ce que la personne voit à l'écran.
+func (r *Repository) SentSince(ctx context.Context, userID primitive.ObjectID, key string, since time.Time) (bool, error) {
+	n, err := r.inbox.CountDocuments(ctx, bson.M{
+		"user_id": userID, "key": key, "created_at": bson.M{"$gte": since},
+	}, options.Count().SetLimit(1))
+	if err != nil {
+		return false, fmt.Errorf("notify: sent since: %w", err)
+	}
+	return n > 0, nil
+}
+
 // MarkInboxRead marque une notification lue, ou TOUTES quand id est nul.
 func (r *Repository) MarkInboxRead(ctx context.Context, userID, id primitive.ObjectID, at time.Time) (int64, error) {
 	filter := bson.M{"user_id": userID, "read_at": bson.M{"$exists": false}}
@@ -214,4 +239,39 @@ func (s *Service) MarkRead(ctx context.Context, userID, notificationID string) (
 	}
 	n, err := s.repo.MarkInboxRead(ctx, uid, id, time.Now().UTC())
 	return int(n), err
+}
+
+// NotifyOnce envoie un message SEULEMENT s'il n'est pas déjà parti récemment,
+// et dit s'il est parti.
+//
+// ⚠️ C'EST LE GARDE-FOU D'UNE RELANCE, et il manquait. Une campagne qui redit la
+// même chose chaque jour ne se lit plus : la personne coupe la catégorie — ou,
+// quand elle n'est pas coupable, apprend à balayer la bannière sans la lire. Et
+// c'est alors la relance suivante, celle qui compte, qui ne sera pas vue.
+//
+// ⚠️ LA FENÊTRE EST UN ARGUMENT, pas une constante : « on ne redit pas un
+// document manquant avant trois jours » et « on ne redit pas une panne avant
+// dix minutes » sont deux décisions différentes, et c'est à l'appelant de les
+// prendre.
+//
+// ⚠️ ET UNE LECTURE RATÉE ENVOIE QUAND MÊME. Ne pas savoir si on a déjà
+// prévenu quelqu'un ne doit pas empêcher de le prévenir : un doublon est un
+// désagrément, un silence est une personne qui ne sait pas qu'il lui manque une
+// pièce.
+func (s *Service) NotifyOnce(ctx context.Context, userID, key string, within time.Duration, vars, data map[string]string) bool {
+	uid, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return false
+	}
+	if within > 0 {
+		sent, err := s.repo.SentSince(ctx, uid, key, time.Now().UTC().Add(-within))
+		if err != nil {
+			slog.WarnContext(ctx, "notify: could not check recent sends, notifying anyway",
+				"key", key, "error", err)
+		} else if sent {
+			return false
+		}
+	}
+	s.Notify(ctx, userID, key, vars, data)
+	return true
 }

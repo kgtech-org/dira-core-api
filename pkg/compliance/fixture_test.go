@@ -2,6 +2,7 @@ package compliance
 
 import (
 	"context"
+	"sort"
 	"testing"
 	"time"
 
@@ -113,6 +114,29 @@ func newFleet() *fakeFleet {
 
 func (f *fakeFleet) DriverOf(_ context.Context, userID string) (string, error) {
 	return f.byUser[userID], nil
+}
+
+// ⚠️ LA DOUBLURE REND LES CHAUFFEURS DANS UN ORDRE STABLE. Une `map` les rend
+// dans un ordre aléatoire : un test de pagination aurait passé au vert une fois
+// sur deux, et c'est le pire genre de test — celui qu'on relance jusqu'à ce
+// qu'il passe.
+func (f *fakeFleet) DriverIDs(_ context.Context, after string, limit int) ([]string, error) {
+	all := make([]string, 0, len(f.accounts))
+	for id := range f.accounts {
+		all = append(all, id)
+	}
+	sort.Strings(all)
+	out := make([]string, 0, limit)
+	for _, id := range all {
+		if after != "" && id <= after {
+			continue
+		}
+		if len(out) == limit {
+			break
+		}
+		out = append(out, id)
+	}
+	return out, nil
 }
 
 func (f *fakeFleet) AccountOf(_ context.Context, driverID string) (string, error) {

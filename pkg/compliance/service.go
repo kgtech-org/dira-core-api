@@ -96,6 +96,17 @@ type Fleet interface {
 	// Ils décident de ce qui MANQUE : on ne réclame pas une assurance à
 	// quelqu'un qui n'a déclaré aucun véhicule.
 	VehiclesOf(ctx context.Context, driverID string) ([]VehicleRef, error)
+	// DriverIDs liste les chauffeurs à vérifier, page par page — ce qui permet
+	// de trouver les gens à qui il manque des pièces.
+	//
+	// ⚠️ ON PARCOURT LES GENS, ET NON LES DOCUMENTS, et c'est la raison d'être
+	// de cette méthode : ceux qui n'ont RIEN envoyé n'ont aucun document, et un
+	// balayage bâti sur les documents les aurait tous ratés — c'est-à-dire
+	// exactement ceux qu'il faut relancer.
+	//
+	// `after` est le dernier identifiant rendu ; vide pour la première page.
+	// La liste est bornée au PAYS de la requête par la verticale.
+	DriverIDs(ctx context.Context, after string, limit int) ([]string, error)
 }
 
 // VehicleRef est un véhicule vu par la conformité : un identifiant, et le
@@ -178,6 +189,9 @@ type Service struct {
 	// files retire les IMAGES des pièces quand un compte est effacé — voir
 	// `erasure.go`. Facultatif.
 	files Files
+	// remind relance les gens à qui il manque des pièces — voir `campaign.go`.
+	// Facultatif : sans elle, `Remind` ne prétend rien avoir envoyé.
+	remind Reminder
 }
 
 // Watcher est prévenu d'un DÉPÔT : la verticale en fait une alerte au staff
