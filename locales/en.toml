@@ -388,3 +388,49 @@ other = "This account's data is already erased: it can no longer be restored."
 
 [errors.erasure_unavailable]
 other = "Account deletion is not available on this deployment. Please tell the technical team."
+
+# --- PROMO CODES (see internal/promocode) ---
+# ⚠️ "INVALID CODE" IS THE WORST MESSAGE. Someone typing a code they read on a
+# poster wants to know WHICH reason applies: a mistyped character, a finished
+# campaign, a code already used, or one that does not cover what they ordered.
+# A single refusal for all of that sends everyone to support, who will know no
+# more than they do.
+
+[errors.promo_code_unknown]
+other = "This code does not exist. Check the characters — our codes contain no O and no I."
+
+[errors.promo_code_expired]
+other = "This code is no longer valid: the campaign has ended."
+
+[errors.promo_code_wrong_country]
+other = "This code cannot be used in this country."
+
+[errors.promo_code_wrong_service]
+other = "This code does not apply to this kind of order."
+
+[errors.promo_code_amount_too_low]
+other = "The amount is too low for this code."
+
+[errors.promo_code_exhausted]
+other = "This code has reached its limit: the offer is used up."
+
+[errors.promo_code_already_used]
+other = "You have already used this code."
+
+[errors.promo_code_own_referral]
+other = "You cannot use your own referral code. Share it with people you know."
+
+[errors.promo_code_taken]
+other = "This code is already taken. Pick another one."
+
+[errors.promo_code_undrawable]
+other = "Could not draw a free code with this prefix. Try a different one."
+
+[errors.influencer_exists]
+other = "This account is already an influencer."
+
+[errors.influencer_handle_taken]
+other = "This handle is already taken."
+
+[errors.influencer_not_found]
+other = "Influencer not found"

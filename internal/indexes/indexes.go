@@ -44,6 +44,34 @@ var applicationIndexes = []db.Index{
 		Unique:        true,
 		PartialFilter: bson.D{{Key: "email", Value: bson.D{{Key: "$gt", Value: ""}}}},
 	},
+	// --- LES CODES PROMO (internal/promocode) ---
+	//
+	// ⚠️ LE CODE EST UNIQUE SUR TOUTE LA PLATEFORME, et c'est cet index qui le
+	// garantit — pas une vérification applicative. Lire « ce code existe-t-il ? »
+	// puis écrire laisse une fenêtre entre les deux : deux créations
+	// simultanées passeraient le test, et la seconde échouerait sur l'écran de
+	// quelqu'un. C'est aussi ce qui permet de TIRER un code en réessayant sur
+	// collision plutôt qu'en interrogeant d'abord.
+	{Collection: "promo_codes", Keys: db.K("code", 1), Unique: true},
+	// Les codes d'un influenceur, et la liste de la console par pays.
+	{Collection: "promo_codes", Keys: db.K("owner_id", 1, "_id", -1), Sparse: true},
+	{Collection: "promo_codes", Keys: db.K("country", 1, "kind", 1, "_id", -1)},
+	// ⚠️ UN USAGE PAR (CODE, RÉFÉRENCE), et c'est ce qui rend l'engagement
+	// IDEMPOTENT : un rappel de paiement rejoué, un redémarrage au mauvais
+	// moment ou un double clic ne consomment pas l'enveloppe deux fois. Sans
+	// cette contrainte, un budget se vide de moitié sur un incident réseau.
+	{Collection: "promo_code_uses", Keys: db.K("promo_id", 1, "ref_id", 1), Unique: true},
+	// La limite PAR PERSONNE se lit ici — c'est elle qui protège de l'abus,
+	// pas le budget.
+	{Collection: "promo_code_uses", Keys: db.K("user_id", 1, "state", 1)},
+	// Le suivi d'un code, et la clôture par référence.
+	{Collection: "promo_code_uses", Keys: db.K("promo_id", 1, "_id", -1)},
+	{Collection: "promo_code_uses", Keys: db.K("ref_id", 1)},
+	// LES INFLUENCEURS : une fiche par compte, un pseudonyme unique.
+	{Collection: "influencers", Keys: db.K("user_id", 1), Unique: true},
+	{Collection: "influencers", Keys: db.K("handle", 1), Unique: true},
+	{Collection: "influencers", Keys: db.K("country", 1, "_id", -1)},
+
 	// LES COMPTES À EFFACER — le balayage de la suppression (voir
 	// `internal/user/erasure.go`). Il tourne toutes les heures sur la
 	// collection la plus lue de la plateforme ; sans index, il la parcourt
