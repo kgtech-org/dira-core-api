@@ -27,32 +27,38 @@ import (
 )
 
 // Influencer est la fiche de quelqu'un qui diffuse des codes.
+// ⚠️ LES BALISES `json` SONT OBLIGATOIRES ICI, et leur absence était un
+// défaut : cette fiche part telle quelle dans `GET /admin/influencers`, et sans
+// elles le socle servait `{"ID":…,"UserID":…,"Handle":…}` là où tout le reste
+// de l'API parle en minuscules avec des tirets bas. Une console qui lit
+// `handle` n'aurait rien trouvé — et le jour où quelqu'un aurait ajouté les
+// balises, c'est la console qui serait tombée.
 type Influencer struct {
-	ID primitive.ObjectID `bson:"_id,omitempty"`
+	ID primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	// UserID est le COMPTE au socle. Un influenceur n'est pas un compte à
 	// part : c'est une fiche attachée à quelqu'un qui existe déjà.
 	//
 	// ⚠️ ET C'EST CE QUI FAIT QUE SA SUPPRESSION DE COMPTE L'EMPORTE. Une
 	// fiche attachée à un compte effacé n'a plus de titulaire ; le suivi, lui,
 	// reste — ce sont des usages, pas une identité.
-	UserID  primitive.ObjectID `bson:"user_id"`
-	Country string             `bson:"country,omitempty"`
+	UserID  primitive.ObjectID `bson:"user_id" json:"user_id"`
+	Country string             `bson:"country,omitempty" json:"country,omitempty"`
 	// Handle est le pseudonyme sous lequel on le connaît — « @awa.lome ».
 	// Unique, parce que c'est ce qu'on tape pour le retrouver.
-	Handle string `bson:"handle"`
+	Handle string `bson:"handle" json:"handle"`
 	// Network et Audience : où il publie, et combien de personnes le suivent.
 	//
 	// ⚠️ DÉCLARATIFS, et il faut le savoir en les lisant : personne ici ne
 	// vérifie un nombre d'abonnés. Ils servent à trier une liste et à préparer
 	// une conversation, jamais à décider d'un budget — c'est le SUIVI des
 	// usages qui dit ce qu'un influenceur vaut, et lui seul.
-	Network  string `bson:"network,omitempty"`
-	Audience int    `bson:"audience,omitempty"`
-	Active   bool   `bson:"active"`
-	Note     string `bson:"note,omitempty"`
+	Network  string `bson:"network,omitempty" json:"network,omitempty"`
+	Audience int    `bson:"audience,omitempty" json:"audience,omitempty"`
+	Active   bool   `bson:"active" json:"active"`
+	Note     string `bson:"note,omitempty" json:"note,omitempty"`
 
-	CreatedAt time.Time `bson:"created_at"`
-	UpdatedAt time.Time `bson:"updated_at"`
+	CreatedAt time.Time `bson:"created_at" json:"created_at"`
+	UpdatedAt time.Time `bson:"updated_at" json:"updated_at"`
 }
 
 // Les réseaux qu'on sait nommer. La liste vit ICI : c'est le serveur qui
