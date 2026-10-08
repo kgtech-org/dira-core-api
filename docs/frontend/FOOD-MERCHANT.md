@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 4.55.0** · 8 octobre 2026
+> **Version 4.56.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -1014,6 +1014,34 @@ positions pour un seul véhicule**, et que le vivier d'appel le lit comme deux
 véhicules. Rien de tel chez un marchand, dont aucun écran ne pousse de position — et l'appliquer « par prudence » à un public qui
 n'a pas ce problème coûterait des déconnexions quotidiennes pour rien.
 
+
+---
+
+## 🆘 LE BOUTON D'ALERTE — SOS (v4.56.0) — **SOCLE** (sans `/food`)
+
+```
+GET  /sos/settings · POST /sos · GET /sos/me · POST /sos/{id}/position · POST /sos/{id}/cancel
+```
+
+Le bouton existe pour **tout compte** de la plateforme, le vôtre compris : un
+gérant seul en boutique le soir, un conflit avec un client, un livreur agressif.
+`POST /sos` prend votre position et rien d'autre d'obligatoire.
+
+⚠️ **MAIS N'EN FAITES PAS UN ÉLÉMENT PERMANENT DE VOS ÉCRANS DE VENTE.** Cette
+application se tient sur un comptoir, souvent à portée des clients : un bouton
+rouge « SOS » au milieu d'un écran de commandes se déclenche par accident
+plusieurs fois par jour, et une file pleine de faux cesse d'être regardée. Sa
+place est dans **Compte › Sécurité**, ou derrière un appui long — atteignable,
+pas affleurant.
+
+⚠️ **N'ACTIVEZ AUCUNE DÉTECTION.** `shake` et `crash` sont faits pour ceux qui
+roulent ; sur une tablette posée près d'une plaque de cuisson, ils ne mesurent
+que du bruit. Lisez `GET /sos/settings` — le pays peut les autoriser — et
+**ignorez-les** dans cette application.
+
+⚠️ **AUCUN CHAMP N'EST OBLIGATOIRE, et `numbers` peut être VIDE** : pas de
+bouton d'appel plutôt qu'un numéro inventé. Détail complet de la route, du
+compte à rebours et des numéros : `FOOD-CLIENT`, section 🆘.
 
 ---
 

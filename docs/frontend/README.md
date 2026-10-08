@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.55.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.56.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -256,6 +256,7 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] 🔑 **Porte par code** (v4.46.0, applications de CLIENT) : compte à rebours rendu depuis `expires_at`, bouton « renvoyer » gouverné par `resend_after`, nom demandé **seulement** si `created: true`, et l'écran fonctionne **sans** `dev_code` — il disparaîtra. Les applications d'agent et de marchand gardent `POST /auth/login` (`403 otp_not_available` sinon)
 - [ ] 📱 **Appareils** : `device_id` envoyé à la connexion **par toutes les applications** (il ne va pas dans le jeton d'un client, il reconnaît le même téléphone qui revient) ; un `401` au rafraîchissement se traite comme une session expirée, sans message d'erreur technique
 - [ ] 💸 **Annulation** (v4.50.0, applications de CLIENT) : `cancellation` lu **avant** d'afficher le bouton ; montant dit à l'écran de confirmation quand `fee_xof > 0`, jamais un « Annuler » nu ; `why` affiché quand c'est gratuit ; compte à rebours rendu depuis `grace_left_s` et **relu à chaque rafraîchissement** (le chauffeur peut arriver avant la fin de la grâce) ; « remboursement intégral » jamais promis sur une course en **espèces** — les frais y deviennent une dette
+- [ ] 🆘 **BOUTON D'ALERTE** (v4.56.0, **toutes** les applications) : `POST /sos` appelé avec **ce qu'on a**, sans attendre un point GPS — aucun champ n'est obligatoire, pas même la position ; **réessai en boucle jusqu'à un `2xx`**, en tête de la file hors-ligne et sans attendre la fenêtre de synchronisation ; **aucune validation côté application** (pas de motif, pas de formulaire, pas de position exigée) ; bouton **laissé actif** après le premier appui (le double appui enrichit la même alerte) ; `GET /sos/me` appelé **au démarrage** (`200` + `alert: null` est le cas normal, pas un `404`) ; position poussée **toutes les 5–10 s** tant que l'alerte vit ; `numbers` **vide → aucun bouton d'appel**, et **aucun numéro inventé** (ni 112, ni codé en dur) ; `number` **composé tel quel** (17 n'est pas +228 17) ; détections (`shake`/`crash`/`voice`) qui **proposent** via un compte à rebours de `countdown_seconds` avec **un seul** bouton « Annuler », GPS et batterie **préparés pendant** le rebours ; `confirmed: false` traité comme **plus** grave, jamais comme « envoyé par erreur » ; annulation **en un appui, sans seconde confirmation**, et dite comme « l'exploitation a été prévenue » — pas comme « effacé » ; **pas de verrou d'application** sur cet écran ; `vertical` + `ride_id`/`delivery_id` envoyés quand il y a une opération
 - [ ] 🏷️ **Motif d'annulation** (v4.55.0, applications de CLIENT **et** de CHAUFFEUR) : liste **demandée** à `GET /rides/cancel-reasons`, jamais écrite en dur — elle dépend du rôle du jeton, et un code de l'autre rôle est refusé (`422`, `fields: ["reason_code"]`) ; codes **traduits chez vous** (la route sert des codes, pas des phrases) ; `reason_code` **s'ajoute** à `reason`, il ne le remplace pas ; `grave` lu dans la réponse plutôt que testé sur `code === "accident"` ; côté chauffeur, un motif grave ouvre un ticket critique → confirmation à part, « le support a été alerté », et **l'annulation aboutit même si le ticket échoue** (pas de réessai) ; `cancelled_reason_code` **absent** sur les courses d'avant la 4.55.0 → affichez `cancelled_reason` telle quelle, ne traduisez pas l'absence par `other`
 - [ ] 📞 **Taux d'acceptation** (v4.55.0, application de CHAUFFEUR) : `rate` **absent** quand `called` vaut 0 → « — » ou « aucun appel reçu », **jamais 0 %** (qui se lit « il refuse tout ») ; `acceptance` **tout entier** peut manquer quand le suivi ne répond pas → masquez ou dites « indisponible », jamais zéro ; `declined` et `missed` **jamais additionnés** (un geste et une panne) ; ne recalculez pas le taux vous-même
 - [ ] 🧱 **Plafond de dette** (v4.55.0, application de CHAUFFEUR) : `max_debt_xof` **affiché depuis le relevé**, aucune valeur en dur — il est réglé **par pays** ; `max_debt_source` (`country` | `partner`) nommé dans le message de blocage, parce que l'interlocuteur change (l'exploitation, ou le propriétaire du véhicule) ; `max_debt_by` affiché quand il est là ; source absente traitée comme `country`
@@ -329,6 +330,176 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.56.0 — 8 octobre 2026
+
+🆘 **LE BOUTON D'ALERTE.** Un bouton, dans **toutes** les applications, pour
+tout compte de la plateforme — passager, client, chauffeur, livreur, marchand.
+**Au socle** (`…/api/v1/sos`, sans `/vtc` ni `/food`), parce que l'exploitation
+doit voir les deux métiers dans la même file.
+
+```
+GET  /sos/settings      → détections, délai d'annulation, numéros du pays
+POST /sos               → DÉCLENCHER
+GET  /sos/me            → mon alerte en cours (200 avec `alert: null`)
+POST /sos/{id}/position → où je suis MAINTENANT
+POST /sos/{id}/cancel   → « fausse alerte »
+```
+
+---
+
+⚠️⚠️ **UNE ALERTE NE SE PERD JAMAIS, ET TOUT LE RESTE EN DÉCOULE.** `POST /sos`
+n'a **aucun champ obligatoire** — pas même la position. Partout ailleurs dans
+cette API, refuser une requête incomplète est la bonne réponse ; ici c'est la
+pire. Quelqu'un qui appuie sur ce bouton n'a pas le temps de corriger un
+formulaire, et un `422` sur un appel au secours est indéfendable.
+
+Ce que cela veut dire pour vous, concrètement :
+
+> - **N'attendez pas un point GPS pour envoyer.** « On ne sait pas où il est »
+>   est une alarme qu'un opérateur traite en premier, pas une requête à
+>   compléter. Attendre un fix de dix secondes au fond d'un parking souterrain,
+>   c'est perdre les dix secondes qui comptent. Envoyez, **puis** poussez la
+>   position.
+> - **Réessayez en boucle jusqu'à un `2xx`**, en tête de la file hors-ligne et
+>   sans attendre la fenêtre de synchronisation : une alerte remise trois
+>   minutes plus tard ne sert plus à personne.
+> - **N'ajoutez aucune validation de votre côté** : pas de position obligatoire,
+>   pas de motif à choisir, pas de formulaire à deux champs. Tout ce qui est
+>   bancal est **corrigé** par le serveur (source inconnue → `button`,
+>   coordonnées impossibles → position ignorée mais alerte gardée, note trop
+>   longue → coupée proprement).
+
+⚠️ **LE DOUBLE APPUI N'EST PAS UNE ERREUR, c'est le comportement de quelqu'un
+qui panique.** Le serveur rend **la même** alerte et y ajoute la position — une
+seule ouverte par personne. **Ne désactivez donc pas le bouton** après le
+premier appui et n'affichez pas « déjà envoyé » comme une erreur : appuyer
+encore *améliore* l'alerte et rassure.
+
+⚠️ **APPELEZ `GET /sos/me` AU DÉMARRAGE, TOUJOURS.** Téléphone qui redémarre
+après un choc, application tuée par le système, réseau qui revient : sans cela,
+la personne ne sait plus si son alerte est partie — ou, bien pire, croit avoir
+appelé alors que non. `200` **avec `alert: null`** est le cas NORMAL, pas un
+`404`.
+
+⚠️ **POUSSEZ LA POSITION TOUTES LES 5 À 10 SECONDES** tant que l'alerte vit,
+plus souvent que votre cadence habituelle : un véhicule continue de rouler, et
+l'opérateur a besoin de savoir où la personne **est**, pas où elle a appuyé.
+C'est le seul moment du produit où la fraîcheur d'une position vaut la batterie
+qu'elle coûte.
+
+---
+
+### ⚠️ LES DÉTECTIONS PROPOSENT, ELLES N'ENVOIENT PAS
+
+`shake` (secouer), `crash` (choc violent) et `voice` (mot-clé) ouvrent un
+**compte à rebours** de `countdown_seconds` — 10 s par défaut, réglé par pays —
+avec **un seul** bouton : « Annuler ». À l'expiration, **l'alerte part** avec
+`confirmed: false`.
+
+⚠️ **POURQUOI PAS D'ENVOI DIRECT.** Un dos-d'âne, un téléphone qui tombe, un sac
+qu'on pose : l'envoi direct remplirait la file de faux, l'opérateur apprendrait
+à les ignorer, et la vraie alerte se noierait dedans. **Un faux positif traité
+comme une vraie alerte coûte plus cher qu'un faux positif annulé.**
+
+⚠️ **POURQUOI ELLE PART QUAND PERSONNE N'ANNULE.** C'est tout l'intérêt : après
+un choc violent, **personne n'annule parce que personne ne peut**. Un compte à
+rebours qui s'arrêterait sans rien envoyer serait un bouton de plus, pas une
+détection.
+
+⚠️⚠️ **`confirmed: false` EST PLUS GRAVE, PAS MOINS — et l'intuition dit
+l'inverse.** Le serveur le traite comme tel : `grave: true`, et `trigger` vaut
+`"choc détecté, PERSONNE N'A ANNULÉ"`. Ne le présentez jamais à la personne
+comme « envoyé par erreur », et ne le rangez pas plus bas dans vos écrans.
+
+⚠️ **PENDANT LE COMPTE À REBOURS, PRÉPAREZ TOUT** — acquisition GPS, batterie,
+corps de la requête. À l'expiration, l'envoi doit partir en une milliseconde ;
+un rebours qui finit sur « recherche du GPS… » a gaspillé dix secondes.
+
+⚠️ **ET UN SEUL BOUTON PENDANT LE REBOURS : ANNULER.** Pas de champ de texte
+obligatoire, pas de choix de motif, pas de liste de contacts. La note est
+facultative et s'ajoute **après** l'envoi.
+
+Ce que chacune coûte, et à qui elle sert :
+
+| Détection | Défaut | Pour qui |
+|---|---|---|
+| `shake` | allumée | **la plus utile du lot** : pour le cas où on ne peut PAS regarder l'écran — poche, volant, quelqu'un à côté |
+| `crash` | allumée | ceux qui conduisent. **La seule fonction du produit qui travaille quand on est inconscient** |
+| `voice` | **éteinte** | elle écoute le micro **en permanence** : une permission, de la batterie, une surveillance. Ne s'allume qu'explicitement, et en l'ayant expliqué |
+
+⚠️ **CÔTÉ CLIENT ET MARCHAND, SEULE `shake` A DU SENS** : personne n'est au
+volant, et `crash` mesurerait un téléphone qui tombe du canapé ou une tablette
+posée près d'une plaque de cuisson.
+
+⚠️ **LE VOCAL SE FAIT SUR L'APPAREIL.** N'envoyez aucun flux audio à nos
+serveurs — aucune route ne l'accepte.
+
+---
+
+### ⚠️ AUCUN NUMÉRO D'URGENCE N'EST PRÉCHARGÉ
+
+`numbers` **peut être vide**, et c'est voulu. **N'affichez alors aucun bouton
+d'appel.**
+
+Un numéro approximatif serait **composé par quelqu'un en danger** :
+« probablement le 17 » n'est pas une valeur par défaut acceptable. **N'inventez
+rien** — pas de 112, pas de numéro codé dans l'application, pas de repli « au
+cas où ». Un bouton absent envoie chercher le secours autrement ; un bouton qui
+compose un mauvais numéro fait perdre les trente secondes qui comptent.
+
+⚠️ **COMPOSEZ `number` TEL QUEL.** `17`, `118`, `1515` ne sont **pas** des
+numéros E.164 : ne les préfixez pas de l'indicatif du pays, ne les reformatez
+pas. `kind` (`police`, `ambulance`, `fire`, `platform`) choisit l'icône, `label`
+écrit le bouton.
+
+⚠️ **ET `platform` COMPTE AUTANT QUE LA POLICE** : un passager agressif, une
+dispute sur un prix, une route bloquée — tout ne relève pas de la police, et
+appeler Dira est souvent le bon geste.
+
+---
+
+### L'écran d'alerte
+
+> - **« L'exploitation a été prévenue »** dès le `201` — la seule chose que la
+>   personne cherche à savoir.
+> - **Les boutons d'appel** de `numbers`, en grand, et rien quand la liste est
+>   vide.
+> - **Annuler**, en un appui, **sans seconde confirmation** : un « êtes-vous
+>   sûr ? » fait rester une fausse alerte dans la file, l'opérateur appelle pour
+>   rien, et la prochaine vraie sera prise moins au sérieux.
+> - **De quoi ajouter une note**, facultatif et secondaire.
+>
+> ⚠️ **ET RIEN D'AUTRE** : pas de menu, pas de navigation, pas de retour
+> accidentel vers la course. Cet écran se tient devant quelqu'un dont les mains
+> tremblent.
+
+⚠️ **ANNULER NE SUPPRIME PAS L'ALERTE** : l'exploitation la voit encore quinze
+minutes. Dites-le — « l'exploitation a été prévenue et vous rappellera peut-être
+pour vérifier ». Une annulation peut être **contrainte**, et c'est le scénario
+même que ce bouton existe pour couvrir ; promettre que « tout est effacé » serait
+un mensonge.
+
+⚠️ **PAS DE VERROU D'APPLICATION SUR CET ÉCRAN** (`app_lock`, v4.46.0) : un code
+secret entre quelqu'un et son bouton d'alerte serait indéfendable.
+
+⚠️ **LE BOUTON RESTE ATTEIGNABLE EN DEUX APPUIS**, depuis n'importe quel écran
+d'une opération en cours. Enterré dans un menu « Aide › Sécurité », il n'existe
+pas. **Sauf dans l'application MARCHAND**, où sa place est dans Compte ›
+Sécurité : cette application se tient sur un comptoir à portée des clients, et
+un bouton rouge affleurant se déclenche par accident plusieurs fois par jour.
+
+⚠️ **LE SOS N'EST PAS LE SUPPORT, ET IL N'ANNULE RIEN.** Le support est une
+conversation qu'on relit le lendemain ; le SOS est une alarme qu'un opérateur
+prend dans la minute. Et on peut déclencher l'alerte **et rester dans le
+véhicule** — c'est même le cas le plus fréquent : n'enchaînez pas sur une
+annulation.
+
+> ⚠️ **À distinguer de l'ANNULATION POUR MOTIF GRAVE** (v4.55.0). `accident` et
+> `unsafe` sont des **motifs d'annulation** : ils ferment la course et ouvrent
+> un ticket critique, qu'on regarde dans l'heure. Après un accident, les deux
+> ont leur place — le SOS d'abord, le motif ensuite quand la course se termine.
+
 
 ### 4.55.0 — 8 octobre 2026
 
