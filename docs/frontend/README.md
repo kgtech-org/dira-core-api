@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.54.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.55.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -256,6 +256,9 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] 🔑 **Porte par code** (v4.46.0, applications de CLIENT) : compte à rebours rendu depuis `expires_at`, bouton « renvoyer » gouverné par `resend_after`, nom demandé **seulement** si `created: true`, et l'écran fonctionne **sans** `dev_code` — il disparaîtra. Les applications d'agent et de marchand gardent `POST /auth/login` (`403 otp_not_available` sinon)
 - [ ] 📱 **Appareils** : `device_id` envoyé à la connexion **par toutes les applications** (il ne va pas dans le jeton d'un client, il reconnaît le même téléphone qui revient) ; un `401` au rafraîchissement se traite comme une session expirée, sans message d'erreur technique
 - [ ] 💸 **Annulation** (v4.50.0, applications de CLIENT) : `cancellation` lu **avant** d'afficher le bouton ; montant dit à l'écran de confirmation quand `fee_xof > 0`, jamais un « Annuler » nu ; `why` affiché quand c'est gratuit ; compte à rebours rendu depuis `grace_left_s` et **relu à chaque rafraîchissement** (le chauffeur peut arriver avant la fin de la grâce) ; « remboursement intégral » jamais promis sur une course en **espèces** — les frais y deviennent une dette
+- [ ] 🏷️ **Motif d'annulation** (v4.55.0, applications de CLIENT **et** de CHAUFFEUR) : liste **demandée** à `GET /rides/cancel-reasons`, jamais écrite en dur — elle dépend du rôle du jeton, et un code de l'autre rôle est refusé (`422`, `fields: ["reason_code"]`) ; codes **traduits chez vous** (la route sert des codes, pas des phrases) ; `reason_code` **s'ajoute** à `reason`, il ne le remplace pas ; `grave` lu dans la réponse plutôt que testé sur `code === "accident"` ; côté chauffeur, un motif grave ouvre un ticket critique → confirmation à part, « le support a été alerté », et **l'annulation aboutit même si le ticket échoue** (pas de réessai) ; `cancelled_reason_code` **absent** sur les courses d'avant la 4.55.0 → affichez `cancelled_reason` telle quelle, ne traduisez pas l'absence par `other`
+- [ ] 📞 **Taux d'acceptation** (v4.55.0, application de CHAUFFEUR) : `rate` **absent** quand `called` vaut 0 → « — » ou « aucun appel reçu », **jamais 0 %** (qui se lit « il refuse tout ») ; `acceptance` **tout entier** peut manquer quand le suivi ne répond pas → masquez ou dites « indisponible », jamais zéro ; `declined` et `missed` **jamais additionnés** (un geste et une panne) ; ne recalculez pas le taux vous-même
+- [ ] 🧱 **Plafond de dette** (v4.55.0, application de CHAUFFEUR) : `max_debt_xof` **affiché depuis le relevé**, aucune valeur en dur — il est réglé **par pays** ; `max_debt_source` (`country` | `partner`) nommé dans le message de blocage, parce que l'interlocuteur change (l'exploitation, ou le propriétaire du véhicule) ; `max_debt_by` affiché quand il est là ; source absente traitée comme `country`
 - [ ] 🔒 **Confidentialité** (v4.49.0) : **aucune** règle d'affichage en dur — ni par pays, ni par métier. `show_phone` lu **avant** d'écrire un numéro à l'écran ; `direct_call` sans `show_phone` = un bouton qui appelle et le numéro **nulle part** ; `in_app_alert` lu pour **cacher** (et non désactiver) le bouton du klaxon ; nom affiché **tel que servi**, jamais reconstruit depuis `first_name` + `last_name` ; un champ absent traité comme fermé, **sans réessai** ; véhicule et argent à encaisser toujours montrés ; tout fermé → l'écran mène à la **conversation**
 - [ ] 🗑️ **Suppression de compte** (v4.47.0) : `DELETE /me` dans les applications de **CLIENT** — écran de conséquences **avant** la preuve d'identité (`password` ou `code`), **`erase_at` affiché**, « les courses et les commandes passées restent, anonymes » dit **avant** le bouton, `409 wallet_not_empty` renvoyé vers le solde. Les applications d'**agent** et de **marchand** n'affichent **pas** de bouton (`403 erasure_not_self_serve`) mais mettent « écrire au support ». **Toutes** traitent `403 account_closed` comme une fin de session **définitive** — pas comme une suspension
 - [ ] 🔒 **Verrou de l'application** (v4.46.0) : `app_lock` relu à **chaque** réponse qui le porte, y compris le **rafraîchissement**, et appliqué à chaud ; code de secours toujours possible à côté de la biométrie ; au-delà de `max_attempts`, **déconnexion** (jamais blocage) ; **jamais de verrou sur un écran d'appel ni sur l'urgence**
@@ -326,6 +329,121 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.55.0 — 8 octobre 2026
+
+Trois trous du produit VTC, fermés ensemble parce qu'ils se rencontrent sur le
+même écran : **un chauffeur qui ne reçoit plus d'appels et ne sait pas
+pourquoi**.
+
+---
+
+🧱 **LE PLAFOND DE DETTE ÉTAIT LA MÊME CONSTANTE POUR TOUS LES PAYS** — 10 000,
+dans la monnaie de chacun. En Guinée, où le franc guinéen vaut quinze fois
+moins, cela coupait un chauffeur de Conakry **après une seule course en
+espèces**. C'était un bug en production, pas un manque.
+
+Le relevé (`GET /drivers/me/statement`) porte maintenant :
+
+| Champ | Ce qu'il dit |
+|---|---|
+| `max_debt_xof` | le plafond **effectif** — celui qui s'applique vraiment |
+| `max_debt_source` | `country` (l'exploitation du pays) ou `partner` (la flotte, plus serrée) |
+| `max_debt_by` | qui l'a demandé, quand on le sait |
+
+⚠️ **N'ÉCRIVEZ AUCUN PLAFOND EN DUR.** Il est réglé par pays, depuis la console,
+et il a déjà changé.
+
+⚠️ **DEUX BORNES, LA PLUS SERRÉE MORD.** Un partenaire de flotte peut poser une
+limite **pour un chauffeur seul** : il répond des espèces encaissées avec son
+véhicule. `max_debt_xof` est déjà le résultat des deux — rien à comparer chez
+vous.
+
+⚠️ **ET C'EST `max_debt_source` QUI REND LE MESSAGE UTILE.** « Vous ne recevez
+plus d'appels » sans dire **quelle** borne a mordu envoie le chauffeur au
+support, qui lit le plafond du pays et n'y comprend rien — alors que c'est son
+partenaire qui a posé 5 000. Le geste est le même (régler), mais
+**l'interlocuteur change**.
+
+---
+
+📞 **LE TAUX D'ACCEPTATION, CALCULÉ SUR DES APPELS DÉJÀ JOURNALISÉS.** C'était
+un calcul manquant, pas une collecte manquante. `GET /drivers/me/stats` porte
+un bloc `acceptance` :
+
+```json
+{ "acceptance": { "called": 10, "accepted": 6, "declined": 3, "missed": 1, "rate": 60 } }
+```
+
+⚠️ **PAS DE TAUX SANS APPEL.** `rate` est **absent** quand `called` vaut 0, et
+ce n'est pas un zéro : un chauffeur qui n'a reçu aucun appel n'a **pas** un taux
+de 0 %. « 0 % » se lit « il refuse tout » — l'inverse exact — et c'est le premier
+écran d'un nouveau chauffeur qui attend sa première course. Affichez « — ». **Ne
+recalculez pas** `accepted / called` : vous retomberiez sur la division par zéro
+que le serveur vient d'éviter.
+
+⚠️ **`acceptance` TOUT ENTIER PEUT MANQUER**, et ce n'est pas « zéro appel » :
+c'est « on n'a pas pu demander ». Le bloc est **omis** quand le service de suivi
+ne répond pas, plutôt que rendu à zéro — un zéro ferait passer la journée du
+chauffeur pour mauvaise à cause d'une panne de notre côté.
+
+⚠️ **`declined` ET `missed` RESTENT SÉPARÉS.** Refuser est un **geste** ; laisser
+sonner est autre chose (téléphone dans une poche, réseau perdu). Les additionner
+mélangerait un choix et une panne.
+
+⚠️ **AFFICHEZ LE TAUX AVEC SES QUATRE NOMBRES.** « 60 % » ne se discute pas ;
+« 6 acceptés sur 10 reçus » se discute — et c'est un chiffre dont on juge
+quelqu'un.
+
+---
+
+🏷️ **LE MOTIF D'ANNULATION ÉTAIT UN TEXTE LIBRE, ET IL NE SE COMPTAIT PAS.**
+« changé d'avis », « Changé d'avis », « chg avis », « il est pas venu » : quatre
+façons d'écrire deux faits, et aucune manière de répondre à « combien de
+passagers posés par un chauffeur cette semaine ? ».
+
+```
+GET /rides/cancel-reasons   → { "by": "driver", "items": [ { "code": "rider_no_show", "grave": false }, … ] }
+POST /rides/{id}/cancel     { "reason_code": "wait_too_long", "reason": "…" }   // client
+POST /rides/{id}/decline    { "reason_code": "rider_no_show",  "reason": "…" }   // chauffeur
+```
+
+⚠️ **DEMANDEZ LA LISTE, N'INVENTEZ PAS LES CODES.** Elle **dépend du rôle du
+jeton**, et le serveur refuse un code de l'autre rôle (`422`, `fields:
+["reason_code"]`, avec `allowed`). Les deux listes ne décrivent pas les mêmes
+faits : proposer « le passager n'est pas venu » à un passager est absurde.
+
+⚠️ **TRADUISEZ LES CODES CHEZ VOUS.** La route sert les codes et leur gravité,
+**pas des phrases**.
+
+⚠️ **LE CODE S'AJOUTE À LA PHRASE LIBRE, IL NE LA REMPLACE PAS.** Le code **se
+compte**, la phrase **explique le cas**. Une taxonomie ne couvre jamais tout, et
+forcer un choix fait cocher le premier élément de la liste — pire qu'un champ
+vide, parce qu'on le croit. `other` existe pour ça.
+
+⚠️ **DEUX MOTIFS APPELLENT QUELQU'UN TOUT DE SUITE** — `accident` et `unsafe`,
+marqués `grave: true`. Ils ouvrent un **ticket de support critique** rattaché à
+la course, dans la file que le support regarde déjà (une seconde file se
+surveille toujours moins). Côté chauffeur : une confirmation **à part**, dites
+que le support a été alerté, et proposez de l'appeler.
+
+⚠️ **L'ANNULATION ABOUTIT MÊME SI LE TICKET ÉCHOUE** — n'attendez pas de
+confirmation et **ne réessayez pas**. Le chauffeur est peut-être au bord de la
+route : le bloquer dans un écran serait indéfendable.
+
+⚠️ **LISEZ `grave` PLUTÔT QUE DE TESTER `code === "accident"`** : le jour où un
+motif grave s'ajoute, votre application le traitera déjà correctement.
+
+🔎 **`driver_asked` EST UN SIGNAL DE FRAUDE** — « le chauffeur m'a demandé
+d'annuler ». Un chauffeur qui fait annuler son passager évite les frais
+d'annulation **et** garde sa place dans le vivier. Proposez-le en clair côté
+client : sans ce choix, le geste est indistinguable d'un renoncement.
+
+⚠️ **ET LES COURSES ANNULÉES AVANT CETTE VERSION N'ONT QUE LA PHRASE.**
+`cancelled_reason_code` est absent sur elles : affichez `cancelled_reason` telle
+quelle, et **ne traduisez pas son absence par `other`** — c'est leur seule
+explication.
+
 
 ### 4.54.0 — 8 octobre 2026
 

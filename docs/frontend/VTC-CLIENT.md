@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.54.0** · 8 octobre 2026
+> **Version 4.55.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -2115,11 +2115,74 @@ Chaque `stops[i].reached_at` porte l'instant.
 **Annuler** :
 
 ```
-POST /rides/{id}/cancel   { "reason": "…" }   // motif facultatif
+POST /rides/{id}/cancel   { "reason_code": "wait_too_long", "reason": "…" }   // les deux facultatifs
 ```
 
 `409 invalid_transition` sur une course `in_transit` : le bouton doit
 disparaître à ce statut, pas échouer.
+
+### 🏷️ LE MOTIF, NOMMÉ — `reason_code` et `GET /rides/cancel-reasons` (v4.55.0)
+
+Le motif d'annulation était un **texte libre**, et il ne se comptait pas :
+« changé d'avis », « Changé d'avis », « chg avis », « il est pas venu » — quatre
+façons d'écrire deux faits, et aucun moyen de répondre à « combien de
+passagers posés par un chauffeur cette semaine ? ». Un champ qu'on ne peut pas
+grouper n'existe que pour celui qui l'a tapé.
+
+**Demandez la liste, n'inventez pas les codes :**
+
+```
+GET /rides/cancel-reasons
+→ { "by": "rider", "items": [ { "code": "changed_mind", "grave": false }, … ] }
+```
+
+```jsonc
+{ "by": "rider", "items": [
+  { "code": "changed_mind",      "grave": false },   // je n'ai plus besoin de la course
+  { "code": "wait_too_long",     "grave": false },   // l'attente est trop longue
+  { "code": "driver_not_moving", "grave": false },   // il a accepté et ne vient pas
+  { "code": "driver_asked",      "grave": false },   // le chauffeur m'a demandé d'annuler
+  { "code": "wrong_address",     "grave": false },   // je me suis trompé de départ
+  { "code": "price",             "grave": false },   // le prix ne me convient pas
+  { "code": "other",             "grave": false } ] }
+```
+
+⚠️ **LA LISTE DÉPEND DU RÔLE DU JETON**, et le serveur **refuse** un code de
+l'autre rôle. Avec votre jeton de client vous recevez les motifs du PASSAGER ; « le passager n'est pas venu » n'y est pas, et l'envoyer serait refusé. Les deux listes ne décrivent pas les mêmes faits. Appelez la route, mettez le résultat en cache pour la
+session, et composez la liste depuis elle — un code écrit en dur dans
+l'application sera refusé le jour où la taxonomie change.
+
+⚠️ **TRADUISEZ LES CODES CHEZ VOUS.** La route sert les codes et leur gravité,
+**pas des phrases** : à vous de les afficher dans la langue de l'utilisateur.
+Un serveur qui renverrait du français vous obligerait à l'ignorer de toute
+façon.
+
+⚠️ **LE CODE RESTE FACULTATIF, ET LA PHRASE LIBRE RESTE À CÔTÉ.** Les deux
+ensemble, parce qu'ils ne disent pas la même chose : le code **se compte**, la
+phrase **explique le cas**. Une taxonomie ne couvre jamais tout, et forcer un
+choix fait cocher le premier élément de la liste — ce qui est pire qu'un champ
+vide, parce qu'on le croit. `other` existe pour ça.
+
+⚠️ **UN CODE INVENTÉ EST REFUSÉ** — `422` avec `fields: ["reason_code"]` et la
+liste `allowed`. N'envoyez rien plutôt qu'un code approximatif : une annulation
+refusée pour un détail de formulaire laisse l'utilisateur coincé sur une course
+dont il veut sortir.
+
+⚠️ **ET LE MOTIF SE RELIT** : la course rend `cancelled_reason_code` à côté de
+`cancelled_reason`. Les courses **annulées avant la 4.55.0** n'ont que la
+phrase — ne traduisez pas son absence par `other`, et affichez-la telle quelle :
+c'est leur seule explication.
+
+⚠️ **`driver_asked` EST LE MOTIF QU'IL FAUT VRAIMENT PROPOSER.** « Le chauffeur
+m'a demandé d'annuler » est un **signal de fraude** : un chauffeur qui fait
+annuler son passager évite les frais d'annulation **et** garde sa place dans le
+vivier. Sans ce choix, le geste est indistinguable d'un passager qui renonce, et
+il ne se compte nulle part. Formulez-le en clair dans la liste.
+
+⚠️ **AUCUN MOTIF N'EST `grave` CÔTÉ PASSAGER**, et `grave` vous est pourtant
+servi : lisez-le plutôt que de supposer qu'il vaut toujours `false`. Un passager
+qui signale une agression passe par le **support** (§ support), pas par une
+annulation — c'est un échange, pas une case à cocher.
 
 ### 💸 CE QU'ANNULER COÛTE — à lire AVANT le bouton (v4.50.0)
 
