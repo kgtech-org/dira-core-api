@@ -90,3 +90,49 @@ func TestMessageSpeaksTheRequestsLanguage(t *testing.T) {
 	assert.Equal(t, "ride not found", Message(context.Background(), err))
 	assert.Equal(t, "boom", Message(context.Background(), apperr.Validation("boom")), "un code sans phrase garde la sienne")
 }
+
+// ⚠️ LE NOM D'UN FICHIER SERVI VIENT DE DONNÉES SAISIES — une adresse, un
+// libellé d'enseigne. Un guillemet y referme l'en-tête `Content-Disposition`, et
+// un retour à la ligne en ouvre un autre : c'est une injection d'en-tête, pas
+// une coquetterie d'affichage.
+func TestAFilenameCannotEscapeItsHeader(t *testing.T) {
+	rec := httptest.NewRecorder()
+	PDF(rec, `recu"; x=1`+"\r\nSet-Cookie: a=b\r\n", []byte("%PDF-1.3"))
+
+	cd := rec.Header().Get("Content-Disposition")
+	// ⚠️ CE QUI COMPTE N'EST PAS QUE LE MOT « Set-Cookie » DISPARAISSE — entre
+	// guillemets, c'est du texte inoffensif — mais que RIEN NE PUISSE REFERMER
+	// L'EN-TÊTE NI EN OUVRIR UN AUTRE : pas de guillemet, pas de CR, pas de LF.
+	assert.NotContains(t, cd, `"; `, "aucun guillemet ne referme la valeur")
+	assert.NotContains(t, cd, "\r")
+	assert.NotContains(t, cd, "\n")
+	assert.Equal(t, `attachment; filename="recu-x1Set-Cookie-ab"`, cd,
+		"ne restent que lettres, chiffres, tiret, point et souligné")
+	assert.Empty(t, rec.Header().Get("Set-Cookie"), "aucun en-tête n'a été injecté")
+}
+
+// ⚠️ UN NOM VIDÉ PAR LE NETTOYAGE NE DONNE PAS UN EN-TÊTE VIDE. Un
+// `filename=""` fait enregistrer le fichier sous un nom inventé par le
+// navigateur — souvent l'identifiant de la route, sans extension, que le système
+// refuse ensuite d'ouvrir.
+func TestAFilenameMadeOnlyOfPunctuationFallsBack(t *testing.T) {
+	rec := httptest.NewRecorder()
+	PDF(rec, "«»/\\", []byte("%PDF-1.3"))
+	assert.Contains(t, rec.Header().Get("Content-Disposition"), `filename="document.pdf"`)
+}
+
+// ⚠️ UN REÇU NE SE MET PAS EN CACHE. Il porte un nom, un trajet et un montant :
+// laissé par un proxy ou par le navigateur d'un cybercafé, il se relit après la
+// déconnexion.
+func TestAReceiptIsNeverCached(t *testing.T) {
+	rec := httptest.NewRecorder()
+	PDF(rec, "recu-a1b2c3.pdf", []byte("%PDF-1.3"))
+
+	assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	assert.Equal(t, "application/pdf", rec.Header().Get("Content-Type"))
+	assert.Equal(t, "8", rec.Header().Get("Content-Length"))
+	// ⚠️ `attachment`, pas `inline` : vingt reçus ouverts dans un onglet
+	// s'appellent tous pareil dans le dossier de téléchargements.
+	assert.Contains(t, rec.Header().Get("Content-Disposition"), "attachment")
+	assert.Equal(t, "%PDF-1.3", rec.Body.String())
+}
