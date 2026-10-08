@@ -332,13 +332,34 @@ func (h *Handler) patchInfluencer(w http.ResponseWriter, r *http.Request) {
 
 // --- CE QU'UNE VERTICALE DEMANDE ------------------------------------------
 
+// POST /internal/promo-codes/quote — ce qu'un code accorderait, sans réserver.
+//
+// ⚠️ UN MONTANT OU PLUSIEURS. Un devis de course calcule quatre prix, un par
+// véhicule : les demander en un appel évite quatre allers-retours sur l'écran
+// le plus regardé de la plateforme.
 func (h *Handler) svcQuote(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeRedeem(r, false)
-	if err != nil {
+	var req struct {
+		Code     string `json:"code" validate:"required,max=32"`
+		UserID   string `json:"user_id" validate:"required,len=24,hexadecimal"`
+		Vertical string `json:"vertical" validate:"required,oneof=vtc food"`
+		// AmountXOF : un seul montant. Amounts : plusieurs, et la réponse
+		// porte alors une remise par montant, dans le même ordre.
+		AmountXOF int   `json:"amount_xof" validate:"omitempty,min=1"`
+		Amounts   []int `json:"amounts" validate:"omitempty,max=12,dive,min=1"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
 		httpx.Error(w, r, err)
 		return
 	}
-	out, err := h.svc.Quote(r.Context(), req.Code, req.UserID, req.Vertical, req.AmountXOF)
+	amounts := req.Amounts
+	if len(amounts) == 0 {
+		if req.AmountXOF <= 0 {
+			httpx.Error(w, r, apperr.Validation("send amount_xof or amounts"))
+			return
+		}
+		amounts = []int{req.AmountXOF}
+	}
+	out, err := h.svc.QuoteMany(r.Context(), req.Code, req.UserID, req.Vertical, amounts)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
