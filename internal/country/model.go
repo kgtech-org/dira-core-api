@@ -56,6 +56,12 @@ type Installation struct {
 	// Security : ce que ce pays décide de la sécurité des APPLICATIONS — le
 	// verrou (biométrie ou code) aujourd'hui. Voir `security.go`.
 	Security Security `bson:"security,omitempty"`
+	// Privacy : QUI VOIT QUOI DE QUI entre un client et l'agent qui le sert,
+	// métier par métier. Voir `privacy.go`.
+	//
+	// ⚠️ ABSENT = LES DÉFAUTS DU MÉTIER, qui reproduisent ce qui s'échangeait
+	// avant ce réglage. Un pays jamais touché ne change pas de comportement.
+	Privacy Privacy `bson:"privacy,omitempty"`
 }
 
 // Les deux fonds de carte possibles.

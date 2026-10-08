@@ -56,6 +56,14 @@ type Accounts interface {
 	// tient en un appel — c'est un gain de trajets, pas de pouvoir.
 	AccountsByIDs(ctx context.Context, ids []string) ([]user.AccountRow, error)
 	AccountByID(ctx context.Context, id string) (*user.AccountRow, error)
+	// PersonOf rend l'identité NUE d'un compte, que la politique de
+	// confidentialité filtre ensuite — voir `disclose.go`.
+	//
+	// ⚠️ ELLE N'ÉLARGIT RIEN : `ContactOf` rendait déjà le nom et le
+	// téléphone. Elle ajoute le prénom, le nom de famille, la photo et le
+	// genre PARCE QUE la console peut décider de les ouvrir — et c'est la
+	// porte de divulgation, pas celle-ci, qui décide ce qui sort.
+	PersonOf(ctx context.Context, userID string) (*user.Person, error)
 	// SearchAccounts trouve des comptes par NOM ou TÉLÉPHONE (sous-chaîne),
 	// parmi des rôles, dans le pays de la requête — ce qu'une barre de
 	// recherche d'exploitation demande quand elle cherche « Kossi » ou
@@ -157,6 +165,9 @@ type Handler struct {
 	journal    Journal
 	equipment  Equipment
 	files      Files
+	// privacy : CE QUE DEUX INCONNUS S'ÉCHANGENT sur une course, réglé par
+	// pays et par métier depuis la console. Voir `disclose.go`.
+	privacy Privacy
 }
 
 // Files est le STOCKAGE D'OBJETS, et le socle est le seul à l'ouvrir.
@@ -296,6 +307,9 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		// OUBLIER DES FICHIERS — la part de l'effacement d'un compte que seule
 		// une verticale sait nommer et que seul le socle sait exécuter.
 		g.Post("/internal/files/forget", h.forgetFiles)
+		// CE QU'UNE VERTICALE A LE DROIT DE MONTRER d'une personne à l'autre —
+		// réglé par pays et par métier. Voir `disclose.go`.
+		g.Post("/internal/accounts/disclose", h.disclose)
 		g.Post("/internal/payments/initiate", h.initiatePayment)
 
 		g.Post("/internal/backoffice/wallets", h.listWallets)

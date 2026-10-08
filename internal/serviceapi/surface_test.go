@@ -32,6 +32,15 @@ var declaredSurface = []string{
 	"/internal/accounts/agent-app",
 	"/internal/accounts/by-phone",
 	"/internal/accounts/contact",
+	// CE QU'UNE VERTICALE A LE DROIT DE MONTRER d'une personne à l'autre : le
+	// nom au niveau choisi, et seulement les champs que le pays a ouverts pour
+	// ce métier et ce public.
+	//
+	// ⚠️ ELLE N'ÉLARGIT PAS LA SURFACE, ELLE LA RESSERRE. `/contact` rend le
+	// nom et le téléphone sans filtre — c'est la vérité du back-office. Celle-
+	// ci rend MOINS, et c'est elle qu'une verticale doit appeler pour montrer
+	// quelqu'un à quelqu'un d'autre : un champ qu'on n'envoie pas ne fuit pas.
+	"/internal/accounts/disclose",
 	"/internal/accounts/ensure",
 	"/internal/accounts/ensure-merchant",
 	"/internal/accounts/get",

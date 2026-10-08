@@ -39,6 +39,10 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		// `security.go`.
 		g.With(admin).Get("/admin/countries/{code}/security", h.security)
 		g.With(admin).Put("/admin/countries/{code}/security", h.updateSecurity)
+		// QUI VOIT QUOI DE QUI entre un client et l'agent qui le sert, métier
+		// par métier. Voir `privacy.go`.
+		g.With(admin).Get("/admin/countries/{code}/privacy", h.privacy)
+		g.With(admin).Put("/admin/countries/{code}/privacy", h.updatePrivacy)
 	})
 }
 
@@ -82,6 +86,33 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 // GET /admin/countries/{code}/security
 func (h *Handler) security(w http.ResponseWriter, r *http.Request) {
 	out, err := h.svc.Security(r.Context(), chi.URLParam(r, "code"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// GET /admin/countries/{code}/privacy
+func (h *Handler) privacy(w http.ResponseWriter, r *http.Request) {
+	out, err := h.svc.Privacy(r.Context(), chi.URLParam(r, "code"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// PUT /admin/countries/{code}/privacy {vertical, audience, name?, phone?, …}
+//
+// Un SEUL sens d'un SEUL métier par appel — voir `PrivacyUpdateRequest`.
+func (h *Handler) updatePrivacy(w http.ResponseWriter, r *http.Request) {
+	var req PrivacyUpdateRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := h.svc.UpdatePrivacy(r.Context(), chi.URLParam(r, "code"), req)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
