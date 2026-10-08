@@ -274,13 +274,18 @@ func TestQueueSurvivesAnAccountLookupFailure(t *testing.T) {
 	assert.Empty(t, queue[0].UserID, "et le compte manquant est ABSENT, pas inventé")
 }
 
-// ⚠️ UN VÉHICULE NON MOTORISÉ N'ATTEND AUCUNE PIÈCE.
+// ⚠️ UN VÉHICULE NON MOTORISÉ N'ATTEND AUCUN PAPIER.
 //
 // La plateforme réclamait une carte grise à un livreur À PIED, et une
 // assurance à un vélo. Ces gens restaient « non conformes » pour toujours, sur
 // un écran qui ne leur proposait aucun moyen de régulariser — et l'exploitation
 // voyait une file de conformité pleine de défauts impossibles à corriger, ce
 // qui est la meilleure façon de cesser de la regarder.
+//
+// ⚠️ IL ATTEND EN REVANCHE SA PHOTO (une seule, de côté), parce qu'un vélo n'a
+// pas de plaque : c'est la seule façon de le reconnaître dans la rue. Ce test
+// la dépose donc, et c'est tout ce qui s'ajoute — voir
+// `TestAnUnmotorisedVehicleExpectsItsPhotoAndNoPaper`.
 func TestUnmotorisedVehicleNeedsNoPaper(t *testing.T) {
 	fx := newFixture()
 	userID := primitive.NewObjectID().Hex()
@@ -305,13 +310,18 @@ func TestUnmotorisedVehicleNeedsNoPaper(t *testing.T) {
 		require.NoError(t, err)
 	}
 
+	// La photo du vélo — la SEULE chose que son véhicule demande.
+	photo := submit(t, fx, userID, SubmitDocumentRequest{
+		Kind: DocVehicleSide, VehicleID: bike, FileURL: "https://f/bike.jpg",
+	})
+	_, err := fx.svc.ReviewDocument(ctx, admin, photo.ID, ReviewDocumentRequest{Status: DocValid})
+	require.NoError(t, err)
+
 	st, err := fx.svc.Compliance(ctx, userID)
 	require.NoError(t, err)
-	assert.True(t, st.Compliant, "un livreur à vélo ne doit que les pièces de sa personne")
+	assert.True(t, st.Compliant,
+		"un livreur à vélo ne doit que les pièces de sa personne, et la photo de son vélo")
 	assert.Empty(t, st.Missing)
-	for _, m := range st.Missing {
-		assert.NotContains(t, m, bike)
-	}
 }
 
 // ⚠️ LE PERMIS SUIT LES VÉHICULES, et la règle est appelée directement.
@@ -338,7 +348,9 @@ func TestLicenceFollowsMotorisedVehicles(t *testing.T) {
 // Et la règle elle-même, appelée directement.
 func TestKindsForDependsOnMotorisation(t *testing.T) {
 	assert.Equal(t, VehicleKinds, KindsFor(VehicleRef{ID: "x", Motorised: true}))
-	assert.Empty(t, KindsFor(VehicleRef{ID: "x", Motorised: false}))
+	// ⚠️ Un non-motorisé n'attend QUE sa photo — voir
+	// `TestAnUnmotorisedVehicleExpectsItsPhotoAndNoPaper` pour le pourquoi.
+	assert.Equal(t, []string{DocVehicleSide}, KindsFor(VehicleRef{ID: "x", Motorised: false}))
 	// Les trois pièces d'un véhicule motorisé, contrôle technique compris.
 	assert.Contains(t, VehicleKinds, DocInspection)
 }
@@ -450,13 +462,30 @@ func TestAMissingVehiclePhotoSaysWhichAngle(t *testing.T) {
 	assert.Contains(t, st.Missing, DocVehicleSide+":"+vehicle)
 }
 
-// ⚠️ UN VÉHICULE NON MOTORISÉ N'ATTEND TOUJOURS RIEN — photos comprises. La
-// règle existante est que la motorisation crée l'obligation ; y faire une
-// exception pour les photos aurait mis en défaut tous les cyclistes déjà
-// inscrits, pour une pièce que personne ne leur avait demandée.
-func TestAnUnmotorisedVehicleStillExpectsNoPhoto(t *testing.T) {
+// ⚠️ UN VÉHICULE NON MOTORISÉ N'ATTEND AUCUN PAPIER — MAIS IL ATTEND UNE PHOTO.
+// C'est le seul endroit du paquet où le non-motorisé demande PLUS, pas moins, et
+// la raison est qu'IL N'A PAS DE PLAQUE : pour une moto, « AB-1234-CD »
+// identifie l'engin ; un vélo n'a rien de tel, et la photo est la seule façon
+// de dire à un client ce qu'il doit chercher dans la rue.
+//
+// ⚠️ CE TEST AFFIRMAIT L'INVERSE, avec ce motif : « y faire une exception aurait
+// mis en défaut tous les cyclistes déjà inscrits ». Le motif tenait debout, et
+// ce qui l'a renversé est une VÉRIFICATION : rien, dans aucune des deux
+// verticales, ne conditionne le dispatch à `compliant` — on l'a cherché. « En
+// défaut » est donc une liste de choses à envoyer, pas une sanction : personne
+// ne cesse de travailler parce qu'il manque la photo de son vélo. Si un jour le
+// dispatch lit ce drapeau, c'est CETTE décision qu'il faudra reprendre.
+//
+// ⚠️ UNE SEULE PHOTO, ET C'EST LE CÔTÉ. Trois vues d'un vélo seraient trois fois
+// le même objet, et `vehicle_front` est documenté comme « plaque lisible » —
+// une attente qu'un vélo ne peut pas satisfaire.
+func TestAnUnmotorisedVehicleExpectsItsPhotoAndNoPaper(t *testing.T) {
 	bike := VehicleRef{ID: "b", Motorised: false}
-	assert.Empty(t, KindsFor(bike))
+	assert.Equal(t, []string{DocVehicleSide}, KindsFor(bike))
+	// Aucun PAPIER : ni carte grise, ni assurance, ni contrôle technique.
+	for _, kind := range []string{DocRegistration, DocInsurance, DocInspection} {
+		assert.NotContains(t, KindsFor(bike), kind, "un vélo n'a pas de %s", kind)
+	}
 	moto := VehicleRef{ID: "m", Motorised: true}
 	for _, kind := range VehiclePhotoKinds {
 		assert.Contains(t, KindsFor(moto), kind)

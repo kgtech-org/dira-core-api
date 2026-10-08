@@ -36,6 +36,11 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		// L'exiger dans le chemin aurait obligé l'application à retrouver le bon
 		// contrat avant d'envoyer, c'est-à-dire à deviner lequel on lui remet.
 		g.Post("/equipment/handover", h.scanHandover)
+		// LE SCAN DU RETOUR — voir `returnscan.go`. ⚠️ Pas sous
+		// `/me/equipment/{id}/...`, pour la même raison que la remise : c'est
+		// le CODE qui désigne le contrat, et le porteur ne connaît pas son
+		// identifiant.
+		g.Post("/equipment/return", h.scanReturn)
 		g.Post("/me/equipment/{id}/pay", h.pay)
 	})
 	r.Group(func(g chi.Router) {
@@ -55,6 +60,9 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		g.Post("/admin/equipment/contracts/{id}/handover-code", h.mintHandoverCode)
 		g.Post("/admin/equipment/contracts/{id}/payments", h.payment)
 		g.Post("/admin/equipment/contracts/{id}/return", h.ret)
+		// Le QR que le comptoir affiche pour faire ACCEPTER le constat de
+		// retour — l'état, les dégâts, et ce qui sera rendu de la caution.
+		g.Post("/admin/equipment/contracts/{id}/return-code", h.mintReturnCode)
 		g.Post("/admin/equipment/contracts/{id}/cancel", h.cancel)
 		g.Post("/admin/equipment/contracts/{id}/default", h.defaulted)
 		g.Post("/admin/equipment/contracts/{id}/lines/{n}/waive", h.waive)
@@ -302,6 +310,51 @@ func (h *Handler) ret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.action(w, r, func(actor, id string) (*ContractResponse, error) { return h.svc.Return(r.Context(), actor, id, req) })
+}
+
+// POST /admin/equipment/contracts/{id}/return-code {condition?, damage_fee_xof?, refund_deposit?}
+//
+// ⚠️ LE CONSTAT PART AVEC LA DEMANDE DE CODE, et non au scan. C'est ce qui
+// permet au QR d'afficher ce que le porteur accepte : « bon état, 0 F de dégâts,
+// caution rendue 5 000 F ». Un QR nu l'aurait fait scanner sans savoir, ce qui
+// vaut moins qu'un clic d'agent parce que ça en a l'air plus.
+func (h *Handler) mintReturnCode(w http.ResponseWriter, r *http.Request) {
+	actorID, _ := auth.UserFromContext(r.Context())
+	var req ReturnInput
+	if r.ContentLength > 0 {
+		if err := httpx.Decode(r, &req); err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+	}
+	out, err := h.svc.MintReturnCode(r.Context(), actorID, chi.URLParam(r, "id"), req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, out)
+}
+
+// POST /equipment/return { code } — le porteur a scanné le constat.
+//
+// ⚠️ LE CODE EST DANS LE CORPS, PAS DANS LE CHEMIN, comme pour la remise : un
+// code en chemin se retrouve dans les journaux du proxy et les traces d'accès,
+// or c'est un secret qui vaut une caution pendant cinq minutes.
+func (h *Handler) scanReturn(w http.ResponseWriter, r *http.Request) {
+	userID, _ := auth.UserFromContext(r.Context())
+	var req struct {
+		Code string `json:"code" validate:"required,max=120"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := h.svc.ScanReturn(r.Context(), userID, req.Code)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) cancel(w http.ResponseWriter, r *http.Request) {

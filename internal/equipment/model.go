@@ -264,6 +264,30 @@ type Contract struct {
 	HandedVia    string     `bson:"handed_via,omitempty"`
 	HandedScanAt *time.Time `bson:"handed_scan_at,omitempty"`
 
+	// LE SCAN DU RETOUR — voir `returnscan.go`.
+	//
+	// ⚠️ DES CHAMPS SÉPARÉS DE CEUX DE LA REMISE, et non le même code réutilisé.
+	// Un code de remise oublié sur un contrat devenu actif aurait été
+	// consommable comme un code de RETOUR : le même secret aurait rendu le gilet
+	// qu'il venait de remettre.
+	ReturnCode          string     `bson:"return_code,omitempty"`
+	ReturnCodeExpiresAt *time.Time `bson:"return_code_expires_at,omitempty"`
+	// ReturnProposal : le constat posé au comptoir, en attente du scan.
+	//
+	// ⚠️ IL NE MODIFIE RIEN tant que personne n'a scanné — c'est la différence
+	// entre « voici ce que nous allons retenir » et « nous avons retenu », et
+	// c'est toute la valeur du geste. Un code qui expire sans être scanné ne
+	// laisse donc aucune trace sur l'argent.
+	ReturnProposal ReturnProposal `bson:"return_proposal,omitempty"`
+	// ReturnedVia : `scan` quand le porteur a accepté le constat, `staff` quand
+	// l'exploitation a enregistré seule.
+	//
+	// ⚠️ C'EST LE CHAMP QU'ON REGARDE QUAND UNE CAUTION EST CONTESTÉE. Vide sur
+	// un contrat rendu avant que le scan existe — « on ne sait pas » n'est pas
+	// « sans preuve », et il ne faut pas traduire l'absence par `staff`.
+	ReturnedVia    string     `bson:"returned_via,omitempty"`
+	ReturnedScanAt *time.Time `bson:"returned_scan_at,omitempty"`
+
 	Notes       string     `bson:"notes,omitempty"`
 	CreatedBy   string     `bson:"created_by,omitempty"`
 	RequestedAt *time.Time `bson:"requested_at,omitempty"`

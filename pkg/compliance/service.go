@@ -141,11 +141,31 @@ func PersonKindsFor(vehicles []VehicleRef) []string {
 
 // KindsFor rend les pièces attendues d'un véhicule.
 //
-// Un véhicule non motorisé n'en attend AUCUNE : c'est une liste vide, pas une
-// dispense — la différence compte, parce qu'une dispense se retire.
+// ⚠️ UN VÉHICULE NON MOTORISÉ N'ATTEND AUCUN PAPIER — ni carte grise, ni
+// assurance, ni contrôle technique — MAIS IL ATTEND UNE PHOTO, et c'est le seul
+// endroit du paquet où le non-motorisé demande plus, pas moins.
+//
+// La raison est qu'IL N'A PAS DE PLAQUE. Pour une moto ou une voiture, la
+// plaque identifie le véhicule : un client qui attend s'entend dire
+// « AB-1234-CD », et l'exploitation retrouve l'engin par ce numéro. Un vélo n'a
+// rien de tel. La photo est alors la SEULE façon de dire à quelqu'un ce qu'il
+// doit chercher dans la rue, et la seule preuve que le véhicule déclaré
+// existe. L'absence de papiers n'est pas une absence d'identité.
+//
+// ⚠️ UNE SEULE PHOTO, ET C'EST `vehicle_side`. Trois vues d'un vélo seraient
+// trois fois le même objet — rien à l'arrière, et l'avant d'un deux-roues sans
+// plaque ne montre rien. Le côté porte la couleur, le cadre, le panier :
+// exactement ce qui le fait reconnaître. `vehicle_front` est documenté comme
+// « plaque lisible » ; le réclamer ici aurait fait porter à la pièce une
+// attente qu'un vélo ne peut pas satisfaire.
+//
+// ⚠️ ET UN LIVREUR À PIED ? Il n'a pas de véhicule du tout : aucune
+// `VehicleRef` n'est déclarée pour lui, donc cette fonction n'est jamais
+// appelée. Le défaut historique — réclamer une carte grise à quelqu'un qui
+// marche — venait d'ailleurs, et il est corrigé.
 func KindsFor(v VehicleRef) []string {
 	if !v.Motorised {
-		return nil
+		return []string{DocVehicleSide}
 	}
 	return VehicleKinds
 }

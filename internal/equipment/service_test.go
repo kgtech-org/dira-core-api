@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
@@ -93,33 +94,59 @@ func (m *memStore) SaveContract(_ context.Context, c *Contract) error {
 	m.contracts[c.ID] = &cp
 	return nil
 }
-func (m *memStore) SetHandoverCode(_ context.Context, id primitive.ObjectID, code string, expires time.Time) error {
+
+// ⚠️ LA DOUBLURE PORTE LES DEUX GESTES SUR DES CHAMPS SÉPARÉS, comme la base.
+// Un faux qui aurait réutilisé un seul champ aurait fait passer au vert un code
+// de remise consommé comme code de RETOUR — exactement ce que la séparation
+// existe pour empêcher.
+func (m *memStore) codeOf(c *Contract, kind string) (string, *time.Time) {
+	if kind == CodeReturn {
+		return c.ReturnCode, c.ReturnCodeExpiresAt
+	}
+	return c.HandoverCode, c.HandoverCodeExpiresAt
+}
+
+func (m *memStore) setCodeOf(c *Contract, kind, code string, expires *time.Time) {
+	if kind == CodeReturn {
+		c.ReturnCode, c.ReturnCodeExpiresAt = code, expires
+		return
+	}
+	c.HandoverCode, c.HandoverCodeExpiresAt = code, expires
+}
+
+func (m *memStore) SetCode(_ context.Context, id primitive.ObjectID, kind, code string, expires time.Time, extra bson.M) error {
 	c, ok := m.contracts[id]
 	if !ok {
 		return errContractNotFound
 	}
-	c.HandoverCode, c.HandoverCodeExpiresAt = code, &expires
+	m.setCodeOf(c, kind, code, &expires)
+	if p, ok := extra["return_proposal"].(ReturnProposal); ok {
+		c.ReturnProposal = p
+	}
 	return nil
 }
-func (m *memStore) ConsumeHandoverCode(_ context.Context, code string, userID primitive.ObjectID, now time.Time) (*Contract, error) {
+
+func (m *memStore) ConsumeCode(_ context.Context, kind, code string, userID primitive.ObjectID, now time.Time) (*Contract, error) {
 	for _, c := range m.contracts {
-		if c.HandoverCode == "" || c.HandoverCode != code {
+		got, exp := m.codeOf(c, kind)
+		if got == "" || got != code {
 			continue
 		}
 		// Le même filtre que le dépôt : le porteur ET la date, sinon rien n'est
 		// touché.
-		if c.UserID != userID || c.HandoverCodeExpiresAt == nil || !c.HandoverCodeExpiresAt.After(now) {
+		if c.UserID != userID || exp == nil || !exp.After(now) {
 			return nil, nil
 		}
 		before := *c
-		c.HandoverCode, c.HandoverCodeExpiresAt = "", nil
+		m.setCodeOf(c, kind, "", nil)
 		return &before, nil
 	}
 	return nil, nil
 }
-func (m *memStore) ContractByHandoverCode(_ context.Context, code string) (*Contract, error) {
+
+func (m *memStore) ContractByCode(_ context.Context, kind, code string) (*Contract, error) {
 	for _, c := range m.contracts {
-		if c.HandoverCode != "" && c.HandoverCode == code {
+		if got, _ := m.codeOf(c, kind); got != "" && got == code {
 			cp := *c
 			return &cp, nil
 		}

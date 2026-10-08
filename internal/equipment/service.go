@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
@@ -76,9 +77,12 @@ type Store interface {
 	ContractByID(ctx context.Context, id primitive.ObjectID) (*Contract, error)
 	SaveContract(ctx context.Context, c *Contract) error
 	// LE SCAN DE LA REMISE — voir `handover.go`.
-	SetHandoverCode(ctx context.Context, id primitive.ObjectID, code string, expires time.Time) error
-	ConsumeHandoverCode(ctx context.Context, code string, userID primitive.ObjectID, now time.Time) (*Contract, error)
-	ContractByHandoverCode(ctx context.Context, code string) (*Contract, error)
+	// Les codes scannés — remise ET retour. ⚠️ `kind` choisit les champs
+	// (`handover` ou `return`) : deux champs séparés, pour qu'un code de
+	// remise oublié ne puisse pas rendre le gilet qu'il vient de remettre.
+	SetCode(ctx context.Context, id primitive.ObjectID, kind, code string, expires time.Time, extra bson.M) error
+	ConsumeCode(ctx context.Context, kind, code string, userID primitive.ObjectID, now time.Time) (*Contract, error)
+	ContractByCode(ctx context.Context, kind, code string) (*Contract, error)
 	ListContracts(ctx context.Context, f ContractFilter, limit int, cursor string) ([]Contract, string, error)
 	ContractsOfUser(ctx context.Context, userID primitive.ObjectID, onlyActive bool) ([]Contract, error)
 	ActiveContracts(ctx context.Context) ([]Contract, error)
@@ -658,6 +662,19 @@ func (s *Service) Return(ctx context.Context, actorID, id string, req ReturnInpu
 	if c.Status != StatusActive {
 		return nil, errBadTransition
 	}
+	return s.applyReturn(ctx, actorID, c, req, ReturnedViaStaff)
+}
+
+// applyReturn referme un contrat vivant — le SEUL chemin, quelle que soit la
+// voie.
+//
+// ⚠️ UN SEUL CHEMIN POUR LES DEUX VOIES, et c'est la leçon du remboursement
+// d'annulation : trois chemins menaient à « annulée » et un seul rendait
+// l'argent. Ici, l'exploitation et le scan passent par la même fonction, donc
+// par le même rendu de caution, le même ajustement de stock et la même
+// notification. Une seconde implémentation « pour le scan » aurait divergé au
+// premier correctif.
+func (s *Service) applyReturn(ctx context.Context, actorID string, c *Contract, req ReturnInput, via string) (*ContractResponse, error) {
 	now := s.now()
 	before := auditView(c)
 	c.Status = StatusReturned
@@ -665,22 +682,26 @@ func (s *Service) Return(ctx context.Context, actorID, id string, req ReturnInpu
 	c.ReturnCondition = strings.TrimSpace(req.Condition)
 	c.DamageFeeXOF = req.DamageFeeXOF
 	c.NextPeriodAt = nil
+	c.ReturnedVia = via
+	if via == ReturnedViaScan {
+		c.ReturnedScanAt = &now
+	}
+	// ⚠️ LE CODE ET LE CONSTAT SONT VIDÉS : `SaveContract` remplace le document
+	// entier, et les y laisser rendrait un secret consommé relisable — et un
+	// constat « en attente » sur un contrat déjà rendu.
+	c.ReturnCode = ""
+	c.ReturnCodeExpiresAt = nil
+	c.ReturnProposal = ReturnProposal{}
 	if req.DamageFeeXOF > 0 {
 		c.Schedule = append(c.Schedule, Line{N: len(c.Schedule) + 1, Kind: LineDamage, DueAt: now, AmountXOF: req.DamageFeeXOF, Status: LineDue})
 	}
-	refund := c.Plan.DepositRefundable
-	if req.RefundDeposit != nil {
-		refund = *req.RefundDeposit
-	}
-	refunded := 0
+	// ⚠️ LE MÊME CALCUL QUE L'APERÇU DU QR (`previewRefund`), et c'est pour cela
+	// qu'il est extrait : afficher 5 000 sous le QR et verser 4 000 serait
+	// exactement la réclamation que le scan était censé éteindre.
+	refund, refunded := previewRefund(c, ReturnProposal{
+		DamageFeeXOF: req.DamageFeeXOF, RefundDeposit: req.RefundDeposit,
+	})
 	if refund {
-		paidDeposit := 0
-		for _, l := range c.Schedule {
-			if l.Kind == LineDeposit {
-				paidDeposit += l.PaidXOF
-			}
-		}
-		refunded = paidDeposit - req.DamageFeeXOF
 		if refunded > 0 {
 			key := fmt.Sprintf("equipment:%s:deposit-refund", c.ID.Hex())
 			if c.Vertical == VerticalFood && s.purse != nil {
