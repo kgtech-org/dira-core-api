@@ -558,6 +558,7 @@ func run(logger *slog.Logger) error {
 		// course ET sur une commande. Voir `internal/promocode`.
 		promoSvc := promocode.NewService(promocode.NewRepository(mongo), auditRec)
 		promoSvc.SetCredits(promoCredits{tokens: tokenSvc})
+		promoSvc.SetReferral(promoReferral{countries: countrySvc})
 		promoH := promocode.NewHandler(promoSvc)
 		promoH.Mount(r, authMW)
 		promoH.MountService(r, middleware.Service(cfg.ServiceToken))
@@ -875,6 +876,24 @@ func (a erasureAnnouncer) AccountErased(ctx context.Context, userID, phone strin
 // parrainage payé en argent réel serait retirable en espèces, et le parrainage
 // deviendrait un distributeur.
 type promoCredits struct{ tokens *token.Service }
+
+// promoReferral dit au registre des codes CE QUE DONNE le parrainage dans le
+// pays de l'opération — les montants réglés depuis la console.
+//
+// ⚠️ L'ADAPTATEUR TRADUIT, il ne décide pas. Les deux paquets portent chacun
+// leur `ReferralPolicy` / `Referral` : celui du pays parce que c'est un réglage
+// d'installation, celui des codes parce que c'est ce dont le tirage a besoin.
+// Faire importer l'un par l'autre aurait fait d'un réglage d'exploitation une
+// dépendance du registre d'argent, dans un sens ou dans l'autre.
+type promoReferral struct{ countries *country.Service }
+
+func (p promoReferral) ReferralOf(ctx context.Context, code string) promocode.ReferralPolicy {
+	r := p.countries.ReferralOf(ctx, code)
+	return promocode.ReferralPolicy{
+		InviteeXOF: r.InviteeXOF, SponsorXOF: r.SponsorXOF,
+		MaxSponsored: r.MaxSponsored, ValidDays: r.ValidDays,
+	}
+}
 
 func (c promoCredits) PromoCredit(ctx context.Context, userID string, amountXOF int, reason string) error {
 	_, err := c.tokens.PromoByOperator(ctx, "", userID, amountXOF, "parrainage : "+reason)

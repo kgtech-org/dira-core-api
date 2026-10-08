@@ -62,6 +62,13 @@ type Installation struct {
 	// ⚠️ ABSENT = LES DÉFAUTS DU MÉTIER, qui reproduisent ce qui s'échangeait
 	// avant ce réglage. Un pays jamais touché ne change pas de comportement.
 	Privacy Privacy `bson:"privacy,omitempty"`
+	// Referral : CE QUE DONNE « INVITE UN AMI » dans ce pays — la remise du
+	// filleul et le crédit du parrain. Voir `referral.go`.
+	//
+	// ⚠️ ABSENT = PAS DE PARRAINAGE, et non les montants d'un autre pays ni un
+	// défaut maison. C'est le seul défaut tenable pour un réglage qui sort de
+	// l'argent de la poche de la plateforme.
+	Referral Referral `bson:"referral,omitempty"`
 }
 
 // Les deux fonds de carte possibles.
@@ -200,4 +207,8 @@ var (
 	errDefaultCountry = apperr.Conflict("country_default", "the default country cannot be disabled")
 	errNoCoordinates  = apperr.Validation("lng and lat go together: send both or neither")
 	errNoMapsUpdate   = apperr.Validation("nothing to update: send basemap")
+	// ⚠️ Le parrainage DISTRIBUE DE L'ARGENT, et un zéro de trop dans un champ
+	// en francs ne se voit pas. Voir `maxReferralXOF`.
+	errReferralTooLarge = apperr.Validation(
+		"referral amounts cannot exceed 50000 per side: check for a typo")
 )
