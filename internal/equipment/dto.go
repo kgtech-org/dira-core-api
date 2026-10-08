@@ -211,10 +211,22 @@ type ContractResponse struct {
 	RequestedAt     *time.Time `json:"requested_at,omitempty"`
 	AcceptedAt      *time.Time `json:"accepted_at,omitempty"`
 	HandedAt        *time.Time `json:"handed_at,omitempty"`
-	ReturnedAt      *time.Time `json:"returned_at,omitempty"`
-	ClosedAt        *time.Time `json:"closed_at,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	// HandedVia : COMMENT la remise a été conclue — `scan` (le porteur a scanné
+	// le code du comptoir) ou `staff` (l'exploitation l'a enregistrée seule).
+	//
+	// ⚠️ SERVI, ET PAS SEULEMENT STOCKÉ : c'est ce que la console montre quand
+	// quelqu'un conteste un échéancier, et c'est aussi ce qui permet à
+	// l'exploitation de voir quels comptoirs n'utilisent pas le scan. Mieux vaut
+	// savoir que la preuve manque que croire qu'elle existe.
+	//
+	// ⚠️ ET LE CODE LUI-MÊME N'EST JAMAIS SERVI ICI. C'est un secret
+	// court-vécu : le laisser voyager dans la fiche d'un contrat le rendrait
+	// scannable par quiconque lit l'écran du porteur.
+	HandedVia  string     `json:"handed_via,omitempty"`
+	ReturnedAt *time.Time `json:"returned_at,omitempty"`
+	ClosedAt   *time.Time `json:"closed_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 func toContract(c *Contract, now time.Time) ContractResponse {
@@ -225,7 +237,9 @@ func toContract(c *Contract, now time.Time) ContractResponse {
 		OutstandingXOF: c.Outstanding(now, false), DueXOF: c.Outstanding(now, true), Blocked: c.Blocked(now),
 		Schedule: make([]LineResponse, 0, len(c.Schedule)), Payments: make([]PaymentResponse, 0, len(c.Payments)),
 		ReturnCondition: c.ReturnCondition, DamageFeeXOF: c.DamageFeeXOF, NextPeriodAt: c.NextPeriodAt, Notes: c.Notes,
-		RequestedAt: c.RequestedAt, AcceptedAt: c.AcceptedAt, HandedAt: c.HandedAt, ReturnedAt: c.ReturnedAt, ClosedAt: c.ClosedAt,
+		RequestedAt: c.RequestedAt, AcceptedAt: c.AcceptedAt, HandedAt: c.HandedAt,
+		HandedVia:  c.HandedVia,
+		ReturnedAt: c.ReturnedAt, ClosedAt: c.ClosedAt,
 		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 	if since := c.OverdueSince(now); !since.IsZero() {

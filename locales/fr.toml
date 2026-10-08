@@ -439,3 +439,18 @@ other = "Ce pseudonyme est déjà pris."
 
 [errors.influencer_not_found]
 other = "Influenceur introuvable"
+
+# LE SCAN DE LA REMISE DU MATÉRIEL — trois refus distincts, parce qu'ils
+# appellent trois gestes différents : redemander un code, regarder le bon écran,
+# ou ne rien faire. Un seul « code invalide » enverrait les trois au comptoir,
+# qui ne saurait pas lequel il a devant lui.
+[errors.equipment_handover_code_unknown]
+other = "Ce code n'est plus valable : demandez-en un nouveau au comptoir."
+
+[errors.equipment_handover_code_expired]
+other = "Ce code a expiré. Demandez au comptoir d'en afficher un nouveau."
+
+# ⚠️ Dit « ce n'est pas votre matériel », et non « interdit » : scanner l'écran
+# du voisin arrive pour de bon quand deux porteurs attendent au comptoir.
+[errors.equipment_handover_not_yours]
+other = "Cette remise concerne quelqu'un d'autre : vérifiez que vous scannez le bon écran."

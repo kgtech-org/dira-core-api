@@ -40,6 +40,9 @@ type Config struct {
 	// sans avoir prévenu la livraison laisserait une commande payée et jamais
 	// confirmée, et le prestataire ne réessaierait pas.
 	FoodBaseURL string
+	// AppLinkBase : la base des liens profonds des QR (remise du matériel).
+	// Vide = lien relatif, jamais un domaine deviné.
+	AppLinkBase string
 	// FoodCallbackToken authentifie les rappels du socle VERS la livraison.
 	//
 	// ⚠️ DISTINCT de ServiceToken, et ce n'est pas une coquetterie : celui-ci
@@ -121,13 +124,20 @@ func Load() (*Config, error) {
 		FCMServiceAccountFile: core.Env("FCM_SERVICE_ACCOUNT_FILE", ""),
 		MockPaymentSecret:     core.Env("MOCK_PAYMENT_SECRET", "mock-secret"),
 		ServiceToken:          core.Env("CORE_SERVICE_TOKEN", ""),
-		FoodBaseURL:           core.Env("FOOD_BASE_URL", ""),
-		FoodCallbackToken:     core.Env("FOOD_CALLBACK_TOKEN", ""),
-		VTCBaseURL:            core.Env("VTC_BASE_URL", ""),
-		VTCCallbackToken:      core.Env("VTC_CALLBACK_TOKEN", ""),
-		OTPSender:             core.Env("OTP_SENDER", "echo"),
-		CountryIPLookupURL:    core.Env("COUNTRY_IP_LOOKUP_URL", country.DefaultIPLookupURL),
-		CountryIPLookupField:  core.Env("COUNTRY_IP_LOOKUP_FIELD", country.DefaultIPLookupField),
+		// APP_LINK_BASE : la base des liens profonds que portent les QR —
+		// aujourd'hui celui de la remise du matériel.
+		//
+		// ⚠️ VIDE PAR DÉFAUT, ET C'EST VOULU : sans réglage, le QR porte un lien
+		// RELATIF. Fabriquer `https://dira.llc/...` enverrait les porteurs de la
+		// recette sur la production, et le QR aurait l'air de marcher.
+		AppLinkBase:          core.Env("APP_LINK_BASE", ""),
+		FoodBaseURL:          core.Env("FOOD_BASE_URL", ""),
+		FoodCallbackToken:    core.Env("FOOD_CALLBACK_TOKEN", ""),
+		VTCBaseURL:           core.Env("VTC_BASE_URL", ""),
+		VTCCallbackToken:     core.Env("VTC_CALLBACK_TOKEN", ""),
+		OTPSender:            core.Env("OTP_SENDER", "echo"),
+		CountryIPLookupURL:   core.Env("COUNTRY_IP_LOOKUP_URL", country.DefaultIPLookupURL),
+		CountryIPLookupField: core.Env("COUNTRY_IP_LOOKUP_FIELD", country.DefaultIPLookupField),
 	}
 
 	if cfg.FinanceIntegrityInterval, err = core.Duration("FINANCE_INTEGRITY_INTERVAL", 15*time.Minute); err != nil {

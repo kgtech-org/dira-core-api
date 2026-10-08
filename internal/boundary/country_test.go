@@ -56,6 +56,13 @@ var global = map[string]string{
 	// déploiement laisserait l'identité d'un Guinéen dans la base pour
 	// toujours, parce que le balayage tourne depuis Lomé.
 	"user.AccountsDueForErasure": "le droit à l'effacement n'a pas de pays, et le balayage n'a pas de requête",
+	// Le code de remise vient d'un QR que le porteur a SOUS LES YEUX. Le borner
+	// au pays de la REQUÊTE ferait échouer le scan d'un livreur dont le compte
+	// est togolais et qui récupère son sac à Dakar — un cas réel, et le refus
+	// serait incompréhensible devant le comptoir qui affiche le code. Le
+	// contrat est ensuite vérifié comme étant le SIEN, ce qui est la garantie
+	// qui compte : connaître le code sans en être le porteur ne donne rien.
+	"equipment.ContractByHandoverCode": "le code scanné désigne le contrat ; le porteur, lui, est vérifié",
 }
 
 // Toute lecture d'une collection bornée par pays porte son pays, ou un

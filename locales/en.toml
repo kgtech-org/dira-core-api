@@ -434,3 +434,12 @@ other = "This handle is already taken."
 
 [errors.influencer_not_found]
 other = "Influencer not found"
+
+[errors.equipment_handover_code_unknown]
+other = "This code is no longer valid: ask the counter for a new one."
+
+[errors.equipment_handover_code_expired]
+other = "This code has expired. Ask the counter to display a new one."
+
+[errors.equipment_handover_not_yours]
+other = "This hand-over is someone else's: check that you are scanning the right screen."

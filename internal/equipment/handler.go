@@ -29,6 +29,13 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		g.Post("/equipment/requests", h.request)
 		g.Get("/me/equipment", h.mine)
 		g.Post("/me/equipment/{id}/accept", h.accept)
+		// LE SCAN DE LA REMISE — voir `handover.go`.
+		//
+		// ⚠️ PAS SOUS `/me/equipment/{id}/...` : le porteur qui scanne un QR ne
+		// connaît PAS l'identifiant du contrat — c'est le code qui le désigne.
+		// L'exiger dans le chemin aurait obligé l'application à retrouver le bon
+		// contrat avant d'envoyer, c'est-à-dire à deviner lequel on lui remet.
+		g.Post("/equipment/handover", h.scanHandover)
 		g.Post("/me/equipment/{id}/pay", h.pay)
 	})
 	r.Group(func(g chi.Router) {
@@ -44,6 +51,8 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		g.Patch("/admin/equipment/contracts/{id}", h.updateContract)
 		g.Post("/admin/equipment/contracts/{id}/qualify", h.qualify)
 		g.Post("/admin/equipment/contracts/{id}/hand-over", h.handOver)
+		// Le QR que le comptoir affiche pour faire conclure la remise.
+		g.Post("/admin/equipment/contracts/{id}/handover-code", h.mintHandoverCode)
 		g.Post("/admin/equipment/contracts/{id}/payments", h.payment)
 		g.Post("/admin/equipment/contracts/{id}/return", h.ret)
 		g.Post("/admin/equipment/contracts/{id}/cancel", h.cancel)
@@ -341,4 +350,37 @@ func (h *Handler) standing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, resp)
+}
+
+// POST /admin/equipment/contracts/{id}/handover-code — le QR du comptoir.
+func (h *Handler) mintHandoverCode(w http.ResponseWriter, r *http.Request) {
+	actorID, _ := auth.UserFromContext(r.Context())
+	out, err := h.svc.MintHandoverCode(r.Context(), actorID, chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, out)
+}
+
+// POST /equipment/handover { code } — le porteur a scanné.
+//
+// ⚠️ LE CODE EST DANS LE CORPS, PAS DANS LE CHEMIN. Un code en chemin se
+// retrouve dans les journaux du proxy et dans les traces d'accès — or c'est un
+// secret qui vaut une remise de matériel pendant cinq minutes.
+func (h *Handler) scanHandover(w http.ResponseWriter, r *http.Request) {
+	userID, _ := auth.UserFromContext(r.Context())
+	var req struct {
+		Code string `json:"code" validate:"required,max=120"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := h.svc.ScanHandover(r.Context(), userID, req.Code)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }
