@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.48.0** · 8 octobre 2026
+> **Version 4.49.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -2349,6 +2349,85 @@ avant la réponse.
 trames pour le même passage (socket **et** push) sont normales — le second
 `GET` répond la même chose. Une application qui ferait du socket sa source
 de vérité verrait, un jour, une course « en route » qu'un `GET` dit terminée.
+
+---
+
+## 🔒 CE QUE VOUS AVEZ LE DROIT D'AFFICHER DE L'AUTRE PARTIE (v4.49.0)
+
+**C'est l'exploitation qui décide, pays par pays et métier par métier** —
+Paramètres › Confidentialité de la console. Vous n'avez rien à arbitrer, et
+surtout rien à deviner : **le serveur n'envoie pas ce qu'on n'a pas le droit de
+montrer.**
+
+`GET /rides/{id}` → `driver` porte ce qui est ouvert de votre chauffeur :
+
+```jsonc
+{ "driver": {
+    "id": "…", "rides_count": 1240,
+    "name": "Kofi A.",             // déjà masqué au niveau choisi, ou absent
+    "rating_avg": 4.8, "rating_count": 530,  // absents si la note est fermée
+    "vehicle": { "description": "Toyota Avensis rouge", "license_plate": "TG-4417", … },
+    "contact": {                   // ⚠️ ABSENT quand rien n'est ouvert — le défaut en course
+      "first_name": "…", "last_name": "…", "avatar_url": "…", "gender": "…",
+      "phone": "+228…",            // ⚠️ présent dès qu'il est AFFICHABLE **ou** COMPOSABLE
+      "show_phone": false, "direct_call": true, "in_app_alert": false } } }
+```
+
+⚠️ **`contact` ABSENT EST LE CAS NORMAL EN COURSE**, et ce n'est pas une panne :
+par défaut, aucun numéro ne s'échange — la conversation est le canal. Ne
+construisez pas un écran qui suppose sa présence.
+
+⚠️ **LE VÉHICULE N'EST JAMAIS FERMÉ**, et c'est voulu : une plaque, une marque et
+une couleur ne nomment personne, et c'est ce que vous guettez au trottoir. C'est
+ce qui reste quand tout le reste est fermé — y compris si le serveur n'a pas pu
+lire la politique, où vous ne recevrez QUE la voiture.
+
+⚠️ **NE PROMETTEZ PAS CE QUE VOUS N'AVEZ PAS.** Si `direct_call` est faux, pas de
+bouton « Appeler le chauffeur » grisé ni d'écran qui le mentionne : un bouton
+qui n'existe pas se cache, il ne se désactive pas.
+
+⚠️ **UN CHAMP ABSENT N'EST PAS UNE PANNE.** C'est un champ que l'exploitation
+n'a pas ouvert dans ce pays. Affichez votre propre libellé — « votre chauffeur » —
+comme pour toute donnée manquante, et **ne réessayez pas** : rien ne viendra.
+
+⚠️ **N'ÉCRIVEZ AUCUNE RÈGLE EN DUR.** Pas de « si le pays est le Togo », pas de
+« si c'est une course alors pas de téléphone ». Ces décisions changent sans
+redéploiement de votre application, et une règle recopiée chez vous
+contredirait celle du serveur sans que personne ne sache laquelle croire.
+
+### ⚠️ TROIS PERMISSIONS DE CONTACT, ET CE NE SONT PAS LES MÊMES
+
+| Champ | Ce qu'il autorise |
+|---|---|
+| `show_phone` | **afficher** le numéro à l'écran |
+| `direct_call` | proposer un **bouton d'appel** |
+| `in_app_alert` | faire **sonner** l'application de l'autre |
+
+⚠️ **`phone` PRÉSENT NE VEUT PAS DIRE « AFFICHABLE ».** Le numéro arrive dès
+qu'il peut être affiché **ou composé** — un bouton d'appel a besoin du numéro
+pour le composer. **Lisez `show_phone` avant de l'écrire à l'écran.** Un
+`phone` affiché parce qu'il était là annulerait le réglage dans l'écran même
+qui le lit, et c'est l'erreur que ce paragraphe existe pour empêcher.
+
+⚠️ **`direct_call: true` AVEC `show_phone: false`** est le cas le plus
+courant : un bouton « Appeler », et le numéro **nulle part** — ni à l'écran, ni
+dans un champ copiable, ni dans une capture d'écran. Composez-le sans le
+rendre. Nous savons qu'il reste dans le journal d'appels du téléphone : c'est
+de la friction, pas du secret, et c'est assumé côté serveur. Ne compensez pas
+en l'affichant « puisqu'il est de toute façon visible ».
+
+⚠️ **TOUT FERMÉ N'EST PAS UNE IMPASSE** : la **conversation** reste le canal, et
+elle existe précisément pour que ces deux-là se parlent sans rien s'échanger.
+Un écran sans nom ni numéro doit mener à elle, pas à un cul-de-sac.
+
+### Les quatre niveaux de `name`
+
+Le nom arrive **déjà masqué** — vous n'avez rien à couper. `full` (« Awa
+Diallo »), `first` (« Awa »), `initials` (« A. D. »), ou **absent**.
+
+⚠️ **NE RECONSTRUISEZ JAMAIS UN NOM** à partir de `first_name` et `last_name` :
+ces deux champs ont leurs propres interrupteurs, et les concaténer rendrait un
+nom complet là où l'exploitation n'a ouvert que des initiales.
 
 ---
 
