@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 4.50.0** · 8 octobre 2026
+> **Version 4.51.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -792,6 +792,10 @@ La réponse porte, **pour ce point de vente uniquement** :
 > ⚠️ **En espèces, c'est au marchand de s'assurer d'avoir reçu l'argent avant de remettre la commande.** Le livreur avance la somme de la main à la main. Personne ne l'atteste côté serveur : affichez `cash_to_collect` **au moment de la validation**, pas après le retrait, où l'information ne rattrape plus rien.
 
 En **prépayé** (mobile money ou solde Dira), le portefeuille de la boutique est crédité **au retrait** par le livreur — pas à la commande : tant que rien n'est retiré, rien n'a été vendu.
+
+> 🎟️ ⚠️ **UN CODE PROMO DU CLIENT NE TOUCHE PAS VOTRE VERSEMENT (v4.51.0).** Le client peut saisir un code — venu d'une affiche, d'un influenceur, d'un parrainage — et le **total** de la commande baisse. `store_amount` ne bouge **pas** : la remise sort de la poche de la plateforme, pas de la vôtre. Une remise sur un **plat** est votre offre, décidée par vous ; un code est une campagne que vous n'avez pas choisie, et vous la faire porter serait prélever sur votre chiffre.
+>
+> ⚠️ **CONSÉQUENCE SUR LES ESPÈCES, ET ELLE COMPTE** : `cash_to_collect` peut être **plus bas** que la somme des plats de votre ligne. C'est ce champ qui fait foi — ne réclamez jamais au livreur un total recalculé depuis le panier, vous lui demanderiez d'avancer une somme que le client ne paie pas.
 
 ---
 

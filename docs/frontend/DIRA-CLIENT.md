@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.50.0** · 8 octobre 2026
+> **Version 4.51.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -270,6 +270,7 @@ GET /me · GET /me/addresses · POST /me/devices
 GET /wallet · GET /wallet/transactions
 POST /payments/initiate · GET /payments/{id} · GET /payments/providers
 GET /notifications · GET /countries · POST /uploads
+GET /me/referral                                ← mon code de PARRAINAGE (v4.51.0)
 ```
 
 ### 🆕 6 bis. S'INSCRIRE ET SE CONNECTER PAR CODE — le téléphone, et rien d'autre (v4.46.0)
@@ -424,6 +425,68 @@ action qu'aucun bouton ne défera.
 | `403 account_closed` | à la connexion, au rafraîchissement ou à l'inscription | « ce compte a été supprimé » + « se réinscrire » ou support |
 
 ---
+
+---
+
+## 6 quater. 🎟️ LES CODES PROMO ET LE PARRAINAGE — un champ, deux métiers (v4.51.0)
+
+**Un code est au SOCLE, et il vaut des deux côtés.** Le même mot ne peut pas
+valoir une chose sur une course et une autre sur une commande : une enveloppe,
+un suivi, une vérité. C'est exactement ce qu'une application unifiée doit
+montrer — **un seul champ « code promo »**, placé au même endroit dans les deux
+tunnels.
+
+| Où on le saisit | Ce qu'on envoie | Ce qui revient |
+|---|---|---|
+| devis d'une course | `POST /rides/quote { …, "code": "DIRA2000" }` | `promo_code`, `promo_code_xof` **par classe**, `promo_code_ignored` |
+| commande de repas | `POST /orders { …, "code": "DIRA2000" }` | `promo_code`, `promo_code_xof`, `total` déjà remisé |
+
+> ⚠️ **LE PRIX SERVI EST DÉJÀ REMISÉ** des deux côtés — `fare_xof`, `total`. Ne
+> soustrayez **rien** : le montant du code est là pour être **affiché**.
+
+> ⚠️ **MAIS LES DEUX MÉTIERS NE REFUSENT PAS AU MÊME MOMENT, et l'écran doit en
+> tenir compte.** Sur une course, le refus arrive **au devis** : le passager
+> corrige son code avant de commander, rien n'est perdu. Sur une commande, il
+> arrive **à la création** — la commande n'est pas créée. Un panier composé
+> pendant dix minutes ne doit pas disparaître sur une faute de frappe : gardez-le
+> à l'écran, et laissez réessayer ou commander sans code.
+
+> ⚠️ **UN CODE PEUT VALOIR POUR UN SEUL MÉTIER.** `promo_code_wrong_service`
+> arrive avec `meta.valid_for` : dites **lequel** (« ce code est pour les
+> commandes »), et, puisque vous portez les deux onglets, proposez d'y aller.
+> C'est l'avantage que seule une application unifiée peut offrir ; ne le gaspillez
+> pas en affichant « code invalide ».
+
+> ⚠️ **`promo_code_ignored` N'EXISTE QUE SUR UNE COURSE** : il dit qu'un code
+> valable a été battu par une offre automatique. Ne le traitez pas comme un refus
+> — « gardez-le, une meilleure offre s'applique déjà ». Côté commande, ce cas
+> n'existe pas.
+
+**Le parrainage**, lui, est un écran unique du compte — il ne dépend d'aucun
+métier :
+
+```
+GET /me/referral
+→ { "enabled": true, "code": "AWA7K2M",
+    "invitee_xof": 1000, "sponsor_xof": 500, "max_sponsored": 10, "uses": 3 }
+```
+
+> ⚠️ **`enabled` EST EXPLICITE : NE LE DÉDUISEZ PAS DE L'ABSENCE DE CODE.** Le
+> parrainage se règle **pays par pays** et il est **éteint par défaut** : à faux,
+> **cachez l'entrée** « inviter un ami » plutôt que d'afficher un écran vide.
+
+> ⚠️ **DEUX MONTANTS, DEUX BÉNÉFICIAIRES.** `invitee_xof` est une **remise** pour
+> celui qui arrive, `sponsor_xof` un **crédit** pour celui qui invite. « Gagnez
+> 1 500 F » fait attendre 1 500 F à tout le monde et produit deux déceptions.
+
+> ⚠️ **LE PARRAIN EST PAYÉ QUAND LA REMISE EST CONSOMMÉE** — course terminée,
+> commande livrée —, jamais à la saisie. Dites-le : sinon quelqu'un qui voit son
+> filleul commander et son solde ne pas bouger croira que rien ne marche. Et
+> comme le filleul peut dépenser son code **dans l'un ou l'autre métier**, le
+> crédit peut arriver d'un onglet que le parrain ne regardait pas — votre fil
+> d'activité (§9) est le bon endroit pour le dire.
+
+Détail des neuf refus et de leurs suites : `VTC-CLIENT` §3 et `FOOD-CLIENT` §4.
 
 ## 7. ⚠️ La navigation : un onglet par métier, et ce que ça change
 
@@ -658,6 +721,7 @@ ceux des deux specs métier, qui restent à jour.
 |---|---|
 | Découvrir | `GET /stores` · `GET /stores/{id}` · `GET /dishes/{id}` · `GET /feed` |
 | Commander | `POST /orders` · `GET /orders` · `GET /orders/{id}` · `POST /orders/{id}/cancel` |
+| | 🎟️ **LE CODE PROMO SE SAISIT À LA COMMANDE (v4.51.0)** — `{ "code": "…" }`. ⚠️ **Un code refusé fait ÉCHOUER la commande** plutôt que de la créer au prix plein : gardez le panier à l'écran. `promo_code_xof` est **distinct de `discount`**, qui porte un crédit de tombola. Détail : §6 quater et `FOOD-CLIENT` §4 |
 | Suivre | `GET /deliveries/{id}` · socket du suivi (§11) |
 | Parler | `GET/POST /orders/{id}/messages` |
 | Noter | `POST /orders/{id}/rating` |
@@ -670,6 +734,7 @@ ceux des deux specs métier, qui restent à jour.
 | Choisir | `GET /classes?near=` · `GET /settings/modes?near=` |
 | | 🛵 **Le MOTO-TAXI est un mode du catalogue (v4.48.0)**, ouvert dans tous les pays et **en tête** de la liste : `seats: 1`, pas de course partagée (`modes` n'a pas de clé `pool`), `icon_url` `null` le temps que l'exploitation pose son image — dessinez la silhouette `map_icon` (`moto`). ⚠️ **Aucune voiture ne répond à un appel de moto** : ne promettez pas « une voiture si aucune moto n'est libre ». Détail : `VTC-CLIENT` §2 |
 | Chiffrer | `POST /rides/quote` · `POST /rides/pool/quote` · `POST /rides/rental/quote` |
+| | 🎟️ **LE CODE PROMO SE SAISIT AU DEVIS (v4.51.0)** — `{ "code": "…" }`, et la remise revient **par classe** : 20 % d'une moto et 20 % d'un van ne font pas le même nombre de francs. ⚠️ `promo_code_ignored` dit qu'un code **valable** a été battu par une offre automatique : ce n'est **pas** un refus, et le dire évite l'appel au support. Détail : §6 quater et `VTC-CLIENT` §3 |
 | | ⚠️ **La course PARTAGÉE cherche le CO-PASSAGER *avant* le chauffeur** — c'est le seul mode qui le fasse, et l'écran d'attente en dépend : pendant la première étape (`dispatch_state: "pooling"`, jusqu'à 5 min) **aucun chauffeur n'est appelé**. Principe complet, chronologie des deux passagers, conditions d'appariement, ordre de route et les quatre fins possibles : `VTC-CLIENT` §4 quater, **à lire avant de câbler un écran** |
 | Commander | `POST /rides` · `GET /rides` · `GET /rides/{id}` · `POST /rides/{id}/cancel` · `POST /rides/{id}/relaunch` |
 | | 💸 **ANNULER PEUT COÛTER (v4.50.0)** — `cancellation` voyage avec la course : `fee_xof`, `step`, `why`, `grace_left_s`. ⚠️ **Retenir de l'argent à quelqu'un qui n'a pas pu le lire AVANT est indéfendable** : l'écran de confirmation dit le montant, ou dit que c'est gratuit **et jusqu'à quand**. Jamais de bouton « Annuler » nu quand `fee_xof > 0`. Détail : `VTC-CLIENT` §5 |
@@ -811,6 +876,25 @@ du métier.
 ---
 
 ## 15. Journal
+
+### 4.51.0 — 8 octobre 2026
+
+🎟️ **UN CHAMP « CODE PROMO », DANS LES DEUX TUNNELS.** Un code est au **socle** :
+le même mot ne peut pas valoir une chose sur une course et une autre sur une
+commande. `POST /rides/quote { …, "code" }` et `POST /orders { …, "code" }` ; le
+prix servi est **déjà remisé**. ⚠️ **Les deux métiers ne refusent pas au même
+moment** — au devis pour une course (on corrige), à la création pour une commande
+(elle n'est **pas** créée) : gardez le panier à l'écran. ⚠️ `promo_code_ignored`
+(courses seulement) dit qu'un code **valable** a été battu par une offre
+automatique : ce n'est pas un refus. ⚠️ `promo_code_wrong_service` arrive avec
+`meta.valid_for` — vous portez les deux onglets, **proposez d'y aller** plutôt
+que d'écrire « code invalide ». 🎁 **`GET /me/referral`** : un écran de compte,
+sans métier. ⚠️ `enabled` à faux ⇒ **cachez l'entrée**. ⚠️ Deux montants, deux
+bénéficiaires ; le parrain est payé quand la remise est **consommée**, et comme
+le filleul peut la dépenser dans l'un ou l'autre onglet, le crédit arrive parfois
+d'un métier que le parrain ne regardait pas — le fil d'activité (§9) est le bon
+endroit pour le dire. Détail : §6 quater.
+
 
 ### 4.50.0 — 8 octobre 2026
 
