@@ -147,3 +147,24 @@ func (r *Repository) SetTesting(ctx context.Context, code string, testing bool) 
 	}
 	return nil
 }
+
+// SetReferral enregistre la politique de parrainage d'un pays — voir
+// `referral.go`.
+//
+// ⚠️ Le bloc est écrit ENTIER, comme `security` et `privacy` : quatre nombres
+// qui se lisent ensemble (« 1 000 au filleul, 500 au parrain, 10 filleuls
+// maximum »), et un `$set` par champ aurait laissé se construire, à force
+// d'écritures partielles, une politique dont personne ne sait plus quelle
+// moitié a été voulue.
+//
+// ⚠️ `upsert` : un pays jamais enregistré se règle quand même — sinon un
+// réglage posé avant la première ouverture du pays disparaissait sans erreur.
+func (r *Repository) SetReferral(ctx context.Context, code string, ref Referral) error {
+	_, err := r.countries.UpdateOne(ctx, bson.M{"_id": code},
+		bson.M{"$set": bson.M{"referral": ref, "updated_at": time.Now().UTC()}},
+		options.Update().SetUpsert(true))
+	if err != nil {
+		return fmt.Errorf("country: set referral: %w", err)
+	}
+	return nil
+}

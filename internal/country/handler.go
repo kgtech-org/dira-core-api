@@ -43,6 +43,9 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		// par métier. Voir `privacy.go`.
 		g.With(admin).Get("/admin/countries/{code}/privacy", h.privacy)
 		g.With(admin).Put("/admin/countries/{code}/privacy", h.updatePrivacy)
+		// CE QUE DONNE « INVITE UN AMI » dans ce pays. Voir `referral.go`.
+		g.With(admin).Get("/admin/countries/{code}/referral", h.referral)
+		g.With(admin).Put("/admin/countries/{code}/referral", h.updateReferral)
 	})
 }
 
@@ -113,6 +116,31 @@ func (h *Handler) updatePrivacy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := h.svc.UpdatePrivacy(r.Context(), chi.URLParam(r, "code"), req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// GET /admin/countries/{code}/referral
+func (h *Handler) referral(w http.ResponseWriter, r *http.Request) {
+	out, err := h.svc.Referral(r.Context(), chi.URLParam(r, "code"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// PUT /admin/countries/{code}/referral {invitee_xof?, sponsor_xof?, max_sponsored?, valid_days?}
+func (h *Handler) updateReferral(w http.ResponseWriter, r *http.Request) {
+	var req ReferralUpdateRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := h.svc.UpdateReferral(r.Context(), chi.URLParam(r, "code"), req)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
