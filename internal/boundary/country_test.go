@@ -63,7 +63,7 @@ var global = map[string]string{
 	// serait incompréhensible devant le comptoir qui affiche le code. Le
 	// contrat est ensuite vérifié comme étant le SIEN, ce qui est la garantie
 	// qui compte : connaître le code sans en être le porteur ne donne rien.
-	"equipment.ContractByHandoverCode": "le code scanné désigne le contrat ; le porteur, lui, est vérifié",
+	"equipment.ContractByCode": "le code scanné désigne le contrat ; le porteur, lui, est vérifié",
 }
 
 // Toute lecture d'une collection bornée par pays porte son pays, ou un

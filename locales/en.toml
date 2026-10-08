@@ -457,3 +457,14 @@ other = "This alert has already been closed."
 
 [errors.sos_not_yours]
 other = "This alert belongs to someone else."
+
+# THE RETURN SCAN (internal/equipment, returnscan.go). Three refusals, three
+# different things to do — as for the hand-over.
+[errors.equipment_return_code_unknown]
+other = "This code is no longer valid: ask the counter for a new one."
+
+[errors.equipment_return_code_expired]
+other = "This code has expired: ask the counter for a new one."
+
+[errors.equipment_return_not_yours]
+other = "This return belongs to someone else: check which screen you are scanning."

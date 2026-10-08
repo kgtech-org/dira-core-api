@@ -124,7 +124,7 @@ func (s *Service) MintHandoverCode(ctx context.Context, actorID, id string) (*Ha
 		return nil, apperr.Internal(err)
 	}
 	expires := s.now().Add(handoverCodeTTL)
-	if err := s.repo.SetHandoverCode(ctx, c.ID, code, expires); err != nil {
+	if err := s.repo.SetCode(ctx, c.ID, CodeHandover, code, expires, nil); err != nil {
 		return nil, err
 	}
 	s.record(ctx, "equipment.handover_code", c, nil)
@@ -163,8 +163,8 @@ func (s *Service) ScanHandover(ctx context.Context, userID, raw string) (*Contra
 	// ⚠️ LE CODE EST CONSOMMÉ D'ABORD, EN UNE SEULE ÉCRITURE — et seulement s'il
 	// est bien le SIEN et encore valide. C'est ce qui rend deux scans simultanés
 	// inoffensifs : le second ne trouve plus rien. Voir
-	// `Repository.ConsumeHandoverCode`.
-	c, err := s.repo.ConsumeHandoverCode(ctx, code, oid, s.now())
+	// `Repository.ConsumeCode`.
+	c, err := s.repo.ConsumeCode(ctx, CodeHandover, code, oid, s.now())
 	if err != nil {
 		return nil, apperr.Internal(err)
 	}
@@ -211,7 +211,7 @@ func (s *Service) ScanHandover(ctx context.Context, userID, raw string) (*Contra
 // du tout. Un seul message « code invalide » les enverrait tous les trois au
 // comptoir, qui ne saurait pas lequel il a devant lui.
 func (s *Service) diagnoseHandover(ctx context.Context, code, userID string) error {
-	c, err := s.repo.ContractByHandoverCode(ctx, code)
+	c, err := s.repo.ContractByCode(ctx, CodeHandover, code)
 	if err != nil {
 		return apperr.Internal(err)
 	}

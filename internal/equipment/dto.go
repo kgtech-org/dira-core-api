@@ -224,9 +224,21 @@ type ContractResponse struct {
 	// scannable par quiconque lit l'écran du porteur.
 	HandedVia  string     `json:"handed_via,omitempty"`
 	ReturnedAt *time.Time `json:"returned_at,omitempty"`
-	ClosedAt   *time.Time `json:"closed_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	// ReturnedVia : COMMENT le retour a été conclu — `scan` (le porteur a
+	// accepté le constat affiché au comptoir) ou `staff` (l'exploitation l'a
+	// enregistré seule).
+	//
+	// ⚠️ C'EST LE CHAMP QU'ON REGARDE QUAND UNE CAUTION EST CONTESTÉE, et il ne
+	// dit pas la même chose que `handed_via` : à la remise, la question est
+	// « l'article a-t-il été remis ? » ; au retour, elle est « ce qu'on a
+	// retenu, l'a-t-il accepté ? ».
+	//
+	// ⚠️ ABSENT sur un contrat rendu AVANT que le scan existe — « on ne sait
+	// pas » n'est pas « sans preuve » : ne traduisez pas l'absence par `staff`.
+	ReturnedVia string     `json:"returned_via,omitempty"`
+	ClosedAt    *time.Time `json:"closed_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 func toContract(c *Contract, now time.Time) ContractResponse {
@@ -239,7 +251,7 @@ func toContract(c *Contract, now time.Time) ContractResponse {
 		ReturnCondition: c.ReturnCondition, DamageFeeXOF: c.DamageFeeXOF, NextPeriodAt: c.NextPeriodAt, Notes: c.Notes,
 		RequestedAt: c.RequestedAt, AcceptedAt: c.AcceptedAt, HandedAt: c.HandedAt,
 		HandedVia:  c.HandedVia,
-		ReturnedAt: c.ReturnedAt, ClosedAt: c.ClosedAt,
+		ReturnedAt: c.ReturnedAt, ReturnedVia: c.ReturnedVia, ClosedAt: c.ClosedAt,
 		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 	}
 	if since := c.OverdueSince(now); !since.IsZero() {

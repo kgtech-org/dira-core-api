@@ -473,3 +473,15 @@ other = "Cette alerte est déjà refermée."
 
 [errors.sos_not_yours]
 other = "Cette alerte est celle de quelqu'un d'autre."
+
+# LE SCAN DU RETOUR (internal/equipment, returnscan.go). Trois refus, trois
+# gestes — comme pour la remise : demander un nouveau code, regarder le bon
+# écran, ou ne rien faire.
+[errors.equipment_return_code_unknown]
+other = "Ce code n'est plus valable : demandez-en un nouveau au comptoir."
+
+[errors.equipment_return_code_expired]
+other = "Ce code a expiré : demandez-en un nouveau au comptoir."
+
+[errors.equipment_return_not_yours]
+other = "Ce retour est celui de quelqu'un d'autre : vérifiez l'écran que vous scannez."

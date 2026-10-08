@@ -163,23 +163,35 @@ func (r *Repository) SaveContract(ctx context.Context, c *Contract) error {
 	return nil
 }
 
-// SetHandoverCode pose le code de remise d'un contrat, en REMPLAÇANT le
+// SetCode pose le code d'un contrat — remise ou retour —, en REMPLAÇANT le
 // précédent.
 //
-// ⚠️ UN SEUL CODE VALIDE PAR CONTRAT. Un comptoir qui rafraîchit son écran ne
-// doit pas laisser derrière lui une collection de codes encore bons : chacun
-// serait une remise possible, et il n'en faut qu'une. Écrire le champ (plutôt
-// que d'insérer dans une collection de codes) rend cette unicité structurelle —
-// il n'y a pas d'endroit où un second pourrait vivre.
-func (r *Repository) SetHandoverCode(ctx context.Context, id primitive.ObjectID, code string, expires time.Time) error {
+// ⚠️ UN SEUL CODE VALIDE PAR CONTRAT ET PAR GESTE. Un comptoir qui rafraîchit
+// son écran ne doit pas laisser derrière lui une collection de codes encore
+// bons : chacun serait un geste possible, et il n'en faut qu'un. Écrire le champ
+// (plutôt que d'insérer dans une collection de codes) rend cette unicité
+// structurelle — il n'y a pas d'endroit où un second pourrait vivre.
+//
+// ⚠️ ET LES DEUX GESTES ONT DEUX CHAMPS SÉPARÉS, pas un seul réutilisé. Un code
+// de remise oublié sur un contrat devenu actif aurait été consommable comme un
+// code de RETOUR : le même secret aurait rendu le gilet qu'il venait de
+// remettre. Le `kind` choisit les champs, et rien ne peut se confondre.
+//
+// `extra` porte ce que le geste doit retenir au moment où le code est posé —
+// pour un retour, l'état constaté que le porteur verra sous le QR.
+func (r *Repository) SetCode(ctx context.Context, id primitive.ObjectID, kind string, code string, expires time.Time, extra bson.M) error {
+	set := bson.M{
+		kind + "_code":            code,
+		kind + "_code_expires_at": expires,
+		"updated_at":              time.Now().UTC(),
+	}
+	for k, v := range extra {
+		set[k] = v
+	}
 	res, err := r.contracts.UpdateOne(ctx, country.Restrict(ctx, bson.M{"_id": id}),
-		bson.M{"$set": bson.M{
-			"handover_code":            code,
-			"handover_code_expires_at": expires,
-			"updated_at":               time.Now().UTC(),
-		}})
+		bson.M{"$set": set})
 	if err != nil {
-		return fmt.Errorf("equipment: set handover code: %w", err)
+		return fmt.Errorf("equipment: set %s code: %w", kind, err)
 	}
 	if res.MatchedCount == 0 {
 		return errContractNotFound
@@ -187,7 +199,8 @@ func (r *Repository) SetHandoverCode(ctx context.Context, id primitive.ObjectID,
 	return nil
 }
 
-// ConsumeHandoverCode CONSOMME le code de remise, et rend le contrat.
+// ConsumeCode CONSOMME le code d'un geste — remise ou retour —, et rend le
+// contrat.
 //
 // ⚠️ UNE SEULE ÉCRITURE ATOMIQUE, ET C'EST TOUT L'INTÉRÊT. Vérifier le code
 // puis l'effacer en deux temps laisse passer DEUX scans simultanés — un double
@@ -203,27 +216,27 @@ func (r *Repository) SetHandoverCode(ctx context.Context, id primitive.ObjectID,
 //
 // Rend le document d'AVANT l'effacement : c'est lui qui porte le statut et les
 // dates sur lesquels la remise se décide.
-func (r *Repository) ConsumeHandoverCode(ctx context.Context, code string, userID primitive.ObjectID, now time.Time) (*Contract, error) {
+func (r *Repository) ConsumeCode(ctx context.Context, kind, code string, userID primitive.ObjectID, now time.Time) (*Contract, error) {
 	var c Contract
 	err := r.contracts.FindOneAndUpdate(ctx,
 		bson.M{
-			"handover_code":            code,
-			"user_id":                  userID,
-			"handover_code_expires_at": bson.M{"$gt": now},
+			kind + "_code":            code,
+			"user_id":                 userID,
+			kind + "_code_expires_at": bson.M{"$gt": now},
 		},
-		bson.M{"$unset": bson.M{"handover_code": "", "handover_code_expires_at": ""}},
+		bson.M{"$unset": bson.M{kind + "_code": "", kind + "_code_expires_at": ""}},
 		options.FindOneAndUpdate().SetReturnDocument(options.Before),
 	).Decode(&c)
 	switch {
 	case errors.Is(err, mongo.ErrNoDocuments):
 		return nil, nil
 	case err != nil:
-		return nil, fmt.Errorf("equipment: consume handover code: %w", err)
+		return nil, fmt.Errorf("equipment: consume %s code: %w", kind, err)
 	}
 	return &c, nil
 }
 
-// ContractByHandoverCode retrouve le contrat d'un code scanné, SANS le
+// ContractByCode retrouve le contrat d'un code scanné, SANS le
 // consommer — pour dire POURQUOI un scan a échoué.
 //
 // ⚠️ SANS BORNE DE PAYS, délibérément. Le code vient d'un QR que le porteur a
@@ -232,9 +245,9 @@ func (r *Repository) ConsumeHandoverCode(ctx context.Context, code string, userI
 // réel, et le refus serait incompréhensible devant le comptoir qui affiche le
 // code. Le contrat est ensuite vérifié comme étant le SIEN, ce qui est la
 // garantie qui compte.
-func (r *Repository) ContractByHandoverCode(ctx context.Context, code string) (*Contract, error) {
+func (r *Repository) ContractByCode(ctx context.Context, kind, code string) (*Contract, error) {
 	var c Contract
-	err := r.contracts.FindOne(ctx, bson.M{"handover_code": code}).Decode(&c)
+	err := r.contracts.FindOne(ctx, bson.M{kind + "_code": code}).Decode(&c)
 	switch {
 	case errors.Is(err, mongo.ErrNoDocuments):
 		return nil, nil
