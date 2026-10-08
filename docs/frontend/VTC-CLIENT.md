@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.49.0** · 8 octobre 2026
+> **Version 4.50.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -2014,6 +2014,61 @@ POST /rides/{id}/cancel   { "reason": "…" }   // motif facultatif
 
 `409 invalid_transition` sur une course `in_transit` : le bouton doit
 disparaître à ce statut, pas échouer.
+
+### 💸 CE QU'ANNULER COÛTE — à lire AVANT le bouton (v4.50.0)
+
+Un barème d'annulation se règle par pays et par véhicule. Il voyage **avec la
+course**, dans `cancellation` :
+
+```jsonc
+{ "cancellation": {
+    "fee_xof": 800,        // ce qui serait retenu. 0 = gratuit
+    "pct": 40,             // la part du tarif appliquée, pour l'expliquer
+    "step": "waiting",     // free | on_the_way | waiting
+    "why": "",             // la RAISON quand c'est gratuit
+    "grace_left_s": 0 } }  // secondes restantes avant que ça devienne payant
+```
+
+⚠️ **RETENIR DE L'ARGENT À QUELQU'UN QUI N'A PAS PU LE LIRE AVANT EST
+INDÉFENDABLE**, et c'est la réclamation qu'on ne peut pas gagner. L'écran de
+confirmation doit dire le montant — ou dire que c'est gratuit, **et jusqu'à
+quand**. Ne montrez jamais un bouton « Annuler » nu quand `fee_xof > 0`.
+
+⚠️ **`grace_left_s` EST LE CHAMP QUI ÉVITE LA RÉCLAMATION.** Annoncer
+« gratuit » sans dire jusqu'à quand fait découvrir les frais **après** le
+geste. Rendez le compte à rebours **depuis ce nombre**, pas depuis l'horloge du
+téléphone — et relisez-le à chaque rafraîchissement de la course plutôt que de
+le décompter indéfiniment : le chauffeur peut arriver avant la fin de la grâce,
+et la grâce tombe alors d'un coup.
+
+⚠️ **AFFICHEZ `why` QUAND C'EST GRATUIT.** « C'est gratuit » sans dire pourquoi
+laisse croire à une faveur, et la prochaine fois que ce sera payant, personne
+ne comprendra ce qui a changé.
+
+| `why` | Ce que l'écran dit |
+|---|---|
+| `no_driver_yet` | « Personne n'a encore pris votre course : l'annulation est gratuite. » |
+| `within_grace` | « Gratuit pendant encore N secondes. » |
+| `no_schedule` | rien de particulier — ce pays n'a pas de barème |
+| `not_the_rider` | ne vous concerne pas (c'est le chauffeur qui annule) |
+
+| `step` | Quand |
+|---|---|
+| `free` | rien à payer |
+| `on_the_way` | un chauffeur roulait vers vous |
+| `waiting` | il était **arrivé** et vous attendait |
+
+⚠️ **COMMENT C'EST PERÇU, et il faut le dire à l'écran** : sur une course déjà
+payée, le remboursement est **amputé** des frais (vous recevez le tarif moins
+les frais, en un seul mouvement). Sur une course **en espèces**, personne n'a
+rien versé : les frais deviennent une **dette** réglée sur votre prochaine
+recharge. Un écran qui promettrait « remboursement intégral » dans le second
+cas annoncerait un mouvement qui n'existe pas.
+
+⚠️ **ET CE QUI EST RETENU VA AU CHAUFFEUR**, moins la commission. Le dire
+change la façon dont les frais sont reçus : ce n'est pas une pénalité de la
+plateforme, c'est un dédommagement pour quelqu'un qui s'est déplacé.
+
 
 
 Sur la carte : le départ et chaque étape sont `stop`, l'arrivée `client` ; le chauffeur est dessiné par son mode (`map_icon_url` de `GET /classes`).

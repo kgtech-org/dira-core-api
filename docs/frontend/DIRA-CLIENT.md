@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.49.0** · 8 octobre 2026
+> **Version 4.50.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -672,6 +672,7 @@ ceux des deux specs métier, qui restent à jour.
 | Chiffrer | `POST /rides/quote` · `POST /rides/pool/quote` · `POST /rides/rental/quote` |
 | | ⚠️ **La course PARTAGÉE cherche le CO-PASSAGER *avant* le chauffeur** — c'est le seul mode qui le fasse, et l'écran d'attente en dépend : pendant la première étape (`dispatch_state: "pooling"`, jusqu'à 5 min) **aucun chauffeur n'est appelé**. Principe complet, chronologie des deux passagers, conditions d'appariement, ordre de route et les quatre fins possibles : `VTC-CLIENT` §4 quater, **à lire avant de câbler un écran** |
 | Commander | `POST /rides` · `GET /rides` · `GET /rides/{id}` · `POST /rides/{id}/cancel` · `POST /rides/{id}/relaunch` |
+| | 💸 **ANNULER PEUT COÛTER (v4.50.0)** — `cancellation` voyage avec la course : `fee_xof`, `step`, `why`, `grace_left_s`. ⚠️ **Retenir de l'argent à quelqu'un qui n'a pas pu le lire AVANT est indéfendable** : l'écran de confirmation dit le montant, ou dit que c'est gratuit **et jusqu'à quand**. Jamais de bouton « Annuler » nu quand `fee_xof > 0`. Détail : `VTC-CLIENT` §5 |
 | En route | `PATCH /rides/{id}/stops` · socket du suivi (§11) |
 | Parler, noter | `GET/POST /rides/{id}/messages` · `POST /rides/{id}/rating` |
 | | 🔒 **CE QUE VOUS AVEZ LE DROIT D'AFFICHER du chauffeur ou du livreur est réglé par l'exploitation, pays par pays et métier par métier (v4.49.0).** Le serveur **n'envoie pas** ce qu'on n'a pas le droit de montrer : un champ absent n'est pas une panne, c'est un champ fermé. ⚠️ `phone` présent ne veut **pas** dire affichable — lisez `show_phone` ; `direct_call` sans `show_phone` veut dire « un bouton qui appelle, et le numéro nulle part ». ⚠️ **N'écrivez aucune règle en dur** : ces décisions changent sans redéploiement. Détail : `VTC-CLIENT` et `FOOD-CLIENT`, section Confidentialité |
@@ -810,6 +811,18 @@ du métier.
 ---
 
 ## 15. Journal
+
+### 4.50.0 — 8 octobre 2026
+
+💸 **ANNULER UNE COURSE PEUT COÛTER.** Un barème se règle par pays et par
+véhicule, et il voyage **avec la course** dans `cancellation` : `fee_xof`,
+`pct`, `step`, `why`, `grace_left_s`. ⚠️ **L'écran de confirmation doit le
+dire** — retenir de l'argent à quelqu'un qui n'a pas pu le lire avant est
+indéfendable. Gratuit tant qu'aucun chauffeur n'a répondu, puis gratuit pendant
+`grace_left_s` secondes, puis une part du tarif — plus haute quand le chauffeur
+**attend** sur place. ⚠️ Sur une course payée, le remboursement est **amputé**
+des frais ; en espèces, ils deviennent une **dette** réglée à la prochaine
+recharge. Détail : `VTC-CLIENT` §5.
 
 ### 4.49.0 — 8 octobre 2026
 
