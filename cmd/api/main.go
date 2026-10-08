@@ -472,6 +472,8 @@ func run(logger *slog.Logger) error {
 	equipmentSvc.SetNotifier(notifySvc)
 	equipmentSvc.SetStaffAlerter(staffAlerts{staff: staffSvc, notify: notifySvc})
 	equipmentSvc.SetAuditor(auditRec)
+	// La base des liens profonds du QR de remise — vide = lien relatif.
+	equipmentSvc.SetHandoverLinkBase(cfg.AppLinkBase)
 	go func() {
 		t := time.NewTicker(time.Minute)
 		defer t.Stop()

@@ -1807,6 +1807,60 @@ paths:
       responses:
         "200": {description: Contract, content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentContract"}}}}
         "409": {description: equipment_bad_status}
+  /equipment/handover:
+    post:
+      tags: [equipment]
+      summary: The holder scanned the counter's QR — accept and conclude in one gesture
+      description: >-
+        Le porteur scanne le QR affiché au comptoir. **Un seul appel accepte les
+        conditions ET conclut la remise** : physiquement, c'est un seul moment —
+        les garder séparés obligeait le porteur à accepter dans un autre écran
+        pendant que le comptoir attend.
+
+
+        ⚠️ **PAS SOUS `/me/equipment/{id}/…`** : celui qui scanne ne connaît
+        **pas** l'identifiant du contrat — c'est le code qui le désigne.
+        L'exiger dans le chemin aurait obligé l'application à devinerquel
+        contrat on lui remet.
+
+
+        ⚠️ **Envoyez ce que le scanner vous a donné.** Le QR porte un lien
+        profond : le code nu, l'URL complète, avec ou sans tirets, en minuscules
+        — tout est accepté. Inutile d'extraire le code vous-même.
+
+
+        ⚠️ **Trois refus distincts, et trois gestes différents** :
+        `equipment_handover_code_unknown` (plus valable ou déjà servi → demander
+        un nouveau code), `equipment_handover_code_expired` (→ demander un
+        nouveau code), `equipment_handover_not_yours` (→ **regarder le bon
+        écran** : c'est la remise de quelqu'un d'autre). Un seul message « code
+        invalide » enverrait les trois au comptoir, qui ne saurait pas lequel il
+        a devant lui.
+
+
+        ⚠️ **Un double appui est sans effet** : le code est consommé par une
+        seule écriture atomique, et une remise déjà conclue rend simplement le
+        contrat.
+
+
+        **Le scan n'est pas obligatoire** : l'exploitation peut toujours
+        enregistrer la remise elle-même. Le contrat garde alors
+        `handed_via: "staff"` au lieu de `"scan"` — c'est ce champ qu'on regarde
+        quand quelqu'un conteste.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, maxLength: 120, description: "le code, ou le lien entier rendu par le scanner"}
+      responses:
+        "200": {description: Contract (actif), content: {application/json: {schema: {$ref: "#/components/schemas/EquipmentContract"}}}}
+        "403": {description: equipment_handover_not_yours}
+        "404": {description: equipment_handover_code_unknown}
+        "409": {description: "equipment_handover_code_expired · equipment_bad_status · equipment_out_of_stock"}
   /me/equipment/{id}/pay:
     post:
       tags: [equipment]
@@ -1915,6 +1969,54 @@ paths:
       responses:
         "200": {description: Contract}
         "409": {description: equipment_not_accepted · equipment_bad_status · equipment_out_of_stock}
+  /admin/equipment/contracts/{id}/handover-code:
+    post:
+      tags: [admin]
+      summary: Mint the QR the counter shows so the holder concludes the hand-over
+      description: >-
+        Le comptoir affiche ce code en QR ; le porteur le scanne avec son
+        application, et c'est LUI qui conclut la remise
+        (`POST /equipment/handover`).
+
+
+        ⚠️ **LE PROBLÈME QUE CELA RÉSOUT** : la remise était enregistrée par
+        l'exploitation seule, et personne ne pouvait distinguer « le gilet a été
+        remis » de « quelqu'un a cliqué sur Remettre ». La différence n'est pas
+        théorique — la remise **démarre l'échéancier** : un clic de trop, et un
+        livreur rembourse pendant trois mois un sac qu'il n'a jamais eu.
+
+
+        ⚠️ **Le code vit CINQ MINUTES et ne sert qu'UNE fois.** Un code qui
+        vivrait la journée se photographie au comptoir et se scanne le soir, de
+        chez soi : la preuve « nous étions au même endroit au même moment »
+        disparaît.
+
+
+        ⚠️ **Un nouveau code révoque le précédent** : un comptoir qui rafraîchit
+        son écran ne doit pas laisser derrière lui une collection de remises
+        possibles.
+
+
+        La réponse porte `item_name` et `holder_name` : affichez-les **sous le
+        QR**, sinon le comptoir montre un carré noir et ne peut pas vérifier
+        qu'il a le bon contrat à l'écran — deux porteurs qui attendent, deux
+        onglets ouverts, et c'est la remise de l'autre qu'on fait conclure.
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "201":
+          description: Le code, son lien profond et sa date d'expiration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: {type: string, description: "16 caractères, alphabet sans O/0/I/1/L"}
+                  url: {type: string, description: "le lien profond que porte le QR ; relatif si aucune base n'est réglée"}
+                  expires_at: {type: string, format: date-time}
+                  contract_id: {type: string}
+                  item_name: {type: string}
+                  holder_name: {type: string}
+        "409": {description: "equipment_bad_status — le contrat n'est pas à remettre"}
   /admin/equipment/contracts/{id}/payments:
     post:
       tags: [admin]

@@ -246,6 +246,24 @@ type Contract struct {
 	// chaque balayage.
 	BlockedAt *time.Time `bson:"blocked_at,omitempty"`
 
+	// LE SCAN DE LA REMISE — voir `handover.go`.
+	//
+	// ⚠️ `HandoverCode` est un SECRET COURT-VÉCU, pas un identifiant : il est
+	// effacé dès qu'il a servi, et il ne sort jamais d'une réponse de contrat.
+	// Le laisser dans `ContractResponse` l'aurait fait voyager dans l'historique
+	// du porteur, où il resterait scannable par qui lit son écran.
+	HandoverCode          string     `bson:"handover_code,omitempty"`
+	HandoverCodeExpiresAt *time.Time `bson:"handover_code_expires_at,omitempty"`
+	// HandedVia : `scan` quand le porteur a scanné le code du comptoir, `staff`
+	// quand l'exploitation l'a enregistrée seule.
+	//
+	// ⚠️ C'EST LE CHAMP QU'ON REGARDE QUAND QUELQU'UN CONTESTE, et c'est pour
+	// cela qu'il existe : la remise DÉMARRE L'ÉCHÉANCIER, et « quelqu'un a
+	// cliqué sur Remettre » ne se distinguait pas de « le gilet a été remis ».
+	// Mieux vaut savoir que la preuve manque que croire qu'elle existe.
+	HandedVia    string     `bson:"handed_via,omitempty"`
+	HandedScanAt *time.Time `bson:"handed_scan_at,omitempty"`
+
 	Notes       string     `bson:"notes,omitempty"`
 	CreatedBy   string     `bson:"created_by,omitempty"`
 	RequestedAt *time.Time `bson:"requested_at,omitempty"`

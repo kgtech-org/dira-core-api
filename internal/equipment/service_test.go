@@ -2,6 +2,7 @@ package equipment
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 	"testing"
 	"time"
@@ -91,6 +92,39 @@ func (m *memStore) SaveContract(_ context.Context, c *Contract) error {
 	cp := *c
 	m.contracts[c.ID] = &cp
 	return nil
+}
+func (m *memStore) SetHandoverCode(_ context.Context, id primitive.ObjectID, code string, expires time.Time) error {
+	c, ok := m.contracts[id]
+	if !ok {
+		return errContractNotFound
+	}
+	c.HandoverCode, c.HandoverCodeExpiresAt = code, &expires
+	return nil
+}
+func (m *memStore) ConsumeHandoverCode(_ context.Context, code string, userID primitive.ObjectID, now time.Time) (*Contract, error) {
+	for _, c := range m.contracts {
+		if c.HandoverCode == "" || c.HandoverCode != code {
+			continue
+		}
+		// Le même filtre que le dépôt : le porteur ET la date, sinon rien n'est
+		// touché.
+		if c.UserID != userID || c.HandoverCodeExpiresAt == nil || !c.HandoverCodeExpiresAt.After(now) {
+			return nil, nil
+		}
+		before := *c
+		c.HandoverCode, c.HandoverCodeExpiresAt = "", nil
+		return &before, nil
+	}
+	return nil, nil
+}
+func (m *memStore) ContractByHandoverCode(_ context.Context, code string) (*Contract, error) {
+	for _, c := range m.contracts {
+		if c.HandoverCode != "" && c.HandoverCode == code {
+			cp := *c
+			return &cp, nil
+		}
+	}
+	return nil, nil
 }
 func (m *memStore) ListContracts(_ context.Context, f ContractFilter, limit int, _ string) ([]Contract, string, error) {
 	var out []Contract
@@ -414,4 +448,271 @@ func intp(n int) *int    { return &n }
 func mustID(s string) primitive.ObjectID {
 	id, _ := primitive.ObjectIDFromHex(s)
 	return id
+}
+
+// --- LA REMISE PROUVÉE PAR UN SCAN -------------------------------------
+
+// draftContract prépare un contrat en attente de remise, et rend l'article.
+//
+// ⚠️ IL REND L'ARTICLE, parce que `vest` en CRÉE un nouveau à chaque appel : le
+// rappeler depuis un test pour relire son stock mesurait un autre article, et
+// mon premier jet s'est fait prendre là-dessus.
+func draftContract(t *testing.T, svc *Service, ctx context.Context) (*ContractResponse, ItemResponse) {
+	t.Helper()
+	it := vest(t, svc, ctx)
+	c, err := svc.CreateContract(ctx, "admin", ContractInput{
+		UserID: courierID, Vertical: VerticalFood, ItemID: it.ID, Mode: ModeSale, Quantity: 1,
+		Plan: &Plan{Schedule: ScheduleInstallments, Installments: 3, Period: PeriodWeekly,
+			FirstDueDays: 7, CollectFromEarnings: true, EarningsPercent: 20},
+	})
+	require.NoError(t, err)
+	require.Equal(t, StatusDraft, c.Status)
+	return c, it
+}
+
+// ⚠️ LE SCAN FAIT TOUT EN UN GESTE : il accepte les conditions ET conclut la
+// remise. C'est voulu, parce que physiquement c'est UN moment — les garder
+// séparés obligeait le porteur à accepter dans un autre écran pendant que le
+// comptoir attend.
+func TestAScanAcceptsAndHandsOverInOneGesture(t *testing.T) {
+	svc, store, _, _, _, ctx := desk(t)
+	c, it := draftContract(t, svc, ctx)
+
+	qr, err := svc.MintHandoverCode(ctx, "admin", c.ID)
+	require.NoError(t, err)
+	assert.NotEmpty(t, qr.Code)
+	assert.Equal(t, c.ID, qr.ContractID)
+	assert.Equal(t, "Koffi", qr.HolderName, "le comptoir doit pouvoir vérifier son écran")
+	assert.Contains(t, qr.URL, qr.Code)
+
+	out, err := svc.ScanHandover(ctx, courierID, qr.Code)
+	require.NoError(t, err)
+	assert.Equal(t, StatusActive, out.Status)
+	assert.NotNil(t, out.AcceptedAt, "l'acceptation a eu lieu dans le même geste")
+	assert.NotNil(t, out.HandedAt)
+	// ⚠️ LA PREUVE EST ENREGISTRÉE : c'est ce champ qu'on regarde quand
+	// quelqu'un conteste un échéancier.
+	assert.Equal(t, HandedViaScan, out.HandedVia)
+	assert.Equal(t, 2, store.items[mustID(it.ID)].Stock, "le stock a baissé une fois")
+}
+
+// ⚠️ LA VOIE DU COMPTOIR RESTE OUVERTE, et elle DIT qu'elle est la voie du
+// comptoir. Si le scan était le seul chemin, un comptoir sans réseau ou un
+// téléphone sans caméra arrêterait l'exploitation. Mais une remise sans preuve
+// ne doit pas se lire comme une remise prouvée.
+func TestTheCounterPathStaysOpenAndSaysSo(t *testing.T) {
+	svc, _, _, _, _, ctx := desk(t)
+	c, _ := draftContract(t, svc, ctx)
+	_, err := svc.Accept(ctx, courierID, c.ID)
+	require.NoError(t, err)
+
+	out, err := svc.HandOver(ctx, "admin", c.ID)
+	require.NoError(t, err)
+	assert.Equal(t, StatusActive, out.Status)
+	assert.Equal(t, HandedViaStaff, out.HandedVia)
+}
+
+// ⚠️ DEUX SCANS SIMULTANÉS NE FONT QU'UNE REMISE. Le code est consommé par une
+// SEULE écriture atomique : le second appel ne trouve plus rien. Sans cela, un
+// double appui sur le bouton faisait deux ajustements de stock, deux échéanciers
+// et deux prélèvements du jour.
+func TestTheCodeIsConsumedSoATwiceTappedScanHandsOverOnce(t *testing.T) {
+	svc, store, _, _, _, ctx := desk(t)
+	c, it := draftContract(t, svc, ctx)
+	stockBefore := store.items[mustID(it.ID)].Stock
+
+	qr, err := svc.MintHandoverCode(ctx, "admin", c.ID)
+	require.NoError(t, err)
+	first, err := svc.ScanHandover(ctx, courierID, qr.Code)
+	require.NoError(t, err)
+	require.Equal(t, StatusActive, first.Status)
+	lines := len(first.Schedule)
+
+	// Le second scan ne trouve plus le code — il est consommé.
+	_, err = svc.ScanHandover(ctx, courierID, qr.Code)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already been used")
+
+	again, err := svc.GetContract(ctx, c.ID)
+	require.NoError(t, err)
+	assert.Len(t, again.Schedule, lines, "un seul échéancier")
+	assert.Equal(t, stockBefore-1, store.items[mustID(it.ID)].Stock, "le stock n'a baissé qu'une fois")
+}
+
+// ⚠️ SCANNER LE CODE DE QUELQU'UN D'AUTRE NE LE BRÛLE PAS, et le refus le DIT.
+// Deux porteurs au comptoir, deux écrans : le cas arrive. Consommer d'abord puis
+// vérifier à qui c'est aurait laissé un inconnu détruire le code de son voisin —
+// un refus, mais le comptoir devrait recommencer. Et « code expiré » l'enverrait
+// réclamer un nouveau code alors qu'il doit juste regarder le bon écran.
+func TestScanningSomeoneElsesCodeNeitherWorksNorBurnsIt(t *testing.T) {
+	svc, _, _, _, _, ctx := desk(t)
+	c, _ := draftContract(t, svc, ctx)
+	qr, err := svc.MintHandoverCode(ctx, "admin", c.ID)
+	require.NoError(t, err)
+
+	_, err = svc.ScanHandover(ctx, driverID, qr.Code)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "someone else")
+
+	// Le code est intact : le vrai porteur conclut sa remise.
+	out, err := svc.ScanHandover(ctx, courierID, qr.Code)
+	require.NoError(t, err)
+	assert.Equal(t, StatusActive, out.Status)
+}
+
+// ⚠️ UN CODE EXPIRE, ET C'EST TOUT L'INTÉRÊT. Un code qui vivrait la journée se
+// photographie au comptoir et se scanne le soir, de chez soi : la preuve
+// « nous étions au même endroit au même moment » disparaît, et il ne reste qu'un
+// bouton Accepter avec une étape de plus.
+func TestAnExpiredCodeIsRefusedAndNamesItself(t *testing.T) {
+	svc, _, _, _, _, ctx := desk(t)
+	c, _ := draftContract(t, svc, ctx)
+	qr, err := svc.MintHandoverCode(ctx, "admin", c.ID)
+	require.NoError(t, err)
+
+	// Six minutes plus tard : la fenêtre est de cinq.
+	base := svc.now()
+	svc.now = func() time.Time { return base.Add(6 * time.Minute) }
+	_, err = svc.ScanHandover(ctx, courierID, qr.Code)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expired")
+	assert.True(t, qr.ExpiresAt.After(base) && qr.ExpiresAt.Before(base.Add(6*time.Minute)))
+}
+
+// ⚠️ UN NOUVEAU CODE REMPLACE LE PRÉCÉDENT. Un comptoir qui rafraîchit son écran
+// ne doit pas laisser derrière lui une collection de codes valides pour le même
+// contrat : chacun serait une remise possible, et il n'en faut qu'une.
+func TestMintingAgainRevokesThePreviousCode(t *testing.T) {
+	svc, _, _, _, _, ctx := desk(t)
+	c, _ := draftContract(t, svc, ctx)
+
+	first, err := svc.MintHandoverCode(ctx, "admin", c.ID)
+	require.NoError(t, err)
+	second, err := svc.MintHandoverCode(ctx, "admin", c.ID)
+	require.NoError(t, err)
+	assert.NotEqual(t, first.Code, second.Code)
+
+	_, err = svc.ScanHandover(ctx, courierID, first.Code)
+	require.Error(t, err, "l'ancien code ne vaut plus rien")
+
+	out, err := svc.ScanHandover(ctx, courierID, second.Code)
+	require.NoError(t, err)
+	assert.Equal(t, StatusActive, out.Status)
+}
+
+// ⚠️ ON VÉRIFIE LA TRANSITION AU MOMENT D'AFFICHER LE QR, pas au scan. Afficher
+// un code pour un contrat déjà actif ferait scanner le porteur pour rien — et
+// c'est au comptoir, devant lui, qu'il faut l'apprendre.
+func TestNoCodeIsMintedForAContractThatIsNotToBeHandedOver(t *testing.T) {
+	svc, _, _, _, _, ctx := desk(t)
+	c, _ := draftContract(t, svc, ctx)
+	qr, err := svc.MintHandoverCode(ctx, "admin", c.ID)
+	require.NoError(t, err)
+	_, err = svc.ScanHandover(ctx, courierID, qr.Code)
+	require.NoError(t, err)
+
+	_, err = svc.MintHandoverCode(ctx, "admin", c.ID)
+	require.Error(t, err, "la remise a déjà eu lieu")
+}
+
+// ⚠️ UNE REMISE FAITE AU COMPTOIR ANNULE LE CODE QUI TRAÎNAIT. Sans cela, un
+// code encore vivant après une remise serait une seconde remise possible — et le
+// porteur qui scanne par réflexe verrait son contrat traité deux fois.
+func TestACounterHandOverRevokesAPendingCode(t *testing.T) {
+	svc, _, _, _, _, ctx := desk(t)
+	c, _ := draftContract(t, svc, ctx)
+	qr, err := svc.MintHandoverCode(ctx, "admin", c.ID)
+	require.NoError(t, err)
+
+	_, err = svc.Accept(ctx, courierID, c.ID)
+	require.NoError(t, err)
+	handed, err := svc.HandOver(ctx, "admin", c.ID)
+	require.NoError(t, err)
+	require.Equal(t, HandedViaStaff, handed.HandedVia)
+
+	_, err = svc.ScanHandover(ctx, courierID, qr.Code)
+	require.Error(t, err, "le code ne doit plus rien pouvoir faire")
+}
+
+// ⚠️ LE CODE NE SORT JAMAIS D'UNE FICHE DE CONTRAT. C'est un secret
+// court-vécu : le laisser voyager dans l'historique du porteur le rendrait
+// scannable par quiconque lit son écran.
+func TestTheCodeNeverLeaksThroughAContractResponse(t *testing.T) {
+	svc, _, _, _, _, ctx := desk(t)
+	c, _ := draftContract(t, svc, ctx)
+	qr, err := svc.MintHandoverCode(ctx, "admin", c.ID)
+	require.NoError(t, err)
+
+	raw, err := json.Marshal(mustContract(t, svc, ctx, c.ID))
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), qr.Code)
+	assert.NotContains(t, string(raw), "handover_code")
+
+	mine, err := svc.MyContracts(ctx, courierID)
+	require.NoError(t, err)
+	rawMine, err := json.Marshal(mine)
+	require.NoError(t, err)
+	assert.NotContains(t, string(rawMine), qr.Code)
+}
+
+func mustContract(t *testing.T, svc *Service, ctx context.Context, id string) *ContractResponse {
+	t.Helper()
+	out, err := svc.GetContract(ctx, id)
+	require.NoError(t, err)
+	return out
+}
+
+// --- CE QU'UN SCANNER REND VRAIMENT ------------------------------------
+
+// ⚠️ LE PAYLOAD PEUT ÊTRE UNE URL, parce que c'est ce que le QR porte : une
+// application qui envoie le lien entier n'a pas tort — c'est ce que sa
+// bibliothèque de scan lui a donné —, et refuser au motif que « ce n'est pas un
+// code » aurait fait chercher une heure à quelqu'un pour un slash.
+func TestTheScannerPayloadIsAcceptedInTheFormsItReallyTakes(t *testing.T) {
+	for _, in := range []string{
+		"ABCD2345EFGH6789",
+		"abcd2345efgh6789",
+		"  ABCD2345EFGH6789  ",
+		"ABCD-2345-EFGH-6789",
+		"https://app.dira.llc/equipment/handover/ABCD2345EFGH6789",
+		"dira://equipment/handover/ABCD2345EFGH6789?from=qr",
+	} {
+		assert.Equal(t, "ABCD2345EFGH6789", NormaliseHandoverCode(in), "entrée : %q", in)
+	}
+}
+
+// ⚠️ ET CE QUI N'EST PAS UN CODE EST REFUSÉ PLUTÔT QUE CHERCHÉ EN BASE. Un QR
+// d'un autre produit, un code-barres de colis : inutile d'aller voir.
+func TestWhatIsNotACodeIsRefusedWithoutALookup(t *testing.T) {
+	for _, in := range []string{"", "   ", "ABC!2345", "https://example.com/", "0O1IL"} {
+		assert.Empty(t, NormaliseHandoverCode(in), "entrée : %q", in)
+	}
+}
+
+// ⚠️ L'ALPHABET ÉCARTE LES CARACTÈRES QU'ON CONFOND. Un code se lit parfois à
+// voix haute quand la caméra ne veut pas, et « 0 » contre « O » fait échouer un
+// comptoir qui ne comprend pas pourquoi.
+func TestADrawnCodeHasNoAmbiguousCharacters(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 200; i++ {
+		code, err := drawHandoverCode()
+		require.NoError(t, err)
+		assert.Len(t, code, 16)
+		assert.False(t, seen[code], "deux tirages identiques : l'entropie est insuffisante")
+		seen[code] = true
+		for _, r := range code {
+			assert.NotContains(t, "O0I1L", string(r), "caractère ambigu dans %q", code)
+			assert.Contains(t, handoverAlphabet, string(r))
+		}
+	}
+}
+
+// ⚠️ SANS BASE RÉGLÉE, LE LIEN EST RELATIF — jamais un domaine deviné.
+// Fabriquer `https://dira.llc/...` quand rien n'est réglé enverrait les porteurs
+// de la recette sur la production, et le QR aurait l'air de marcher.
+func TestTheDeepLinkNeverGuessesADomain(t *testing.T) {
+	svc := &Service{}
+	assert.Equal(t, "/equipment/handover/ABC", svc.handoverURL("ABC"))
+	svc.SetHandoverLinkBase("https://app-staging.dira.llc/")
+	assert.Equal(t, "https://app-staging.dira.llc/equipment/handover/ABC", svc.handoverURL("ABC"))
 }

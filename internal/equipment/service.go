@@ -75,6 +75,10 @@ type Store interface {
 	InsertContract(ctx context.Context, c *Contract) error
 	ContractByID(ctx context.Context, id primitive.ObjectID) (*Contract, error)
 	SaveContract(ctx context.Context, c *Contract) error
+	// LE SCAN DE LA REMISE — voir `handover.go`.
+	SetHandoverCode(ctx context.Context, id primitive.ObjectID, code string, expires time.Time) error
+	ConsumeHandoverCode(ctx context.Context, code string, userID primitive.ObjectID, now time.Time) (*Contract, error)
+	ContractByHandoverCode(ctx context.Context, code string) (*Contract, error)
 	ListContracts(ctx context.Context, f ContractFilter, limit int, cursor string) ([]Contract, string, error)
 	ContractsOfUser(ctx context.Context, userID primitive.ObjectID, onlyActive bool) ([]Contract, error)
 	ActiveContracts(ctx context.Context) ([]Contract, error)
@@ -89,7 +93,10 @@ type Service struct {
 	staff    StaffAlerter
 	accounts Accounts
 	auditor  Auditor
-	now      func() time.Time
+	// handoverBase : la base des liens profonds du QR de remise. Vide = un lien
+	// relatif, jamais un domaine deviné — voir `handover.go`.
+	handoverBase string
+	now          func() time.Time
 }
 
 func NewService(repo Store, purse Purse, accounts Accounts) *Service {
@@ -543,6 +550,20 @@ func (s *Service) handOver(ctx context.Context, actorID string, c *Contract) (*C
 	}
 	c.Status = StatusActive
 	c.HandedAt = &now
+	// ⚠️ COMMENT la remise a été conclue, et c'est ici qu'on le fige parce que
+	// les deux chemins passent par cette fonction. `ScanHandover` l'a déjà posé
+	// à `scan` ; ce qui arrive sans rien est la voie du comptoir.
+	//
+	// ⚠️ UN CONTRAT PLUS ANCIEN RESTE VIDE, et ce n'est pas un oubli : avant le
+	// scan, aucune remise n'était prouvée. Écrire `staff` rétroactivement serait
+	// inventer un fait — et la console doit afficher « non renseigné », pas une
+	// certitude qu'on n'a pas.
+	if c.HandedVia == "" {
+		c.HandedVia = HandedViaStaff
+	}
+	// Un code encore vivant après une remise est une seconde remise possible.
+	c.HandoverCode = ""
+	c.HandoverCodeExpiresAt = nil
 	c.Schedule = buildSchedule(c, now)
 	if c.Mode == ModeRental && c.Plan.Schedule == SchedulePerPeriod {
 		next := periodAfter(now, c.Plan.Period)
