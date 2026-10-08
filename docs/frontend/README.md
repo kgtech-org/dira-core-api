@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.53.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.54.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -326,6 +326,65 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.54.0 — 8 octobre 2026
+
+📷 **LA REMISE DU MATÉRIEL SE CONCLUT EN SCANNANT LE QR DU COMPTOIR.** C'est le
+dernier geste qui manquait au module matériel (catalogue, contrat, remise,
+acceptation, caution, échéancier sur les gains, défaut — tout cela existe depuis
+la 4.11.0).
+
+```
+POST /equipment/handover   { "code": "<ce que le scanner a rendu>" }   → le contrat, ACTIF
+```
+
+⚠️ **POURQUOI CE GESTE EXISTE.** La remise était enregistrée par l'exploitation
+seule : rien ne distinguait « l'article a été remis » de « quelqu'un a cliqué sur
+Remettre ». Et la remise **démarre l'échéancier** — un clic de trop, et un
+livreur rembourse pendant trois mois un sac qu'il n'a jamais eu. Le scan est le
+geste que **seul le porteur** peut faire : il prouve qu'il était là, et que c'est
+lui qui a conclu.
+
+⚠️ **UN SEUL APPEL, PAS DEUX.** N'appelez **pas** `accept` avant de scanner : le
+scan accepte tout seul. Physiquement, l'acceptation et la remise sont un seul
+moment ; deux gestes obligeraient le porteur à chercher un autre écran pendant
+que le comptoir attend. `accept` reste utile pour accepter **à l'avance**, chez
+soi — et le scan marche aussi bien après.
+
+⚠️ **ENVOYEZ CE QUE LE SCANNER VOUS A DONNÉ**, sans le découper : le QR porte un
+lien profond, et le serveur accepte le code nu, l'URL entière, avec ou sans
+tirets, en minuscules. Extraire le code vous-même ajoute un endroit où se
+tromper.
+
+⚠️ **TROIS REFUS, TROIS GESTES — n'affichez pas « code invalide » pour tout.**
+`equipment_handover_code_unknown` et `_expired` veulent dire « demandez un
+nouveau code au comptoir » ; `equipment_handover_not_yours` veut dire
+**« regardez le bon écran »**, et ce cas arrive pour de bon : deux porteurs qui
+attendent, deux écrans ouverts. L'envoyer réclamer un code ferait chercher le
+comptoir pour rien.
+
+⚠️ **PRÉVOYEZ UN CHAMP DE SAISIE À CÔTÉ DU SCANNER.** Le comptoir affiche aussi
+le code en clair, seize caractères groupés par quatre : écran sale, soleil,
+téléphone ancien — c'est un cas courant, et sans ce champ il ne reste rien à
+faire. L'alphabet écarte `O`, `0`, `I`, `1`, `L` **précisément pour que ce code
+se dicte**.
+
+⚠️ **LE CODE VIT CINQ MINUTES**, un seul usage, et un nouveau révoque le
+précédent. Un double appui est sans effet : le second appel échoue proprement, et
+une remise déjà conclue rend simplement le contrat — vous pouvez laisser le
+bouton actif.
+
+🆕 **`handed_via` sur le contrat** : `scan` (le porteur a scanné) ou `staff`
+(l'exploitation a enregistré seule). ⚠️ **Absent sur un contrat remis avant que
+le scan existe — « on ne sait pas » n'est pas « sans preuve »**, ne traduisez pas
+l'absence par `staff`. Affichez-le au moins quand il vaut `scan` : c'est la trace
+que le porteur peut invoquer.
+
+⚠️ **ET LE SCAN N'EST PAS OBLIGATOIRE** : l'exploitation peut toujours
+enregistrer la remise elle-même, pour un comptoir sans réseau ou un téléphone
+sans caméra. Le contrat porte alors `staff`, et c'est ce champ qu'on regarde
+quand un échéancier est contesté.
+
 
 ### 4.53.0 — 8 octobre 2026
 

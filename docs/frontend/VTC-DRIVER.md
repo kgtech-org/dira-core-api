@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.53.0** · 8 octobre 2026
+> **Version 4.54.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -2336,6 +2336,7 @@ GET  /equipment/catalogue?vertical=vtc      → { items: [ … ] }        ce que
 POST /equipment/requests                    { item_id, mode, quantity?, note? }   → 201 contrat `requested`
 GET  /me/equipment                          → { items: [ contrats ], standing }
 POST /me/equipment/{id}/accept              → le contrat `accepted`
+POST /equipment/handover                    { code }   → le contrat ACTIF — le QR du comptoir (v4.54.0)
 POST /me/equipment/{id}/pay                 { amount_xof }   ← ⚠️ 409 `equipment_no_wallet` pour un chauffeur (voir plus bas)
 ```
 
@@ -2435,6 +2436,73 @@ laissant au moins `min_left_xof` sur chaque gain), puis un bouton
 Pas de refus depuis l'application : on n'accepte pas, et l'exploitation
 annule. Après acceptation, **rien ne démarre avant la remise physique** ;
 `handed_at` et **`equipment_handed_over`** marquent le départ.
+
+### 🆕 Conclure la remise EN SCANNANT le QR du comptoir (v4.54.0)
+
+```
+POST /equipment/handover   { "code": "<ce que le scanner a rendu>" }   → le contrat, ACTIF
+```
+
+Au comptoir, l'exploitation affiche un QR. Vous le scannez, et **ce seul appel
+accepte les conditions ET conclut la remise** — l'échéancier démarre.
+
+> ⚠️ **POURQUOI CE GESTE EXISTE, ET POURQUOI IL FAUT LE PRÉFÉRER.** La remise
+> était jusqu'ici enregistrée par l'exploitation seule : rien ne distinguait
+> « l'article a été remis » de « quelqu'un a cliqué sur Remettre ». Et la remise
+> **démarre l'échéancier** — un clic de trop, et on rembourse pendant trois mois
+> un sac qu'on n'a jamais eu. Le scan est le geste que **seul le porteur** peut
+> faire : il prouve qu'il était là, et que c'est lui qui a conclu.
+
+> ⚠️ **UN SEUL APPEL, PAS DEUX.** N'appelez **pas** `accept` avant de scanner :
+> le scan accepte tout seul. Physiquement, l'acceptation et la remise sont un
+> seul moment ; deux gestes obligeraient le porteur à chercher un autre écran
+> pendant que le comptoir attend. `POST /me/equipment/{id}/accept` reste utile
+> pour accepter **à l'avance**, chez soi — et le scan marche aussi bien après.
+
+> ⚠️ **ENVOYEZ CE QUE LE SCANNER VOUS A DONNÉ**, sans le découper. Le QR porte un
+> lien profond ; le serveur accepte le code nu, l'URL entière, avec ou sans
+> tirets, en minuscules. Extraire le code vous-même ne sert à rien et ajoute un
+> endroit où se tromper.
+
+#### Les trois refus, et les trois gestes qu'ils appellent
+
+| Code | Ce qui s'est passé | Ce que l'écran doit dire |
+|---|---|---|
+| `404 equipment_handover_code_unknown` | code inconnu, déjà servi, ou remplacé | « demandez un nouveau code au comptoir » |
+| `409 equipment_handover_code_expired` | plus de cinq minutes | « demandez un nouveau code au comptoir » |
+| `403 equipment_handover_not_yours` | c'est la remise de **quelqu'un d'autre** | « vérifiez que vous scannez le bon écran » |
+
+> ⚠️ **N'AFFICHEZ PAS UN SEUL MESSAGE « CODE INVALIDE ».** Les trois appellent des
+> gestes différents, et le troisième arrive pour de bon : deux porteurs qui
+> attendent au comptoir, deux écrans ouverts. L'envoyer réclamer un nouveau code
+> ferait chercher le comptoir pour rien, alors qu'il doit juste regarder l'autre
+> écran. `message` est déjà traduit — affichez-le.
+
+> ⚠️ **UN DOUBLE APPUI EST SANS EFFET.** Le code est consommé par une seule
+> écriture : le second appel échoue proprement, et une remise déjà conclue rend
+> simplement le contrat. Vous pouvez laisser le bouton actif.
+
+> ⚠️ **LE CODE VIT CINQ MINUTES**, et ce n'est pas réglable depuis l'application.
+> Si le porteur met trop longtemps à sortir son téléphone, le comptoir réaffiche
+> un code — l'ancien ne vaut plus rien.
+
+#### Si la caméra ne veut pas
+
+Le comptoir affiche **aussi le code en clair**, en seize caractères groupés par
+quatre. Prévoyez un **champ de saisie** à côté du scanner : écran sale, soleil,
+téléphone ancien — c'est un cas courant, et sans ce champ il ne reste rien à
+faire. L'alphabet du serveur écarte `O`, `0`, `I`, `1` et `L` **précisément pour
+que ce code se dicte**.
+
+#### Ce que le contrat garde
+
+`handed_via` dit **comment** la remise a été conclue : `scan` (vous avez scanné)
+ou `staff` (l'exploitation l'a enregistrée seule). Absent sur un contrat remis
+avant que le scan existe.
+
+> ⚠️ **AFFICHEZ-LE SUR LE CONTRAT**, au moins quand il vaut `scan` : c'est la
+> trace que le porteur peut invoquer, et c'est rassurant de la voir. Ne traduisez
+> pas l'absence par `staff` — « on ne sait pas » n'est pas « sans preuve ».
 
 ### Comment vous payez — la RETENUE sur le relevé
 
