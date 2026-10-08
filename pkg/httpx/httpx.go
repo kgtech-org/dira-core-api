@@ -210,3 +210,47 @@ type listBody struct {
 func List(w http.ResponseWriter, items any, nextCursor string) {
 	JSON(w, http.StatusOK, listBody{Items: items, NextCursor: nextCursor})
 }
+
+// PDF sert un document à télécharger.
+//
+// ⚠️ `attachment` ET NON `inline`, et un NOM DE FICHIER explicite. Un reçu
+// ouvert dans l'onglet du navigateur s'appelle « receipt.pdf » dans le dossier
+// de téléchargements, et vingt reçus s'appellent tous pareil : la personne qui
+// cherche celui de mardi les ouvre un par un. Le nom porte donc l'opération et
+// sa date.
+//
+// ⚠️ ET `no-store`. Un reçu porte un nom, un trajet et un montant : laissé en
+// cache par un proxy ou par le navigateur d'un cybercafé, il se relit après la
+// déconnexion. C'est le même raisonnement que pour un relevé bancaire.
+func PDF(w http.ResponseWriter, filename string, body []byte) {
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+safeFilename(filename)+`"`)
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}
+
+// safeFilename retire d'un nom de fichier ce qui casserait l'en-tête.
+//
+// ⚠️ UN GUILLEMET OU UN RETOUR À LA LIGNE DANS CE NOM EST UNE INJECTION
+// D'EN-TÊTE, pas une coquetterie : le nom vient d'une adresse ou d'un libellé
+// saisi par quelqu'un. Les caractères non ASCII partent aussi — un en-tête HTTP
+// ne les transporte pas sans un encodage que tous les clients ne lisent pas.
+func safeFilename(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-', r == '_', r == '.':
+			b.WriteRune(r)
+		case r == ' ':
+			b.WriteRune('-')
+		}
+	}
+	if b.Len() == 0 {
+		return "document.pdf"
+	}
+	return b.String()
+}
