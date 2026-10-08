@@ -214,6 +214,20 @@ const (
 	KeyEquipmentReturned   = "equipment_returned"
 	KeyStaffEquipOverdue   = "staff_equipment_overdue"
 	KeyStaffEquipRequested = "staff_equipment_requested"
+	// L'ALERTE SOS (`internal/sos`) — quelqu'un est en danger.
+	//
+	// ⚠️ C'EST LA SEULE NOTIFICATION DE CETTE LISTE QUI SE COMPTE EN SECONDES.
+	// Elle existe parce que la console n'est pas toujours regardée : la nuit,
+	// pendant une pause, sur un poste qui affiche un autre écran. Sans ce
+	// message, l'alerte attend qu'un opérateur rafraîchisse la page.
+	KeyStaffSOS = "staff_sos"
+	// KeyStaffSOSClosed : l'alerte s'est refermée.
+	//
+	// ⚠️ ELLE EXISTE POUR ARRÊTER LES AUTRES. Plusieurs opérateurs sont
+	// prévenus ; quand l'un d'eux la traite, les autres doivent le savoir,
+	// sinon trois personnes appellent le même chauffeur pendant que la
+	// suivante attend.
+	KeyStaffSOSClosed = "staff_sos_closed"
 	// LA COMPTABILITÉ (`internal/finance`) : le balayage d'intégrité a
 	// trouvé un écart — un solde qui ne vaut plus ses mouvements, une
 	// écriture déséquilibrée, un mouvement sans écriture.
@@ -671,6 +685,29 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "Equipment overdue — [who]", Body: "[amount] unpaid for [item]."},
 		},
 	},
+	KeyStaffSOS: {
+		Key: KeyStaffSOS,
+		Description: "STAFF — ALERTE SOS : quelqu'un a déclenché le bouton d'urgence. " +
+			"À traiter immédiatement.",
+		Enabled: true,
+		Locales: map[string]Text{
+			// ⚠️ LE TITRE PORTE LE MOT « SOS » ET LE NOM, parce que c'est tout
+			// ce qu'une bannière de notification montre avant qu'on la touche.
+			// « Nouvelle alerte » aurait obligé à ouvrir pour savoir si ça
+			// pouvait attendre.
+			LocaleFR: {Title: "SOS — [who]", Body: "[trigger] · [where]. Ouvrez Sécurité › SOS."},
+			LocaleEN: {Title: "SOS — [who]", Body: "[trigger] · [where]. Open Safety › SOS."},
+		},
+	},
+	KeyStaffSOSClosed: {
+		Key:         KeyStaffSOSClosed,
+		Description: "STAFF — une alerte SOS a été refermée : dénouement et qui l'a traitée.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			LocaleFR: {Title: "SOS refermé — [who]", Body: "[outcome]. Traité par [by]."},
+			LocaleEN: {Title: "SOS closed — [who]", Body: "[outcome]. Handled by [by]."},
+		},
+	},
 	KeyStaffFinanceAlert: {
 		Key:         KeyStaffFinanceAlert,
 		Description: "STAFF — le balayage d'intégrité des portefeuilles et du journal a trouvé un écart.",
@@ -818,6 +855,8 @@ var provided = map[string][]string{
 	KeyEquipmentBlocked:      {"item", "amount"},
 	KeyEquipmentReturned:     {"item", "refund", "owed"},
 	KeyStaffEquipOverdue:     {"who", "item", "amount"},
+	KeyStaffSOS:              {"who", "trigger", "where"},
+	KeyStaffSOSClosed:        {"who", "outcome", "by"},
 	KeyStaffEquipRequested:   {"who", "item", "mode"},
 	KeyStaffFinanceAlert:     {"kind", "who", "detail"},
 	// ⚠️ CE QUE LA SUPERVISION SAIT REMPLIR, et rien de plus. `what` porte la

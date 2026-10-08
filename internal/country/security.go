@@ -102,6 +102,9 @@ type Sessions struct {
 type Security struct {
 	AppLock  AppLock  `bson:"app_lock,omitempty"`
 	Sessions Sessions `bson:"sessions,omitempty"`
+	// SOS : les détections qui proposent le bouton d'alerte, le délai
+	// d'annulation, et les numéros de secours du pays. Voir `sos.go`.
+	SOS SOS `bson:"sos,omitempty"`
 }
 
 // AppLockResponse est la politique telle que la console la lit et que les

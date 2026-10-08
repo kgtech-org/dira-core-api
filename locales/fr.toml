@@ -454,3 +454,22 @@ other = "Ce code a expiré. Demandez au comptoir d'en afficher un nouveau."
 # du voisin arrive pour de bon quand deux porteurs attendent au comptoir.
 [errors.equipment_handover_not_yours]
 other = "Cette remise concerne quelqu'un d'autre : vérifiez que vous scannez le bon écran."
+
+# LE BOUTON D'ALERTE (internal/sos).
+#
+# ⚠️ CES PHRASES SONT LES SEULES DU MODULE, et c'est voulu : un appel au secours
+# ne se refuse pas. Aucune ne porte sur le CONTENU de l'alerte — ni position
+# manquante, ni champ mal formé. Elles ne couvrent que ce qui n'a rien à voir
+# avec le danger : une session cassée, une alerte qui n'est pas la sienne, une
+# alerte déjà refermée.
+[errors.sos_not_found]
+other = "Cette alerte n'existe pas."
+
+[errors.sos_unknown_actor]
+other = "Votre session n'est plus valable : reconnectez-vous."
+
+[errors.sos_already_closed]
+other = "Cette alerte est déjà refermée."
+
+[errors.sos_not_yours]
+other = "Cette alerte est celle de quelqu'un d'autre."

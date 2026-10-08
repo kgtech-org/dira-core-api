@@ -39,6 +39,12 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		// `security.go`.
 		g.With(admin).Get("/admin/countries/{code}/security", h.security)
 		g.With(admin).Put("/admin/countries/{code}/security", h.updateSecurity)
+		// LE BOUTON D'ALERTE : détections, délai d'annulation, numéros de
+		// secours — voir `sos.go`. ⚠️ Une route À PART du reste de la sécurité
+		// parce que c'est l'exploitation DE TERRAIN qui saisit les numéros, pas
+		// celle qui règle les verrous d'application.
+		g.With(admin).Get("/admin/countries/{code}/sos", h.sos)
+		g.With(admin).Put("/admin/countries/{code}/sos", h.updateSOS)
 		// QUI VOIT QUOI DE QUI entre un client et l'agent qui le sert, métier
 		// par métier. Voir `privacy.go`.
 		g.With(admin).Get("/admin/countries/{code}/privacy", h.privacy)
@@ -156,6 +162,31 @@ func (h *Handler) updateSecurity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := h.svc.UpdateSecurity(r.Context(), chi.URLParam(r, "code"), req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// GET /admin/countries/{code}/sos
+func (h *Handler) sos(w http.ResponseWriter, r *http.Request) {
+	out, err := h.svc.SOSPolicy(r.Context(), chi.URLParam(r, "code"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// PUT /admin/countries/{code}/sos {shake?, crash?, voice?, countdown_seconds?, numbers?}
+func (h *Handler) updateSOS(w http.ResponseWriter, r *http.Request) {
+	var req SOSUpdateRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := h.svc.UpdateSOS(r.Context(), chi.URLParam(r, "code"), req)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

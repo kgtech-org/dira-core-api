@@ -43,6 +43,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/internal/promocode"
 	"github.com/kgtech-org/dira-core-api/internal/rating"
 	"github.com/kgtech-org/dira-core-api/internal/serviceapi"
+	"github.com/kgtech-org/dira-core-api/internal/sos"
 	"github.com/kgtech-org/dira-core-api/internal/staff"
 	"github.com/kgtech-org/dira-core-api/internal/token"
 	"github.com/kgtech-org/dira-core-api/internal/upload"
@@ -488,6 +489,24 @@ func run(logger *slog.Logger) error {
 			}
 		}
 	}()
+	// LE BOUTON D'ALERTE — voir `internal/sos`.
+	//
+	// ⚠️ AU SOCLE, et pas dans une verticale : un passager de course et un
+	// client de livraison appuient sur le même bouton, et l'exploitation doit
+	// les voir dans la même file. Le socle ne résout pas la course — il garde
+	// la référence, et c'est la console qui compose.
+	sosRepo := sos.NewRepository(mongo)
+	if err := sosRepo.EnsureIndexes(ctx); err != nil {
+		// ⚠️ ON DÉMARRE QUAND MÊME, et c'est délibéré : sans index, la file est
+		// lente ; sans service, il n'y a pas de bouton d'alerte du tout.
+		logger.Error("sos: index non créé — la file sera lente", "error", err)
+	}
+	sosSvc := sos.NewService(sosRepo)
+	sosSvc.SetAccounts(userSvc)
+	sosSvc.SetStaffAlerts(staffAlerts{staff: staffSvc, notify: notifySvc})
+	sosSvc.SetPolicy(sosPolicy{countries: countrySvc})
+	sosSvc.SetAuditor(auditRec)
+
 	staffSvc.SetAuditor(auditRec)
 	// ⚠️ Réglé APRÈS construction, pour casser le cycle : le staff a besoin
 	// des comptes, et les comptes ont besoin des portées.
@@ -586,6 +605,9 @@ func run(logger *slog.Logger) error {
 		auditlog.NewHandler(auditRec).Mount(r, authMW)
 		faults.NewHandler(faultRepo).Mount(r, authMW)
 		equipment.NewHandler(equipmentSvc).Mount(r, authMW)
+		// LE BOUTON D'ALERTE : `POST /sos` pour qui est en danger,
+		// `/admin/sos` pour l'exploitation qui doit le voir dans la seconde.
+		sos.NewHandler(sosSvc).Mount(r, authMW)
 		financeH := finance.NewHandler(financeSvc)
 		financeH.Mount(r, authMW)
 		financeH.MountInternal(r, middleware.Service(cfg.ServiceToken))
@@ -951,6 +973,29 @@ func onlyUnder(prefix string, mw func(http.Handler) http.Handler) func(http.Hand
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// sosPolicy branche la politique d'alerte d'un pays sur le module d'alerte.
+//
+// ⚠️ UNE TRADUCTION, PAS UN RACCOURCI. Le module d'alerte déclare son propre
+// `Settings` plutôt que d'importer celui du module pays : il ne doit pas
+// dépendre de la forme qu'un réglage de console a prise. Le prix est cette
+// recopie de six champs, qu'un test de forme garde honnête.
+type sosPolicy struct{ countries *country.Service }
+
+func (p sosPolicy) SOSSettings(ctx context.Context, code string) sos.Settings {
+	s := p.countries.SOSOf(ctx, code)
+	out := sos.Settings{
+		Button: s.Button, Shake: s.Shake, Crash: s.Crash, Voice: s.Voice,
+		CountdownSeconds: s.CountdownSeconds,
+		// ⚠️ Une tranche VIDE, jamais `nil` : `numbers: null` ferait planter
+		// une application qui boucle dessus — et c'est l'écran d'urgence.
+		Numbers: make([]sos.Number, 0, len(s.Numbers)),
+	}
+	for _, n := range s.Numbers {
+		out.Numbers = append(out.Numbers, sos.Number{Kind: n.Kind, Label: n.Label, Number: n.Number})
+	}
+	return out
 }
 
 // staffAlerts prévient les membres du staff dont le périmètre couvre une

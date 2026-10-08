@@ -30,6 +30,7 @@ var collections = []string{
 	"uses",        // pkg/promo — le grand livre des promotions
 	"payment.col", // internal/payment
 	"audit.col",   // pkg/audit — le journal des actions
+	"sos.col",     // internal/sos — les appels au secours
 }
 
 // Les lectures légitimement SANS pays, et pourquoi. Chacune se relit à

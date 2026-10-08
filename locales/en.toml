@@ -443,3 +443,17 @@ other = "This code has expired. Ask the counter to display a new one."
 
 [errors.equipment_handover_not_yours]
 other = "This hand-over is someone else's: check that you are scanning the right screen."
+
+# THE SOS BUTTON (internal/sos). These are the module's only refusals, and none
+# of them is about the alarm's CONTENT — a call for help is never refused.
+[errors.sos_not_found]
+other = "This alert does not exist."
+
+[errors.sos_unknown_actor]
+other = "Your session is no longer valid: sign in again."
+
+[errors.sos_already_closed]
+other = "This alert has already been closed."
+
+[errors.sos_not_yours]
+other = "This alert belongs to someone else."
