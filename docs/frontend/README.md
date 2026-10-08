@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.51.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.52.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -326,6 +326,82 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.52.0 — 8 octobre 2026
+
+🧾 **LES REÇUS ET LES RELEVÉS, EN PDF — avec la DISTANCE RÉELLEMENT PARCOURUE.**
+Quatre routes, deux par métier :
+
+```
+GET /rides/{id}/receipt.pdf     GET /rides/statement.pdf?from=&to=
+GET /orders/{id}/receipt.pdf    GET /orders/statement.pdf?from=&to=
+```
+
+`application/pdf` · `Content-Disposition: attachment` · `Cache-Control:
+no-store` · nom de fichier déjà daté (`dira-course-2026-10-08-718293.pdf`).
+
+⚠️ **NE LES OUVREZ PAS DANS UNE WEBVIEW**, et ne les gardez pas dans un cache
+disque applicatif. Ces documents portent un nom, une adresse, un trajet et un
+montant : sur un téléphone partagé, un reçu mis en cache se relit après la
+déconnexion. Laissez le système l'enregistrer ou le partager — c'est ce que la
+personne veut en faire.
+
+⚠️ **LA DISTANCE IMPRIMÉE EST CELLE DU TRAJET RÉEL, ET LE DOCUMENT NOMME SA
+SOURCE.** `tracked` = mesurée sur les positions de l'agent, recalées sur la
+route ; `planned` = estimée, parce que le suivi n'a rien enregistré. **Le second
+cas est COURANT, pas rare** : il suffit que le téléphone ait perdu le réseau.
+C'est pourquoi la source est écrite plutôt que sous-entendue — « 11,4 km »
+présenté comme mesuré alors qu'il vient d'une estimation est la phrase d'un reçu
+qu'on ne peut plus défendre devant une réclamation. L'estimation du devis figure
+**à côté**, jamais à la place : l'écart entre les deux est ce qu'un litige
+examine.
+
+⚠️ **L'APPROCHE DU CHAUFFEUR EST SÉPARÉE** (courses). Les additionner ferait lire
+« 10,3 km » pour une course de 8,2 km, avec un prix qui ne colle plus avec la
+distance affichée juste au-dessus.
+
+⚠️ **LE DÉTAIL S'ADDITIONNE JUSQU'AU TOTAL, OU RIEN N'EST SERVI** (500). C'est le
+choix le plus important de ces documents : un reçu dont les lignes ne tombent pas
+juste PROUVE une erreur, il porte notre nom, et c'est le client qui le découvre —
+souvent devant son comptable. Mieux vaut un incident qu'on corrige qu'une
+réclamation qu'on ne peut pas gagner. Côté commandes, les plats sont donc
+détaillés **seulement** s'ils font le sous-total ; sinon un montant global est
+servi, parce qu'un reçu moins détaillé vaut mieux qu'un reçu faux.
+
+⚠️ **LES RELEVÉS REFUSENT AU LIEU DE TRONQUER.** `from` et `to` sont
+**obligatoires, sans défaut** — un défaut implicite produirait une somme sur une
+autre période que celle demandée — et une date illisible est **refusée** (`422`),
+pas ignorée. Au delà de **500 opérations** ou **366 jours** :
+`409 statement_too_large` avec `meta.max_rows`. Proposez de **découper la
+période** : c'est la seule suite utile. Un relevé qui s'arrêterait en silence à la
+cinq-centième ligne produirait une somme fausse présentée comme vraie.
+
+⚠️ **ET DEUX RELEVÉS, PAS UN**, même dans l'application unifiée. C'est le seul
+endroit où elle ne peut pas réunir les deux métiers : un relevé mêlé exigerait un
+document calculé par un service qui voit les deux, et il n'existe pas. Proposez
+deux exports plutôt qu'un bouton qui promettrait un seul fichier.
+
+**Trois champs enfin servis, utiles en eux-mêmes :**
+
+⚠️ **`cancel_fee_xof`, `cancel_fee_pct`, `cancel_fee_step` sur une course
+annulée.** Le bloc `cancellation` est un DEVIS — ce qu'une annulation
+*coûterait* — et il disparaît une fois la course annulée : le montant était bien
+prélevé du solde, et **aucune application ne pouvait le montrer**. C'est
+précisément la somme dont on demande des comptes. Servi au passager **et au
+chauffeur** : ce qui est retenu LUI REVIENT, moins la commission, et le lui cacher
+ferait d'une compensation une retenue invisible.
+
+⚠️ **`delivery.actual_distance_m` et `delivery.distance_source` au CLIENT**
+(livraison). Le chiffre existait, mesuré sur les positions du livreur, et
+s'arrêtait à la console d'exploitation — le client n'avait pas accès à la distance
+réelle de SA livraison. Lisez toujours les deux ensemble.
+
+⚠️ **`country` sur une commande.** C'est lui qui DIT LA MONNAIE des montants : une
+application qui formate avec la monnaie du COMPTE écrit le bon nombre derrière le
+mauvais symbole dès qu'on commande à l'étranger — « 35 000 F CFA » pour une
+commande payée 35 000 FG. Les courses le servent depuis la 4.27.0 ; le besoin
+était identique.
+
 
 ### 4.51.0 — 8 octobre 2026
 

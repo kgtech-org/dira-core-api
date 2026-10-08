@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.51.0** · 8 octobre 2026
+> **Version 4.52.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -710,6 +710,45 @@ porte ni la répartition de l'argent, ni le parcours, ni la conversation.
 
 ---
 
+---
+
+## 9 bis. 🧾 LES REÇUS ET LES RELEVÉS, EN PDF (v4.52.0)
+
+Quatre routes, deux de chaque côté, et une seule entrée dans l'application :
+
+| | Reçu d'une opération | Relevé d'une période |
+|---|---|---|
+| courses | `GET /rides/{id}/receipt.pdf` | `GET /rides/statement.pdf?from=&to=` |
+| commandes | `GET /orders/{id}/receipt.pdf` | `GET /orders/statement.pdf?from=&to=` |
+
+`application/pdf`, `attachment`, `no-store`, nom de fichier déjà daté. **Ne les
+ouvrez pas dans une WebView** : laissez le système les enregistrer ou les
+partager.
+
+Les deux documents portent la **distance réellement parcourue** — mesurée sur le
+trajet de l'agent — et **nomment leur source** : `tracked` mesurée, `planned`
+estimée quand le suivi n'a rien gardé. Le second cas est **courant**, pas rare.
+
+> ⚠️ **LE DÉTAIL S'ADDITIONNE JUSQU'AU TOTAL, ou le serveur ne sert rien** (500).
+> Un reçu dont les lignes ne tombent pas juste prouve une erreur, sous notre nom,
+> devant le comptable du client.
+
+> ⚠️ **ET DEUX RELEVÉS, PAS UN.** C'est le seul endroit où l'application unifiée
+> ne peut pas réunir les deux métiers, et il vaut mieux le savoir avant de dessiner
+> l'écran : un relevé mêlé exigerait un document unique calculé par un service qui
+> voit les deux, et il n'existe pas. Proposez donc **deux exports** dans l'écran
+> d'activité (§9) — « mes courses » et « mes commandes » — plutôt qu'un bouton qui
+> promettrait un seul fichier.
+
+> ⚠️ **`from` ET `to` OBLIGATOIRES, SANS DÉFAUT**, des deux côtés : un défaut
+> implicite produirait une somme sur une autre période que celle demandée. Et les
+> deux **refusent au lieu de tronquer** — `409 statement_too_large` au delà de 500
+> opérations ou de 366 jours, avec `meta.max_rows`. Proposez de découper la
+> période.
+
+Détail de ce que chaque document contient, et des pièges propres à chaque
+métier : `VTC-CLIENT` et `FOOD-CLIENT`, section « Le reçu et le relevé ».
+
 ## 10. Les deux métiers — l'inventaire, et où chacun est décrit
 
 Rien ne change dans ces parcours : les routes, les formes et les refus sont
@@ -723,6 +762,7 @@ ceux des deux specs métier, qui restent à jour.
 | Commander | `POST /orders` · `GET /orders` · `GET /orders/{id}` · `POST /orders/{id}/cancel` |
 | | 🎟️ **LE CODE PROMO SE SAISIT À LA COMMANDE (v4.51.0)** — `{ "code": "…" }`. ⚠️ **Un code refusé fait ÉCHOUER la commande** plutôt que de la créer au prix plein : gardez le panier à l'écran. `promo_code_xof` est **distinct de `discount`**, qui porte un crédit de tombola. Détail : §6 quater et `FOOD-CLIENT` §4 |
 | Suivre | `GET /deliveries/{id}` · socket du suivi (§11) |
+| Reçu, relevé | 🧾 `GET /orders/{id}/receipt.pdf` · `GET /orders/statement.pdf?from=&to=` **(v4.52.0)** — et `delivery.actual_distance_m` + `distance_source`, enfin servis au client ; `country` aussi, qui **dit la monnaie** des montants |
 | Parler | `GET/POST /orders/{id}/messages` |
 | Noter | `POST /orders/{id}/rating` |
 | Nutrition, tombola | `GET /nutrition/profile` · `GET /nutrition/plan` · `GET /tombola/draws` · `GET /tombola/me` |
@@ -739,6 +779,7 @@ ceux des deux specs métier, qui restent à jour.
 | Commander | `POST /rides` · `GET /rides` · `GET /rides/{id}` · `POST /rides/{id}/cancel` · `POST /rides/{id}/relaunch` |
 | | 💸 **ANNULER PEUT COÛTER (v4.50.0)** — `cancellation` voyage avec la course : `fee_xof`, `step`, `why`, `grace_left_s`. ⚠️ **Retenir de l'argent à quelqu'un qui n'a pas pu le lire AVANT est indéfendable** : l'écran de confirmation dit le montant, ou dit que c'est gratuit **et jusqu'à quand**. Jamais de bouton « Annuler » nu quand `fee_xof > 0`. Détail : `VTC-CLIENT` §5 |
 | En route | `PATCH /rides/{id}/stops` · socket du suivi (§11) |
+| Reçu, relevé | 🧾 `GET /rides/{id}/receipt.pdf` · `GET /rides/statement.pdf?from=&to=` **(v4.52.0)** — distance **réellement parcourue** et sa source ; une course annulée porte désormais `cancel_fee_xof` |
 | Parler, noter | `GET/POST /rides/{id}/messages` · `POST /rides/{id}/rating` |
 | | 🔒 **CE QUE VOUS AVEZ LE DROIT D'AFFICHER du chauffeur ou du livreur est réglé par l'exploitation, pays par pays et métier par métier (v4.49.0).** Le serveur **n'envoie pas** ce qu'on n'a pas le droit de montrer : un champ absent n'est pas une panne, c'est un champ fermé. ⚠️ `phone` présent ne veut **pas** dire affichable — lisez `show_phone` ; `direct_call` sans `show_phone` veut dire « un bouton qui appelle, et le numéro nulle part ». ⚠️ **N'écrivez aucune règle en dur** : ces décisions changent sans redéploiement. Détail : `VTC-CLIENT` et `FOOD-CLIENT`, section Confidentialité |
 | Programmer, s'abonner | `POST /schedules` · `POST /subscriptions` |
@@ -876,6 +917,23 @@ du métier.
 ---
 
 ## 15. Journal
+
+### 4.52.0 — 8 octobre 2026
+
+🧾 **REÇUS ET RELEVÉS EN PDF**, deux routes par métier (§9 bis), avec la
+**distance réellement parcourue** et sa source — `tracked` mesurée, `planned`
+estimée, et le second cas est courant. ⚠️ `attachment` + `no-store` : **pas de
+WebView, pas de cache disque** — ces documents portent une adresse, un trajet et
+un montant. ⚠️ **Le détail s'additionne jusqu'au total ou rien n'est servi**
+(500). ⚠️ `from`/`to` **obligatoires sans défaut**, et les relevés **refusent au
+lieu de tronquer** (`409 statement_too_large`, 500 opérations / 366 jours).
+⚠️ **Deux relevés, pas un** : c'est le seul endroit où l'application unifiée ne
+peut pas réunir les deux métiers — proposez deux exports. Nouveaux champs :
+`cancel_fee_xof` sur une course annulée (enfin servi — le bloc `cancellation`
+n'est qu'un devis et disparaît), `delivery.actual_distance_m` +
+`distance_source` au client, et `country` sur une commande, **qui dit la
+monnaie**.
+
 
 ### 4.51.0 — 8 octobre 2026
 

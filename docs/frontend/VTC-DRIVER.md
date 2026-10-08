@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.51.0** · 8 octobre 2026
+> **Version 4.52.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -1132,6 +1132,50 @@ que vous encaissez en espèces, pas le prix plein.
 
 `fare_xof = commission_xof + driver_xof` reste vrai, code ou pas. Si la somme ne
 retombe pas chez vous, c'est un bogue — signalez-le.
+
+### 🧾 LE REÇU D'UNE COURSE — pour vous aussi (v4.52.0)
+
+```
+GET /rides/{id}/receipt.pdf
+```
+
+Vous y avez droit sur une course que vous avez conduite : pour votre
+comptabilité, et pour répondre à un passager qui conteste un montant. Le document
+porte la **distance réellement parcourue** — celle mesurée sur votre trajet — avec
+sa source (`tracked` mesurée, `planned` estimée quand le suivi n'a rien gardé),
+et l'**approche** à part.
+
+> ⚠️ **C'est l'argument qui tranche un litige de kilométrage**, dans les deux
+> sens : il dit ce que vous avez roulé, et il dit quand la mesure n'a pas pu se
+> faire. Un chiffre sans sa source ne sert personne.
+
+> ⚠️ **Ce que vous lisez du passager reste borné par la politique du pays.** Le
+> reçu est construit depuis la même réponse que `GET /rides/{id}` : il n'ouvre
+> rien de plus.
+
+### 💸 CE QUI A ÉTÉ RETENU À UNE ANNULATION — enfin servi (v4.52.0)
+
+Une course annulée porte désormais :
+
+```json
+{ "cancel_fee_xof": 700, "cancel_fee_pct": 30, "cancel_fee_step": "on_the_way" }
+```
+
+> ⚠️ **CE MONTANT VOUS REVIENT**, moins la commission habituelle : le barème
+> d'annulation **compense** le déplacement, il ne punit pas le passager. À dire
+> dans l'application — c'est ce qui change la façon dont ces frais sont reçus,
+> des deux côtés.
+
+> ⚠️ **ET IL N'ÉTAIT PAS SERVI JUSQU'ICI.** Le bloc `cancellation` est un
+> **devis** — ce qu'une annulation *coûterait* — et il disparaît une fois la
+> course annulée. Le montant était bien écrit sur la course et bien prélevé ;
+> aucune application ne pouvait le montrer. Affichez-le sur la course annulée et
+> dans vos revenus du jour.
+
+`cancel_fee_step` vaut `on_the_way` (en route) ou `waiting` (vous attendiez sur
+place, part plus haute).
+
+
 
 
 

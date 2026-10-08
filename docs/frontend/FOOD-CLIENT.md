@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.51.0** · 8 octobre 2026
+> **Version 4.52.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -1042,6 +1042,100 @@ L'annulation est possible jusqu'à `picking_up` inclus. Au-delà → `409 cannot
 > qu'une barre qui n'avance pas. Et dessinez **chaque** point de collecte
 > avec le pin numéroté du **marchand** à son rang (§ Les marqueurs de carte)
 > — trois pastilles identiques sur la carte ne se lisent pas.
+
+---
+
+## 🧾 LE REÇU ET LE RELEVÉ, EN PDF (v4.52.0)
+
+```
+GET /orders/{id}/receipt.pdf
+GET /orders/statement.pdf?from=2026-09-01&to=2026-09-30
+```
+
+`application/pdf`, `Content-Disposition: attachment`, nom de fichier déjà daté —
+`dira-commande-2026-10-08-718293.pdf`. **Ne les ouvrez pas dans une WebView** :
+laissez le système les enregistrer ou les partager.
+
+> ⚠️ **`Cache-Control: no-store`.** Un reçu porte une adresse, des plats et un
+> montant : sur un téléphone partagé, un cache disque applicatif le rend lisible
+> après la déconnexion. Téléchargez à la demande.
+
+### Ce qu'il contient
+
+L'enseigne, le livreur, **les plats ligne par ligne**, les frais de livraison, les
+réductions, le total — et la **distance réellement parcourue par le livreur**.
+
+- **Le détail s'additionne jusqu'au total.** Sinon le serveur **ne sert rien**
+  (500) plutôt qu'un document faux.
+- Les plats sont détaillés **seulement** s'ils font le sous-total ; sinon un
+  montant global est servi. Un reçu moins détaillé vaut mieux qu'un reçu dont les
+  lignes ne tombent pas juste.
+- **Deux réductions, deux lignes** : le crédit de tombola (`discount`, de l'argent
+  déjà gagné par le client) et la remise d'un code (`promo_code_xof`, offerte par
+  la plateforme). Les fondre rendrait impossible de dire au client d'où vient son
+  avantage.
+- **Une livraison offerte le DIT** au lieu d'imprimer « 0 F », qui se lit comme un
+  oubli.
+- Une **commande annulée** ne doit rien, et le document le dit en une phrase.
+- La **monnaie** est celle du pays de la commande, l'**heure** celle de son fuseau.
+
+> ⚠️ **LE TRAJET DU DOCUMENT NE PORTE QUE L'ADRESSE DE REMISE.** Les points de
+> collecte sont la tournée du **livreur**, pas celle du client : les lister
+> raconterait un parcours qui ne le concerne pas, et donnerait les adresses
+> d'autres commandes.
+
+> ⚠️ **ET LA DURÉE EST CELLE DU VOYAGE, DU RETRAIT À LA REMISE.** Le temps de
+> préparation appartient à l'enseigne ; le compter ferait lire « 54 min de
+> livraison » pour un trajet de quatorze minutes — le genre de chiffre qu'on
+> reproche ensuite au livreur.
+
+### 🆕 La distance réelle est aussi servie en JSON (v4.52.0)
+
+`delivery` porte désormais, une fois la commande livrée :
+
+```json
+{ "delivery": {
+    "actual_distance_m": 3480, "distance_source": "tracked",
+    "planned_distance_m": 3100,
+    "started_at": "2026-10-08T12:10:00Z", "completed_at": "2026-10-08T12:24:00Z" } }
+```
+
+> ⚠️ **ELLE EXISTAIT DÉJÀ ET NE SORTAIT PAS.** Elle était mesurée sur les
+> positions du livreur, recalée sur la route, et s'arrêtait à la console
+> d'exploitation : le client n'avait pas accès à la distance réelle de **sa**
+> livraison. Lisez **toujours** `distance_source` avec : `planned` veut dire que
+> le suivi n'a rien gardé et qu'on retombe sur l'estimation. Afficher l'un pour
+> l'autre présente une estimation comme une mesure.
+
+### 🆕 `country` sur une commande (v4.52.0)
+
+> ⚠️ **C'EST LUI QUI DIT LA MONNAIE DES MONTANTS**, et il manquait. Une
+> application qui formate avec la monnaie du **compte** écrit le bon nombre
+> derrière le mauvais symbole dès qu'une personne commande à l'étranger — « 35 000
+> F CFA » pour une commande payée 35 000 FG. Les courses le servent depuis la
+> 4.27.0 ; le besoin est le même.
+
+### Le relevé d'une période
+
+Une ligne par commande — date, plats, distance réellement parcourue, montant —
+puis le nombre de commandes, la distance totale et la somme.
+
+> ⚠️ **`from` ET `to` SONT OBLIGATOIRES, SANS DÉFAUT** : un défaut implicite
+> produirait une somme sur une autre période que celle demandée. Une date illisible
+> est **refusée** (`422`), pas ignorée.
+
+> ⚠️ **IL REFUSE AU LIEU DE TRONQUER** : au delà de 500 commandes ou de 366 jours,
+> `409 statement_too_large` avec `meta.max_rows`. Proposez de **découper la
+> période**.
+
+> ⚠️ **UNE COMMANDE ANNULÉE COMPTE POUR ZÉRO mais reste LISTÉE.** Elle n'a rien
+> coûté ; la faire disparaître ferait douter du relevé quelqu'un qui se souvient de
+> l'avoir passée.
+
+### Où mettre le bouton
+
+- Sur une commande livrée ou annulée : « Reçu » dans l'écran de détail.
+- Dans l'historique : « Exporter la période », avec deux dates.
 
 ---
 
