@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.52.0** · 8 octobre 2026
+> **Version 4.53.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -2085,16 +2085,63 @@ GET  /agent/documents
 POST /agent/documents   { kind, file_url, vehicle_id?, expires_at? }
 ```
 
-Quatre pièces, et **le type décide de son propriétaire** :
+Dix pièces, et **le type décide de son propriétaire** :
 
-| Pièce | Rattachée à | `vehicle_id` |
-|---|---|---|
-| `licence` — permis | le livreur | **refusé** |
-| `id_card` — pièce d'identité | le livreur | **refusé** |
-| `registration` — carte grise | le véhicule | **requis** |
-| `insurance` — assurance | le véhicule | **requis** |
+| Pièce | Rattachée à | `vehicle_id` | `expires_at` |
+|---|---|---|---|
+| `id_card` — pièce d'identité | la personne | **refusé** | facultatif |
+| `selfie` — photo du visage | la personne | **refusé** | facultatif |
+| `criminal_record` — casier judiciaire | la personne | **refusé** | ⚠️ **obligatoire** |
+| `licence` — permis de conduire | la personne | **refusé** | facultatif |
+| `registration` — carte grise | le véhicule | **requis** | facultatif |
+| `insurance` — assurance | le véhicule | **requis** | facultatif |
+| `inspection` — contrôle technique | le véhicule | **requis** | facultatif |
+| `vehicle_front` — photo avant, **plaque lisible** | le véhicule | **requis** | facultatif |
+| `vehicle_rear` — photo arrière | le véhicule | **requis** | facultatif |
+| `vehicle_side` — photo de côté | le véhicule | **requis** | facultatif |
 
-> Un livreur avec deux motos a **deux assurances**. Vendre une moto n'invalide pas son permis ; une moto non assurée devient inutilisable **sans le mettre à l'arrêt** — il bascule sur l'autre.
+> ⚠️ **`criminal_record` EXIGE UNE DATE D'EXPIRATION**, et lui seul. Un casier est
+> un **instantané** : il dit ce qu'on savait le jour de sa délivrance, et rien du
+> lendemain. Sans date il vaudrait pour toujours, et un extrait de 2019 marqué
+> « valide » rendrait le contrôle décoratif. Le dépôt est refusé (`422`) avec le
+> champ nommé. **Demandez la date à l'écran**, en expliquant qu'il s'agit de la
+> validité de l'extrait — sinon la personne la cherche et redépose la même image.
+
+> ⚠️ **`selfie` N'EST PAS LA PHOTO DE PROFIL.** Celle du profil est choisie
+> librement et sert à être reconnu ; le selfie est une pièce qu'un **humain
+> compare** à la pièce d'identité. Prenez-le dans l'application, caméra avant, et
+> ne proposez **pas** de choisir une image de la galerie : une photo choisie ne
+> prouve rien.
+
+> ⚠️ **TROIS PHOTOS DE VÉHICULE, TROIS PIÈCES DISTINCTES.** Une pièce porte **une**
+> image et un dépôt **remplace** celle du même type : si vous envoyez les trois
+> sous `vehicle_front`, il n'en restera qu'une — sans message et sans trace.
+> Envoyez trois `POST`, un par angle.
+
+> ⚠️ **ET C'EST CE QUI PERMET DE DIRE QUEL ANGLE MANQUE.** `missing` les nomme un
+> par un : `vehicle_rear:<vehicle_id>`. « Il manque une photo » n'indique pas
+> laquelle reprendre ; « il manque la photo de l'arrière » se règle en trente
+> secondes.
+
+> ⚠️ **LE CASIER ET LE SELFIE SONT DUS PAR TOUT LE MONDE**, même sans véhicule
+> motorisé — contrairement au permis, qui suit la motorisation. Transporter des
+> gens ou leur argent est ce qui crée l'obligation : un livreur à vélo manipule
+> des espèces et entre dans des cours d'immeubles.
+
+> ⚠️ **UN VÉHICULE NON MOTORISÉ N'ATTEND RIEN**, photos comprises. Ne réclamez pas
+> la photo d'un vélo : `missing` ne la demande pas, et un écran qui l'exigerait
+> laisserait un cycliste bloqué sur une étape qu'il ne peut pas franchir.
+
+> Un livreur avec deux motos a **deux assurances**, et **deux jeux de photos**.
+> Vendre une moto n'invalide pas son permis ; une moto non assurée devient
+> inutilisable **sans le mettre à l'arrêt** — il bascule sur l'autre.
+
+🆕 **Cinq pièces se sont ajoutées en v4.53.0** : le casier judiciaire, le selfie,
+et les trois photos du véhicule. ⚠️ **Tout livreur déjà inscrit devient donc
+`compliant: false`** jusqu'à les avoir déposées. Rien ne l'empêche de travailler —
+le serveur n'a jamais bloqué —, mais votre bannière va s'allumer pour tout le
+monde le jour du déploiement : prévoyez un écran qui liste ce qui manque et
+permette de tout envoyer en une fois, pas un refus.
 
 **`state` est ce qu'il faut afficher**, calculé à la lecture :
 

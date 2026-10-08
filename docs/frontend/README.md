@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.52.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.53.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -326,6 +326,57 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.53.0 — 8 octobre 2026
+
+🪪 **CINQ PIÈCES DE CONFORMITÉ DE PLUS**, pour les chauffeurs VTC comme pour les
+livreurs : le **casier judiciaire**, le **selfie**, et **trois photos du
+véhicule**.
+
+| Pièce | Rattachée à | `vehicle_id` | `expires_at` |
+|---|---|---|---|
+| `criminal_record` | la personne | refusé | ⚠️ **obligatoire** |
+| `selfie` | la personne | refusé | facultatif |
+| `vehicle_front` · `vehicle_rear` · `vehicle_side` | le véhicule | **requis** | facultatif |
+
+⚠️ **`criminal_record` EXIGE UNE DATE, ET LUI SEUL.** Un casier est un
+**instantané** : il dit ce qu'on savait le jour de sa délivrance, et rien du
+lendemain. Sans date il vaudrait pour toujours — et un extrait de 2019 marqué
+« valide » rendrait décoratif le contrôle le plus sensible de la plateforme. Le
+dépôt est refusé (`422`) avec le champ nommé. **Demandez la date à l'écran** en
+expliquant qu'il s'agit de la validité de l'extrait, sinon la personne la cherche
+et redépose la même image.
+
+⚠️ **`selfie` N'EST PAS LA PHOTO DE PROFIL.** Celle du profil est choisie
+librement et sert à être reconnu ; le selfie est une pièce qu'un **humain
+compare** à la pièce d'identité. Prenez-le dans l'application, caméra avant, et
+**ne proposez pas la galerie** : une photo choisie ne prouve rien.
+
+⚠️ **TROIS PHOTOS, TROIS PIÈCES — TROIS `POST`.** Une pièce porte **une** image et
+un dépôt **remplace** celle du même type : envoyer les trois sous `vehicle_front`
+n'en laisse qu'une, sans message et sans trace. C'est aussi ce qui permet à
+`missing` de nommer **quel angle** manque (`vehicle_rear:<vehicle_id>`) — « il
+manque une photo » n'indique pas laquelle reprendre.
+
+⚠️ **LE CASIER ET LE SELFIE SONT DUS PAR TOUT LE MONDE**, même sans véhicule
+motorisé — contrairement au permis, qui suit la motorisation. Transporter des
+gens ou leur argent est ce qui crée l'obligation : un livreur à vélo manipule des
+espèces et entre dans des cours d'immeubles. À l'inverse, **un véhicule non
+motorisé n'attend rien**, photos comprises : ne réclamez pas la photo d'un vélo.
+
+⚠️ **ET IL FAUT S'Y PRÉPARER : TOUT AGENT DÉJÀ INSCRIT DEVIENT
+`compliant: false`** jusqu'à avoir déposé ces pièces. Rien ne l'empêche de
+travailler — le serveur n'a jamais bloqué, `compliant` est informatif — mais
+**votre bannière va s'allumer pour tout le monde** le jour du déploiement.
+Prévoyez un écran qui liste ce qui manque et permette de tout envoyer en une
+fois, pas un refus.
+
+✅ **ET LA CONFORMITÉ DES COURSES EXISTE** — `GET`/`POST /driver/documents`.
+⚠️ `VTC-DRIVER.md` annonçait « ❌ aucune route » alors que le partage annoncé
+avait eu lieu : la spec a continué de décrire un trou, c'est-à-dire qu'une équipe
+a pu laisser l'écran `ch_docs` de côté pour rien. Corrigé, avec la table complète
+et les états.
+
 
 ### 4.52.0 — 8 octobre 2026
 
