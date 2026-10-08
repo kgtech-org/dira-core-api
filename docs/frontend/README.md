@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.47.0** · 7 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.48.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -324,6 +324,41 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.48.0 — 8 octobre 2026
+
+🛵 **LE MOTO-TAXI EST UN MODE DE VÉHICULE À PART, OUVERT DANS TOUS LES PAYS.**
+`GET /classes` sert désormais `moto` **en tête** du catalogue : un passager, pas
+de bagage, et il passe où une voiture attend. Il était rangé dans `eco`, avec
+les citadines — une erreur de prix autant que de produit.
+
+⚠️ **`seats: 1`, ET IL FAUT LE LIRE.** Ne proposez ni « 2 passagers », ni
+bagage, ni siège enfant sur un mode à une place. Lisez `seats` plutôt que de le
+déduire de la `key` : le jour où un tricycle arrive, il en portera trois.
+
+⚠️ **PAS DE COURSE PARTAGÉE**, et vous le savez **sans règle spéciale** :
+`modes` ne porte pas la clé `pool`. C'est déjà la règle générale — une clé
+absente = mode non vendu par ce véhicule. N'écrivez pas « si key == moto
+alors… » : c'est le serveur qui décide, mode par mode et pays par pays.
+
+⚠️ **`icon_url` EST `null` AU DÉPART**, le temps que l'exploitation pose son
+image. Dessinez la silhouette `map_icon` (`moto`) — pas une icône de voiture, et
+surtout pas une image en dur de votre côté : elle resterait là le jour où la
+vraie arrive.
+
+⚠️ **AUCUNE VOITURE NE RÉPOND À UN APPEL DE MOTO, NI L'INVERSE.** Le reste du
+catalogue est une hiérarchie — une berline prend une course éco, le passager
+monte dans mieux que ce qu'il a payé — mais la moto en est **dehors** : le prix
+est figé au devis, donc une citadine qui répondrait à un appel de moto roulerait
+au tarif d'une moto, et le passager qui voulait **passer** dans
+l'embouteillage recevrait exactement l'inverse. Côté application : ne promettez
+pas « une voiture si aucune moto n'est libre », et côté chauffeur, une moto se
+déclare `class_key: "moto"` avec `seats: 1`.
+
+⚠️ **CE N'EST PLUS L'ORDRE DE LA LISTE QUI DÉCIDE DE QUI SONNE**, mais ce que
+chaque mode DÉCLARE inclure. Ne déduisez rien du rang d'affichage :
+l'exploitation peut remonter un mode pour le mettre en avant sans changer qui
+est appelé.
 
 ### 4.47.0 — 7 octobre 2026
 
