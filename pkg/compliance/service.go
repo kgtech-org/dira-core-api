@@ -250,6 +250,15 @@ func (s *Service) SubmitDocument(ctx context.Context, userID string, req SubmitD
 	if req.ExpiresAt != nil && !req.ExpiresAt.After(time.Now().UTC()) {
 		return nil, apperr.Validation("expires_at is already past: this document does not bring the driver back in order")
 	}
+	// ⚠️ CERTAINS TYPES EXIGENT UNE DATE — le casier judiciaire. Sans elle, la
+	// pièce vaudrait pour toujours (c'est ce que dit `ExpiresAt == nil`), et un
+	// extrait vieux de cinq ans resterait « valide » : le contrôle le plus
+	// sensible de la plateforme deviendrait décoratif. Voir `expiryRequired`.
+	if req.ExpiresAt == nil && NeedsExpiry(req.Kind) {
+		return nil, errDocNeedsExpiry.WithMeta(map[string]any{
+			"kind": req.Kind, "fields": []string{"expires_at"},
+		})
+	}
 	doc, err := s.repo.UpsertDocument(ctx, &Document{
 		OwnerID: ownerOID, VehicleID: vehicleOID, Kind: req.Kind,
 		FileURL: req.FileURL, ExpiresAt: req.ExpiresAt,

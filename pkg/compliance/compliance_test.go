@@ -150,20 +150,31 @@ func TestMissingDocumentsAreNamed(t *testing.T) {
 	assert.Contains(t, st.Missing, DocRegistration+":"+vehicle)
 }
 
-// Tout en règle : les deux pièces personnelles, et les deux de chaque véhicule.
+// Tout en règle : les pièces personnelles, et celles de chaque véhicule.
+//
+// ⚠️ LE TEST DÉPOSE CE QUE LES LISTES DÉCLARENT, et non une liste recopiée. Il
+// tenait cinq pièces en dur ; ajouter un type attendu le faisait échouer pour la
+// mauvaise raison — pas « la conformité est cassée », mais « le test n'a pas été
+// mis à jour ». Écrit ainsi, il vérifie ce qu'il doit : que déposer et valider
+// TOUT ce qui est réclamé rend conforme, quoi qu'on réclame.
 func TestFullyCompliantDriver(t *testing.T) {
 	fx := newFixture()
 	driver, vehicle := fx.newDriver(t, 5)
 	ctx := context.Background()
 	admin := newAdmin()
 
-	for _, req := range []SubmitDocumentRequest{
-		{Kind: DocLicence, FileURL: "https://f/1.jpg", ExpiresAt: inDays(400)},
-		{Kind: DocIDCard, FileURL: "https://f/2.jpg", ExpiresAt: inDays(900)},
-		{Kind: DocRegistration, FileURL: "https://f/3.jpg", VehicleID: vehicle},
-		{Kind: DocInsurance, FileURL: "https://f/4.jpg", VehicleID: vehicle, ExpiresAt: inDays(200)},
-		{Kind: DocInspection, FileURL: "https://f/5.jpg", VehicleID: vehicle, ExpiresAt: inDays(300)},
-	} {
+	var reqs []SubmitDocumentRequest
+	for _, kind := range PersonKindsFor([]VehicleRef{{ID: vehicle, Motorised: true}}) {
+		reqs = append(reqs, SubmitDocumentRequest{
+			Kind: kind, FileURL: "https://f/" + kind + ".jpg", ExpiresAt: inDays(400),
+		})
+	}
+	for _, kind := range VehicleKinds {
+		reqs = append(reqs, SubmitDocumentRequest{
+			Kind: kind, FileURL: "https://f/" + kind + ".jpg", VehicleID: vehicle,
+		})
+	}
+	for _, req := range reqs {
 		d := submit(t, fx, driver, req)
 		_, err := fx.svc.ReviewDocument(ctx, admin, d.ID, ReviewDocumentRequest{Status: DocValid})
 		require.NoError(t, err)
@@ -173,7 +184,7 @@ func TestFullyCompliantDriver(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, st.Compliant)
 	assert.Empty(t, st.Missing)
-	assert.Len(t, st.Documents, 5)
+	assert.Len(t, st.Documents, len(reqs))
 }
 
 // ⚠️ Une pièce EXPIRÉE ne bloque RIEN côté serveur — décision produit. Elle
@@ -280,17 +291,23 @@ func TestUnmotorisedVehicleNeedsNoPaper(t *testing.T) {
 
 	ctx := context.Background()
 	admin := newAdmin()
-	// ⚠️ SEULEMENT la pièce d'identité. Pas de permis : un cycliste n'en a
-	// pas, et le lui réclamer le laissait non conforme pour toujours. Si ce
-	// test déposait un permis « pour faire bonne mesure », il ne prouverait
-	// plus rien sur la règle.
-	d := submit(t, fx, userID, SubmitDocumentRequest{Kind: DocIDCard, FileURL: "https://f/2.jpg", ExpiresAt: inDays(900)})
-	_, err := fx.svc.ReviewDocument(ctx, admin, d.ID, ReviewDocumentRequest{Status: DocValid})
-	require.NoError(t, err)
+	// ⚠️ LES PIÈCES DE LA PERSONNE, ET PAS LE PERMIS. Un cycliste n'en a pas, et
+	// le lui réclamer le laissait non conforme pour toujours. Si ce test
+	// déposait un permis « pour faire bonne mesure », il ne prouverait plus rien
+	// sur la règle. Les pièces viennent de la liste déclarée : le casier et le
+	// selfie, eux, sont bien dus par un cycliste — ils ne dépendent pas du
+	// véhicule.
+	for _, kind := range PersonKinds {
+		d := submit(t, fx, userID, SubmitDocumentRequest{
+			Kind: kind, FileURL: "https://f/" + kind + ".jpg", ExpiresAt: inDays(900),
+		})
+		_, err := fx.svc.ReviewDocument(ctx, admin, d.ID, ReviewDocumentRequest{Status: DocValid})
+		require.NoError(t, err)
+	}
 
 	st, err := fx.svc.Compliance(ctx, userID)
 	require.NoError(t, err)
-	assert.True(t, st.Compliant, "un livreur à vélo n'a besoin que de sa pièce d'identité")
+	assert.True(t, st.Compliant, "un livreur à vélo ne doit que les pièces de sa personne")
 	assert.Empty(t, st.Missing)
 	for _, m := range st.Missing {
 		assert.NotContains(t, m, bike)
@@ -305,11 +322,17 @@ func TestLicenceFollowsMotorisedVehicles(t *testing.T) {
 	bike := VehicleRef{ID: "b", Motorised: false}
 	moto := VehicleRef{ID: "m", Motorised: true}
 
-	assert.Equal(t, []string{DocIDCard}, PersonKindsFor(nil), "à pied : la pièce d'identité seulement")
-	assert.Equal(t, []string{DocIDCard}, PersonKindsFor([]VehicleRef{bike}), "à vélo : pas de permis")
-	assert.ElementsMatch(t, []string{DocIDCard, DocLicence}, PersonKindsFor([]VehicleRef{moto}))
-	assert.ElementsMatch(t, []string{DocIDCard, DocLicence}, PersonKindsFor([]VehicleRef{bike, moto}),
+	// ⚠️ COMPARÉ À `PersonKinds`, et non à une liste recopiée : ce test porte sur
+	// LE PERMIS, et il doit continuer à ne porter que sur lui le jour où une
+	// pièce personnelle s'ajoute.
+	withLicence := append(append([]string(nil), PersonKinds...), DocLicence)
+	assert.ElementsMatch(t, PersonKinds, PersonKindsFor(nil), "à pied : pas de permis")
+	assert.ElementsMatch(t, PersonKinds, PersonKindsFor([]VehicleRef{bike}), "à vélo : pas de permis")
+	assert.ElementsMatch(t, withLicence, PersonKindsFor([]VehicleRef{moto}))
+	assert.ElementsMatch(t, withLicence, PersonKindsFor([]VehicleRef{bike, moto}),
 		"UNE moto suffit à exiger le permis, quel que soit le reste du parc")
+	assert.NotContains(t, PersonKinds, DocLicence,
+		"le permis ne doit JAMAIS entrer dans la liste de base — c'est toute la règle")
 }
 
 // Et la règle elle-même, appelée directement.
@@ -318,4 +341,182 @@ func TestKindsForDependsOnMotorisation(t *testing.T) {
 	assert.Empty(t, KindsFor(VehicleRef{ID: "x", Motorised: false}))
 	// Les trois pièces d'un véhicule motorisé, contrôle technique compris.
 	assert.Contains(t, VehicleKinds, DocInspection)
+}
+
+// --- LES PIÈCES AJOUTÉES (casier, selfie, photos du véhicule) -----------
+
+// ⚠️ LE CASIER JUDICIAIRE EXIGE UNE DATE D'EXPIRATION. C'est un INSTANTANÉ : il
+// dit ce qu'on savait le jour de sa délivrance, et rien du lendemain. Admis sans
+// date, il vaudrait pour toujours — et un extrait de 2019 marqué « valide »
+// rendrait décoratif le contrôle le plus sensible de la plateforme.
+func TestACriminalRecordWithoutAnExpiryIsRefused(t *testing.T) {
+	fx := newFixture()
+	driver, _ := fx.newDriver(t, 5)
+
+	_, err := fx.svc.SubmitDocument(context.Background(), driver, SubmitDocumentRequest{
+		Kind: DocCriminalRecord, FileURL: "https://f/casier.jpg",
+	})
+	require.Error(t, err)
+	// ⚠️ Le refus NOMME le champ : la personne doit savoir quoi chercher sur son
+	// extrait — un refus muet la fait redéposer la même image.
+	assert.Contains(t, err.Error(), "expires_at")
+
+	// Avec une date, il passe.
+	d := submit(t, fx, driver, SubmitDocumentRequest{
+		Kind: DocCriminalRecord, FileURL: "https://f/casier.jpg", ExpiresAt: inDays(90),
+	})
+	assert.Equal(t, DocCriminalRecord, d.Kind)
+	assert.Equal(t, DocPending, d.State)
+}
+
+// ⚠️ ET LA RÈGLE NE S'APPLIQUE QU'AU CASIER. On ne resserre pas une règle
+// existante dans le même geste qu'on en ajoute une : une carte grise sans date
+// est acceptée depuis des mois, et la refuser aujourd'hui casserait des dépôts
+// qui marchaient.
+func TestOnlyTheCriminalRecordDemandsAnExpiry(t *testing.T) {
+	assert.True(t, NeedsExpiry(DocCriminalRecord))
+	for _, kind := range []string{
+		DocIDCard, DocSelfie, DocLicence, DocRegistration,
+		DocInsurance, DocInspection, DocVehicleFront,
+	} {
+		assert.False(t, NeedsExpiry(kind), "%s ne doit pas devenir obligatoire ici", kind)
+	}
+}
+
+// ⚠️ LE CASIER ET LE SELFIE SONT DES PIÈCES DE LA PERSONNE, pas du véhicule.
+// Les attacher à une moto les aurait rendus à refaire à chaque changement de
+// véhicule — et aurait permis à quelqu'un d'être « vérifié » sur une moto et
+// pas sur l'autre.
+func TestTheCriminalRecordAndTheSelfieBelongToThePerson(t *testing.T) {
+	fx := newFixture()
+	driver, vehicle := fx.newDriver(t, 5)
+	ctx := context.Background()
+
+	for _, kind := range []string{DocCriminalRecord, DocSelfie} {
+		_, err := fx.svc.SubmitDocument(ctx, driver, SubmitDocumentRequest{
+			Kind: kind, FileURL: "https://f/x.jpg", VehicleID: vehicle, ExpiresAt: inDays(90),
+		})
+		require.Error(t, err, "%s n'appartient pas à un véhicule", kind)
+	}
+}
+
+// ⚠️ TROIS PHOTOS, TROIS PIÈCES — et c'est ce qui les empêche de s'écraser. Une
+// pièce porte UNE image et le dépôt remplace celle du même type : un type unique
+// « photos » aurait fait que l'arrière écrase l'avant, sans message ni trace.
+func TestTheThreeVehiclePhotosDoNotOverwriteEachOther(t *testing.T) {
+	fx := newFixture()
+	driver, vehicle := fx.newDriver(t, 5)
+	ctx := context.Background()
+
+	for _, kind := range VehiclePhotoKinds {
+		submit(t, fx, driver, SubmitDocumentRequest{
+			Kind: kind, FileURL: "https://f/" + kind + ".jpg", VehicleID: vehicle,
+		})
+	}
+	st, err := fx.svc.Compliance(ctx, driver)
+	require.NoError(t, err)
+
+	seen := map[string]string{}
+	for _, d := range st.Documents {
+		seen[d.Kind] = d.FileURL
+	}
+	for _, kind := range VehiclePhotoKinds {
+		assert.Equal(t, "https://f/"+kind+".jpg", seen[kind],
+			"%s doit avoir gardé SON image", kind)
+	}
+	assert.Len(t, VehiclePhotoKinds, 3)
+}
+
+// ⚠️ ET CE QUI MANQUE EST DIT ANGLE PAR ANGLE. « Il manque une photo » n'indique
+// pas laquelle reprendre ; « il manque la photo de la plaque » se règle en trente
+// secondes. C'est la raison d'être des trois types.
+func TestAMissingVehiclePhotoSaysWhichAngle(t *testing.T) {
+	fx := newFixture()
+	driver, vehicle := fx.newDriver(t, 5)
+	ctx := context.Background()
+	admin := newAdmin()
+
+	// L'avant seulement, validé.
+	d := submit(t, fx, driver, SubmitDocumentRequest{
+		Kind: DocVehicleFront, FileURL: "https://f/av.jpg", VehicleID: vehicle,
+	})
+	_, err := fx.svc.ReviewDocument(ctx, admin, d.ID, ReviewDocumentRequest{Status: DocValid})
+	require.NoError(t, err)
+
+	st, err := fx.svc.Compliance(ctx, driver)
+	require.NoError(t, err)
+	assert.NotContains(t, st.Missing, DocVehicleFront+":"+vehicle)
+	assert.Contains(t, st.Missing, DocVehicleRear+":"+vehicle)
+	assert.Contains(t, st.Missing, DocVehicleSide+":"+vehicle)
+}
+
+// ⚠️ UN VÉHICULE NON MOTORISÉ N'ATTEND TOUJOURS RIEN — photos comprises. La
+// règle existante est que la motorisation crée l'obligation ; y faire une
+// exception pour les photos aurait mis en défaut tous les cyclistes déjà
+// inscrits, pour une pièce que personne ne leur avait demandée.
+func TestAnUnmotorisedVehicleStillExpectsNoPhoto(t *testing.T) {
+	bike := VehicleRef{ID: "b", Motorised: false}
+	assert.Empty(t, KindsFor(bike))
+	moto := VehicleRef{ID: "m", Motorised: true}
+	for _, kind := range VehiclePhotoKinds {
+		assert.Contains(t, KindsFor(moto), kind)
+	}
+}
+
+// ⚠️ ET LES PHOTOS DE CONFORMITÉ NE SONT PAS LA GALERIE DU VÉHICULE. Celle-ci
+// (`images[]`) sert à ce qu'un passager reconnaisse la voiture qui arrive ;
+// celles-ci sont des pièces qu'un humain REGARDE et valide. Les confondre aurait
+// fait d'une photo choisie par le chauffeur une preuve de conformité.
+func TestVehiclePhotosAreReviewedPapersNotAGallery(t *testing.T) {
+	fx := newFixture()
+	driver, vehicle := fx.newDriver(t, 5)
+	ctx := context.Background()
+
+	d := submit(t, fx, driver, SubmitDocumentRequest{
+		Kind: DocVehicleFront, FileURL: "https://f/av.jpg", VehicleID: vehicle,
+	})
+	// Déposée = `pending`, comme toute pièce : personne ne l'a encore regardée.
+	assert.Equal(t, DocPending, d.State)
+
+	admin := newAdmin()
+	out, err := fx.svc.ReviewDocument(ctx, admin, d.ID,
+		ReviewDocumentRequest{Status: DocRejected, Reason: "plaque illisible"})
+	require.NoError(t, err)
+	assert.Equal(t, DocRejected, out.State)
+	assert.Equal(t, "plaque illisible", out.RejectedReason)
+}
+
+// --- LES LIBELLÉS -------------------------------------------------------
+
+// ⚠️ CHAQUE TYPE ATTENDU DOIT AVOIR UN NOM EN CLAIR, DANS LES DEUX LANGUES. La
+// table vivait en double dans les deux verticales : ajouter un type obligeait à
+// le déclarer à trois endroits, et le troisième affichait `criminal_record` à un
+// exploitant — un identifiant technique dans une notification, sur l'écran de
+// quelqu'un qui doit décider vite. Ce test est ce qui remplace la discipline.
+func TestEveryExpectedKindHasAPlainName(t *testing.T) {
+	kinds := append([]string{DocLicence}, PersonKinds...)
+	kinds = append(kinds, VehicleKinds...)
+	// ⚠️ ON VÉRIFIE LA PRÉSENCE DANS LA TABLE, et non que le nom DIFFÈRE de la
+	// clé. Ma première version comparait les deux et accusait `insurance`, dont
+	// le libellé anglais est précisément « insurance » : un test qui crie à tort
+	// finit par être ignoré, et c'est alors le vrai manque qui passe.
+	for _, kind := range kinds {
+		for _, lang := range []string{"fr", "en"} {
+			name, ok := labels[lang][kind]
+			assert.True(t, ok,
+				"%s n'a pas de nom en %s — il s'afficherait tel quel dans une alerte", kind, lang)
+			assert.NotEmpty(t, name, "%s en %s", kind, lang)
+			assert.Equal(t, name, Label(kind, lang))
+		}
+	}
+}
+
+// ⚠️ ET LE REPLI EST LA CLÉ, PAS UN BLANC. Un libellé vide ferait une alerte qui
+// dit « pièce déposée : » et personne ne saurait laquelle.
+func TestAnUnknownKindFallsBackToItsKey(t *testing.T) {
+	assert.Equal(t, "ce_qui_vient", Label("ce_qui_vient", "fr"))
+	// Langue inconnue ou étiquette complète : le français, puis la langue.
+	assert.Equal(t, labels["fr"][DocSelfie], Label(DocSelfie, "pt"))
+	assert.Equal(t, labels["fr"][DocSelfie], Label(DocSelfie, ""))
+	assert.Equal(t, labels["en"][DocSelfie], Label(DocSelfie, "en-GB"))
 }
