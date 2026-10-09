@@ -506,3 +506,20 @@ other = "This target asks for more work per day than anyone should do: lower it,
 
 [errors.challenge_budget_too_small]
 other = "The budget cannot pay a single winner: raise the budget, or lower the reward"
+
+# --- A FLEET'S STAFF (internal/fleet/members.go) ---
+
+[errors.fleet_not_owner]
+other = "Only the contract holder can manage the fleet's staff"
+
+[errors.fleet_role_unknown]
+other = "The role must be “manager” or “viewer”"
+
+[errors.fleet_owner_already]
+other = "This account already holds the contract: it has every right by default"
+
+[errors.fleet_already_member]
+other = "This account is already part of this fleet's staff"
+
+[errors.fleet_member_not_found]
+other = "This account is not part of this fleet's staff"

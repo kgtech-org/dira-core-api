@@ -53,7 +53,7 @@ func (s *Service) FleetOfOwner(ctx context.Context, userID string) (*Response, e
 	if err != nil {
 		return nil, errNoFleet
 	}
-	f, err := s.repo.ByOwner(ctx, uid)
+	f, err := s.repo.ByMember(ctx, uid)
 	if err != nil {
 		return nil, apperr.Internal(err)
 	}
@@ -64,6 +64,11 @@ func (s *Service) FleetOfOwner(ctx context.Context, userID string) (*Response, e
 		return nil, errFleetSuspended
 	}
 	out := toResponse(f)
+	// ⚠️ LE RÔLE VOYAGE AVEC LA FLOTTE, et c'est la moitié de la réponse : la
+	// console doit savoir si elle parle au propriétaire, à un répartiteur ou à
+	// un comptable AVANT de dessiner un bouton. Un bouton affiché puis refusé
+	// par le serveur a déjà promis quelque chose.
+	out.Role = roleIn(f, uid)
 	return &out, nil
 }
 

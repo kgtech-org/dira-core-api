@@ -538,3 +538,26 @@ other = "Cette cible demande plus de travail par jour que personne ne devrait en
 
 [errors.challenge_budget_too_small]
 other = "L'enveloppe ne peut pas payer un seul gagnant : augmentez l'enveloppe, ou baissez la récompense"
+
+# --- LE PERSONNEL D'UNE FLOTTE (internal/fleet/members.go) ---
+
+# ⚠️ LA RÈGLE QUI TIENT LES AUTRES : un `manager` qui pourrait faire entrer
+# quelqu'un s'ajouterait un second compte de gérant — ou mettrait le
+# propriétaire dehors.
+[errors.fleet_not_owner]
+other = "Seul le signataire du contrat peut gérer le personnel de la flotte"
+
+[errors.fleet_role_unknown]
+other = "Le rôle doit être « gérant » ou « lecteur »"
+
+# ⚠️ ON REFUSE POUR ÉVITER UN ÉTAT À DEUX VÉRITÉS : le propriétaire a déjà tous
+# les droits, et l'ajouter comme membre créerait un compte qui est les deux à la
+# fois.
+[errors.fleet_owner_already]
+other = "Ce compte détient déjà le contrat : il a tous les droits par défaut"
+
+[errors.fleet_already_member]
+other = "Ce compte fait déjà partie du personnel de cette flotte"
+
+[errors.fleet_member_not_found]
+other = "Ce compte ne fait pas partie du personnel de cette flotte"

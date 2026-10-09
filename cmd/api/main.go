@@ -452,6 +452,10 @@ func run(logger *slog.Logger) error {
 	// pas auto-attribuable, donc c'est l'exploitation qui provisionne le
 	// compte depuis la fiche de la flotte. Voir internal/fleet/access.go.
 	fleetSvc.SetAccounts(fleetAccounts{svc: userSvc})
+	// LE PERSONNEL D'UNE FLOTTE : nommer les comptes du répartiteur et du
+	// comptable. Au mieux — sans annuaire, la liste s'affiche avec les
+	// identifiants, ce qui reste actionnable.
+	fleetSvc.SetIdentities(fleetIdentities{svc: userSvc})
 
 	// LE STAFF : les employés de Dira, leur fonction et leur PÉRIMÈTRE.
 	//
@@ -703,6 +707,11 @@ func run(logger *slog.Logger) error {
 		staff.NewHandler(staffSvc).Mount(r, authMW)
 		fleetHandler := fleet.NewHandler(fleetSvc)
 		fleetHandler.Mount(r, authMW)
+		// LE PERSONNEL D'UNE FLOTTE — plusieurs comptes pour une société : un
+		// propriétaire, un répartiteur, un comptable. ⚠️ Montée à part de
+		// `Mount` parce que seul le PROPRIÉTAIRE y agit, et que la règle se lit
+		// mieux à l'endroit où les routes sont déclarées.
+		fleetHandler.MountPartnerStaff(r, authMW)
 		fleetHandler.MountService(r, middleware.Service(cfg.ServiceToken))
 		// ⚠️ LA SURFACE DE SERVICE DU SOCLE. Ces routes portent les pouvoirs
 		// d'une verticale — débiter un portefeuille, ouvrir un compte — et
@@ -858,6 +867,21 @@ func (a userAccounts) AccountsByIDs(ctx context.Context, ids []string) ([]staff.
 	out := make([]staff.AccountRow, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, staffRow(r))
+	}
+	return out, nil
+}
+
+// fleetIdentities nomme le personnel d'une flotte.
+type fleetIdentities struct{ svc *user.Service }
+
+func (a fleetIdentities) Identities(ctx context.Context, ids []string) (map[string]fleet.Identity, error) {
+	rows, err := a.svc.AccountsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]fleet.Identity, len(rows))
+	for _, r := range rows {
+		out[r.ID] = fleet.Identity{Name: r.Name, Phone: r.Phone, Email: r.Email}
 	}
 	return out, nil
 }

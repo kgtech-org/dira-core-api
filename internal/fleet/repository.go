@@ -83,6 +83,56 @@ func (r *Repository) ByOwner(ctx context.Context, ownerUserID primitive.ObjectID
 	return &f, nil
 }
 
+// ByMember retrouve la flotte d'un compte — PROPRIÉTAIRE OU MEMBRE DU
+// PERSONNEL.
+//
+// ⚠️ UNE SEULE LECTURE POUR LES DEUX CAS (`$or`) : chercher d'abord par
+// propriétaire puis par membre aurait fait deux allers-retours sur la route la
+// plus appelée de la console partenaire — elle est demandée à CHAQUE requête.
+//
+// ⚠️ ET PAS DE BORNE PAYS, pour la même raison que `ByOwner` : c'est le COMPTE
+// CONNECTÉ qui désigne la flotte, pas une liste d'exploitation.
+func (r *Repository) ByMember(ctx context.Context, userID primitive.ObjectID) (*Fleet, error) {
+	var f Fleet
+	err := r.fleets.FindOne(ctx, memberFilter(userID)).Decode(&f)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fleet: by member: %w", err)
+	}
+	return &f, nil
+}
+
+// AddMember ajoute un compte au personnel.
+//
+// ⚠️ `$addToSet` NE SUFFIRAIT PAS : il compare le document ENTIER, donc le même
+// compte avec un autre rôle passerait — et la flotte porterait deux lignes pour
+// une personne, dont une seule serait lue. Le doublon est refusé par le SERVICE,
+// qui a déjà la flotte en main ; ici on ajoute.
+func (r *Repository) AddMember(ctx context.Context, id primitive.ObjectID, m Member) error {
+	_, err := r.fleets.UpdateOne(ctx,
+		bson.M{"_id": id},
+		bson.M{"$push": bson.M{"members": m}, "$set": bson.M{"updated_at": time.Now().UTC()}})
+	if err != nil {
+		return fmt.Errorf("fleet: add member: %w", err)
+	}
+	return nil
+}
+
+// RemoveMember détache un compte du personnel. Rend `false` quand il n'y était
+// pas — ce que le service traduit en « inconnu » plutôt qu'en succès muet.
+func (r *Repository) RemoveMember(ctx context.Context, id, userID primitive.ObjectID) (bool, error) {
+	res, err := r.fleets.UpdateOne(ctx,
+		bson.M{"_id": id},
+		bson.M{"$pull": bson.M{"members": bson.M{"user_id": userID}},
+			"$set": bson.M{"updated_at": time.Now().UTC()}})
+	if err != nil {
+		return false, fmt.Errorf("fleet: remove member: %w", err)
+	}
+	return res.ModifiedCount > 0, nil
+}
+
 func (r *Repository) ByIDs(ctx context.Context, ids []primitive.ObjectID) (map[primitive.ObjectID]Fleet, error) {
 	out := make(map[primitive.ObjectID]Fleet, len(ids))
 	if len(ids) == 0 {
