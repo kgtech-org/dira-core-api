@@ -1,6 +1,6 @@
 # App / console MARCHAND — LIVRAISON — contrat d'API
 
-> **Version 4.57.0** · 8 octobre 2026
+> **Version 4.58.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food`
 
 
@@ -1039,9 +1039,16 @@ roulent ; sur une tablette posée près d'une plaque de cuisson, ils ne mesurent
 que du bruit. Lisez `GET /sos/settings` — le pays peut les autoriser — et
 **ignorez-les** dans cette application.
 
-⚠️ **AUCUN CHAMP N'EST OBLIGATOIRE, et `numbers` peut être VIDE** : pas de
-bouton d'appel plutôt qu'un numéro inventé. Détail complet de la route, du
-compte à rebours et des numéros : `FOOD-CLIENT`, section 🆘.
+⚠️ **AUCUN CHAMP N'EST OBLIGATOIRE** — pas même la position : « on ne sait pas
+où il est » reste une alarme.
+
+⚠️⚠️ **ET IL N'Y A AUCUN NUMÉRO À COMPOSER (v4.58.0).** Le téléphone ne compose
+rien : l'alerte part au **service client**, qui rappelle. Cette application
+n'affiche donc **pas** de bouton d'appel — ni vers les secours, ni vers nous —,
+et ce n'est pas un oubli de la route : il n'y a pas de champ `numbers`.
+Affichez « le service client a été prévenu et va vous appeler » (`calls_back`).
+
+Détail complet de la route et du compte à rebours : `FOOD-CLIENT`, section 🆘.
 
 ---
 

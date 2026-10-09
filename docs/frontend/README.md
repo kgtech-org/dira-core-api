@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.57.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.58.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -259,7 +259,7 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] 📄 **COLLECTE DES PIÈCES** (v4.57.0, applications d'AGENT) : `documents_missing` **routée vers l'écran des documents**, jamais vers l'accueil ni une bannière muette ; **pas présentée comme une menace de suspension** (rien ne bloque le travail, le serveur n'a jamais bloqué) ; catégorie `support` donc **non coupable**, et rare (72 h par personne) → **pas** de bannière permanente
 - [ ] 📷 **PHOTO D'UN VÉHICULE NON MOTORISÉ** (v4.57.0, LIVRAISON) : `vehicle_side` **demandée** pour un vélo — c'est le seul endroit où le non-motorisé demande *plus* (pas de plaque, donc la photo est la seule identification) ; **aucun papier** en revanche (ni carte grise, ni assurance, ni contrôle) ; `vehicle_front` **jamais** pour un vélo (« plaque lisible » est une attente qu'il ne peut pas satisfaire) ; un livreur **à pied** n'a aucune photo à envoyer
 - [ ] 📦 **RETOUR SCANNÉ** (v4.57.0, applications d'AGENT) : l'écran montre **l'état, les dégâts et ce qui sera rendu de la caution AVANT** le scan — un « scanner pour rendre » nu fait accepter un montant qu'on n'a pas lu, ce qui vaut moins qu'un clic d'agent parce que ça en a l'air plus ; `POST /equipment/return` ne prend **que** le code (on accepte, on ne négocie pas — contester passe par le support) ; trois refus → trois gestes (`_unknown`/`_expired` = nouveau code, `_not_yours` = **bon écran**) ; un code de REMISE n'est pas un code de RETOUR ; `returned_via` **absent** sur un contrat rendu avant le scan → ne pas traduire par `staff`
-- [ ] 🆘 **BOUTON D'ALERTE** (v4.56.0, **toutes** les applications) : `POST /sos` appelé avec **ce qu'on a**, sans attendre un point GPS — aucun champ n'est obligatoire, pas même la position ; **réessai en boucle jusqu'à un `2xx`**, en tête de la file hors-ligne et sans attendre la fenêtre de synchronisation ; **aucune validation côté application** (pas de motif, pas de formulaire, pas de position exigée) ; bouton **laissé actif** après le premier appui (le double appui enrichit la même alerte) ; `GET /sos/me` appelé **au démarrage** (`200` + `alert: null` est le cas normal, pas un `404`) ; position poussée **toutes les 5–10 s** tant que l'alerte vit ; `numbers` **vide → aucun bouton d'appel**, et **aucun numéro inventé** (ni 112, ni codé en dur) ; `number` **composé tel quel** (17 n'est pas +228 17) ; détections (`shake`/`crash`/`voice`) qui **proposent** via un compte à rebours de `countdown_seconds` avec **un seul** bouton « Annuler », GPS et batterie **préparés pendant** le rebours ; `confirmed: false` traité comme **plus** grave, jamais comme « envoyé par erreur » ; annulation **en un appui, sans seconde confirmation**, et dite comme « l'exploitation a été prévenue » — pas comme « effacé » ; **pas de verrou d'application** sur cet écran ; `vertical` + `ride_id`/`delivery_id` envoyés quand il y a une opération
+- [ ] 🆘 **BOUTON D'ALERTE** (v4.56.0, **toutes** les applications) : `POST /sos` appelé avec **ce qu'on a**, sans attendre un point GPS — aucun champ n'est obligatoire, pas même la position ; **réessai en boucle jusqu'à un `2xx`**, en tête de la file hors-ligne et sans attendre la fenêtre de synchronisation ; **aucune validation côté application** (pas de motif, pas de formulaire, pas de position exigée) ; bouton **laissé actif** après le premier appui (le double appui enrichit la même alerte) ; `GET /sos/me` appelé **au démarrage** (`200` + `alert: null` est le cas normal, pas un `404`) ; position poussée **toutes les 5–10 s** tant que l'alerte vit ; ⚠️ **AUCUN BOUTON D'APPEL (v4.58.0)** — ni vers les secours, ni vers nous : la route ne sert **aucun** numéro, et il ne faut en inventer aucun (ni 112, ni codé en dur). L'écran affiche `calls_back` : « le service client a été prévenu et va vous appeler » ; détections (`shake`/`crash`/`voice`) qui **proposent** via un compte à rebours de `countdown_seconds` avec **un seul** bouton « Annuler », GPS et batterie **préparés pendant** le rebours ; `confirmed: false` traité comme **plus** grave, jamais comme « envoyé par erreur » ; annulation **en un appui, sans seconde confirmation**, et dite comme « l'exploitation a été prévenue » — pas comme « effacé » ; **pas de verrou d'application** sur cet écran ; `vertical` + `ride_id`/`delivery_id` envoyés quand il y a une opération
 - [ ] 🏷️ **Motif d'annulation** (v4.55.0, applications de CLIENT **et** de CHAUFFEUR) : liste **demandée** à `GET /rides/cancel-reasons`, jamais écrite en dur — elle dépend du rôle du jeton, et un code de l'autre rôle est refusé (`422`, `fields: ["reason_code"]`) ; codes **traduits chez vous** (la route sert des codes, pas des phrases) ; `reason_code` **s'ajoute** à `reason`, il ne le remplace pas ; `grave` lu dans la réponse plutôt que testé sur `code === "accident"` ; côté chauffeur, un motif grave ouvre un ticket critique → confirmation à part, « le support a été alerté », et **l'annulation aboutit même si le ticket échoue** (pas de réessai) ; `cancelled_reason_code` **absent** sur les courses d'avant la 4.55.0 → affichez `cancelled_reason` telle quelle, ne traduisez pas l'absence par `other`
 - [ ] 📞 **Taux d'acceptation** (v4.55.0, application de CHAUFFEUR) : `rate` **absent** quand `called` vaut 0 → « — » ou « aucun appel reçu », **jamais 0 %** (qui se lit « il refuse tout ») ; `acceptance` **tout entier** peut manquer quand le suivi ne répond pas → masquez ou dites « indisponible », jamais zéro ; `declined` et `missed` **jamais additionnés** (un geste et une panne) ; ne recalculez pas le taux vous-même
 - [ ] 🧱 **Plafond de dette** (v4.55.0, application de CHAUFFEUR) : `max_debt_xof` **affiché depuis le relevé**, aucune valeur en dur — il est réglé **par pays** ; `max_debt_source` (`country` | `partner`) nommé dans le message de blocage, parce que l'interlocuteur change (l'exploitation, ou le propriétaire du véhicule) ; `max_debt_by` affiché quand il est là ; source absente traitée comme `country`
@@ -333,6 +333,85 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.58.0 — 9 octobre 2026
+
+☎️ **LE SERVICE CLIENT APPELLE, PAS LE TÉLÉPHONE DE LA PERSONNE.** Changement de
+protocole du bouton d'alerte (v4.56.0), et il **retire** quelque chose de vos
+écrans.
+
+---
+
+⚠️⚠️ **LES APPLICATIONS NE REÇOIVENT PLUS AUCUN NUMÉRO À COMPOSER.**
+`GET /sos/settings` n'a plus de champ `numbers` : il a disparu, ce n'est pas un
+oubli.
+
+```jsonc
+{ "button": true, "shake": true, "crash": true, "voice": false,
+  "countdown_seconds": 10,
+  "calls_back": true }       // ⚠️ CE QUE VOUS DEVEZ PROMETTRE
+```
+
+**RETIREZ LES BOUTONS D'APPEL DE VOS ÉCRANS D'URGENCE** — ni vers les secours,
+ni vers nous. Et **n'en inventez aucun** : pas de 112, pas de numéro codé dans
+l'application, pas de repli « au cas où », pas de liste tirée d'un site. Un
+écran qui proposerait « appeler la police » enverrait quelqu'un composer un
+numéro que nous ne lui avons pas donné.
+
+⚠️ **CE QUE VOUS AFFICHEZ À LA PLACE** : « **Le service client a été prévenu et
+va vous appeler.** » C'est `calls_back`.
+
+⚠️ **ET PAS DE BOUTON « APPELER DIRA » NON PLUS.** Il ferait patienter quelqu'un
+en danger dans une file d'attente téléphonique pendant qu'un opérateur essaie de
+le joindre sur la même ligne.
+
+---
+
+### Le nouveau parcours, de bout en bout
+
+```
+la personne appuie  →  POST /sos  →  l'alerte sonne au service client
+                                  →  un opérateur l'APPELLE
+                                  →  s'il le faut, IL appelle les secours
+```
+
+⚠️ **POURQUOI C'EST MIEUX, ET PAS SEULEMENT DIFFÉRENT** — dites-le à votre équipe
+produit, parce que la question viendra :
+
+> - **Quelqu'un répond toujours.** Les secours d'un pays peuvent sonner dans le
+>   vide : un relevé mené en Guinée en 2024 a composé les numéros officiels un
+>   par un et en a trouvé plusieurs **hors service**. Un opérateur qui tombe sur
+>   un numéro mort l'entend, raccroche et prend le suivant ; une personne en
+>   panique, non.
+> - **L'opérateur sait ce qu'il dit.** « Un chauffeur au carrefour X, voiture
+>   grise immatriculée AB-1234-CD, course en cours » se transmet. Quelqu'un de
+>   terrorisé ne décrit pas sa position.
+> - **Le premier appel est souvent le bon** : téléphone tombé, dos-d'âne,
+>   dispute déjà calmée. Appeler la police pour ça la ferait cesser de nous
+>   écouter.
+
+⚠️ **CE QUI NE CHANGE PAS, ET QUI COMPTE ENCORE PLUS MAINTENANT :**
+>
+> - **Le numéro de téléphone du compte doit être juste.** C'est par lui que
+>   l'opérateur rappelle. Un compte sans numéro joignable est maintenant un
+>   compte qu'on ne peut pas secourir : si votre application permet de le
+>   changer, vérifiez-le.
+> - **La note facultative sert vraiment** : l'opérateur la lit **avant**
+>   d'appeler, et « un homme me suit » change ce qu'il dit au téléphone.
+>   Gardez-la, et gardez-la secondaire.
+> - **La position poussée toutes les 5–10 s** est ce que l'opérateur transmet
+>   aux secours. C'est maintenant la donnée la plus utile de l'alerte.
+
+---
+
+🌍 **LES NUMÉROS DE SECOURS SONT AU CATALOGUE DE LA PLATEFORME**, au même titre
+que la monnaie d'un pays — quatorze pays, police et pompiers partout, ambulance
+quand les sources concordent. Ils s'affichent sur **l'écran de l'opérateur**, et
+nulle part ailleurs.
+
+Ils ne vous concernent pas directement, et c'est la raison de ce journal :
+**n'essayez pas de les récupérer**. Aucune route ne les sert à une application.
+
 
 ### 4.57.0 — 8 octobre 2026
 
@@ -538,29 +617,19 @@ serveurs — aucune route ne l'accepte.
 `numbers` **peut être vide**, et c'est voulu. **N'affichez alors aucun bouton
 d'appel.**
 
-Un numéro approximatif serait **composé par quelqu'un en danger** :
-« probablement le 17 » n'est pas une valeur par défaut acceptable. **N'inventez
-rien** — pas de 112, pas de numéro codé dans l'application, pas de repli « au
-cas où ». Un bouton absent envoie chercher le secours autrement ; un bouton qui
-compose un mauvais numéro fait perdre les trente secondes qui comptent.
-
-⚠️ **COMPOSEZ `number` TEL QUEL.** `17`, `118`, `1515` ne sont **pas** des
-numéros E.164 : ne les préfixez pas de l'indicatif du pays, ne les reformatez
-pas. `kind` (`police`, `ambulance`, `fire`, `platform`) choisit l'icône, `label`
-écrit le bouton.
-
-⚠️ **ET `platform` COMPTE AUTANT QUE LA POLICE** : un passager agressif, une
-dispute sur un prix, une route bloquée — tout ne relève pas de la police, et
-appeler Dira est souvent le bon geste.
+> ⚠️ **CETTE SECTION EST PÉRIMÉE — VOIR LA 4.58.0.** Les applications ne
+> reçoivent plus **aucun** numéro : le téléphone de la personne en danger ne
+> compose rien, et c'est le **service client** qui appelle. Le champ `numbers` a
+> disparu de `GET /sos/settings`. Le paragraphe est conservé pour qui lit le
+> journal dans l'ordre ; ne le câblez pas.
 
 ---
 
 ### L'écran d'alerte
 
 > - **« L'exploitation a été prévenue »** dès le `201` — la seule chose que la
->   personne cherche à savoir.
-> - **Les boutons d'appel** de `numbers`, en grand, et rien quand la liste est
->   vide.
+>   personne cherche à savoir. (4.58.0 : « …et va vous appeler ».)
+> - ~~**Les boutons d'appel** de `numbers`~~ — **retirés en 4.58.0.**
 > - **Annuler**, en un appui, **sans seconde confirmation** : un « êtes-vous
 >   sûr ? » fait rester une fausse alerte dans la file, l'opérateur appelle pour
 >   rien, et la prochaine vraie sera prise moins au sérieux.
