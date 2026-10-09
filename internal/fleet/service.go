@@ -22,6 +22,8 @@ type Auditor interface {
 type Service struct {
 	repo  *Repository
 	audit Auditor
+	// accounts ouvre l'accès du partenaire à sa console — voir access.go.
+	accounts Accounts
 }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }

@@ -1100,9 +1100,9 @@ func (s *Service) EnsureAccount(ctx context.Context, role, phone, name, email, p
 	// large que le reste de la surface de service, gardé par le même secret :
 	// un service qui peut créer un administrateur peut tout.
 	switch role {
-	case auth.RoleClient, auth.RoleDriver, auth.RoleMerchant, auth.RoleAdmin:
+	case auth.RoleClient, auth.RoleDriver, auth.RoleMerchant, auth.RoleAdmin, auth.RolePartner:
 	default:
-		return "", apperr.Validation("role must be client, driver, merchant or admin")
+		return "", apperr.Validation("role must be client, driver, merchant, admin or partner")
 	}
 	existing, err := s.repo.FindByPhone(ctx, phone)
 	if err != nil {

@@ -490,3 +490,11 @@ other = "No fleet is attached to this account yet. Ask Dira to link your contrac
 
 [errors.partner_fleet_suspended]
 other = "This fleet's contract is suspended: contact Dira. Your drivers keep working."
+
+# --- PARTNER CONSOLE ACCESS (internal/fleet/access.go) ---
+
+[errors.fleet_access_unavailable]
+other = "Partner access cannot be opened on this server"
+
+[errors.phone_belongs_to_another_role]
+other = "This phone already belongs to a Dira account that is not a partner: use another number"
