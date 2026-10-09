@@ -230,6 +230,23 @@ const (
 	KeyDocumentsMissing    = "documents_missing"
 	KeyStaffEquipOverdue   = "staff_equipment_overdue"
 	KeyStaffEquipRequested = "staff_equipment_requested"
+	// LA VOITURE D'UNE FLOTTE PRIVÉE — son propriétaire vient de la rattacher
+	// à ce chauffeur, ou de la reprendre.
+	//
+	// ⚠️ ELLES EXISTENT PARCE QUE LE GESTE N'EST PAS LE SIEN. Tout le reste de
+	// cette liste annonce la suite de quelque chose que la personne a fait ;
+	// ici, un tiers — le partenaire propriétaire — décide de l'outil de travail
+	// de quelqu'un depuis sa console. Un chauffeur qui apprendrait en ouvrant
+	// son application qu'il n'a plus de véhicule chercherait la panne chez
+	// nous ; nommer la société répond à la seule question qu'il se pose.
+	//
+	// ⚠️ ET C'EST AUSSI LE SEUL CONTRE-POUVOIR. Le rattachement ne demande pas
+	// l'accord du chauffeur — il ne peut pas : c'est la voiture du partenaire.
+	// Le dire tout de suite est ce qui permet à quelqu'un de signaler un
+	// rattachement qu'il n'a pas voulu, au lieu de le découvrir dans son
+	// relevé.
+	KeyVehicleAssigned  = "vehicle_assigned"
+	KeyVehicleTakenBack = "vehicle_taken_back"
 	// L'ALERTE SOS (`internal/sos`) — quelqu'un est en danger.
 	//
 	// ⚠️ C'EST LA SEULE NOTIFICATION DE CETTE LISTE QUI SE COMPTE EN SECONDES.
@@ -714,6 +731,38 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "Goal reached — [amount] F", Body: "[title]. The bonus is in your balance."},
 		},
 	},
+	KeyVehicleAssigned: {
+		Key:         KeyVehicleAssigned,
+		Description: "CHAUFFEUR — le propriétaire d'une flotte privée lui rattache un véhicule.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			// ⚠️ LA SOCIÉTÉ EST NOMMÉE, et la plaque avec elle. « Un véhicule
+			// vous a été rattaché » ne dit ni lequel ni par qui : le chauffeur
+			// d'une société qui en gère quarante ne saurait pas quelle voiture
+			// l'attend ce matin.
+			LocaleFR: {Title: "Véhicule rattaché — [vehicle]", Body: "[fleet] vous rattache [vehicle]. Il est prêt à rouler."},
+			LocaleEN: {Title: "Vehicle assigned — [vehicle]", Body: "[fleet] assigned you [vehicle]. It is ready to drive."},
+		},
+	},
+	KeyVehicleTakenBack: {
+		Key:         KeyVehicleTakenBack,
+		Description: "CHAUFFEUR — le propriétaire a repris son véhicule. ⚠️ Ce n'est PAS une suspension : il reste habilité à conduire.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			// ⚠️ LE MESSAGE DIT QU'IL RESTE CHAUFFEUR. Sans cette phrase, perdre
+			// sa voiture et être mis hors ligne au même instant se lit comme une
+			// exclusion de Dira — alors que c'est un différend avec son
+			// propriétaire, et qu'il peut conduire autre chose dès demain.
+			LocaleFR: {
+				Title: "Véhicule repris — [vehicle]",
+				Body:  "[fleet] a repris [vehicle]. Votre compte chauffeur reste actif : vous pouvez rouler avec un autre véhicule.",
+			},
+			LocaleEN: {
+				Title: "Vehicle taken back — [vehicle]",
+				Body:  "[fleet] took [vehicle] back. Your driver account stays active: you can drive another vehicle.",
+			},
+		},
+	},
 	KeyDocumentsMissing: {
 		Key: KeyDocumentsMissing,
 		Description: "AGENT — il manque des pièces à son dossier : lesquelles, et " +
@@ -911,6 +960,8 @@ var provided = map[string][]string{
 	KeyStaffEquipOverdue:     {"who", "item", "amount"},
 	KeyChallengeReached:      {"title", "amount"},
 	KeyDocumentsMissing:      {"count", "documents"},
+	KeyVehicleAssigned:       {"vehicle", "fleet"},
+	KeyVehicleTakenBack:      {"vehicle", "fleet"},
 	KeyStaffSOS:              {"who", "trigger", "where", "phone"},
 	KeyStaffSOSClosed:        {"who", "outcome", "by"},
 	KeyStaffEquipRequested:   {"who", "item", "mode"},
