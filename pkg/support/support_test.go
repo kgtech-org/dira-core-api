@@ -225,7 +225,14 @@ func TestTheDeskOnlyKnowsItsOwnVocabulary(t *testing.T) {
 	assert.Equal(t, []string{"order_id"}, apperr.From(err).Meta["fields"])
 	assert.Equal(t, "wrong_vertical", apperr.From(err).Meta["reason"])
 
-	assert.Equal(t, []string{CategoryRide, CategoryLostItem, CategoryPayment, CategoryTokens, CategoryAccount, CategoryBehaviour, CategoryOther}, svc.Categories())
+	// ⚠️ LA LISTE EXACTE, et dans l'ordre : c'est elle que la console propose à
+	// qui ouvre un ticket. `vehicle` s'y ajoute le 9 octobre 2026 — les
+	// propriétaires de flotte ont une console, et leurs demandes parlent
+	// presque toutes d'une voiture.
+	assert.Equal(t, []string{
+		CategoryRide, CategoryLostItem, CategoryPayment, CategoryTokens,
+		CategoryAccount, CategoryVehicle, CategoryBehaviour, CategoryOther,
+	}, svc.Categories())
 }
 
 func TestOnlyThoseWhoLivedTheRideMayComplainAboutIt(t *testing.T) {
