@@ -18,6 +18,13 @@ import (
 type Accounts interface {
 	UserNames(ctx context.Context, ids []string) (map[string]string, error)
 	CountryOf(ctx context.Context, id string) (string, error)
+	// Phones rend les numéros de plusieurs comptes.
+	//
+	// ⚠️ IL FAUT LE TÉLÉPHONE SUR LA LIGNE DE L'ALERTE, parce que le protocole
+	// commence par un appel à la personne. Le laisser chercher sur sa fiche
+	// ajoute deux clics à un écran qui se compte en secondes — et c'est ce
+	// genre de détail qui décide si un protocole est suivi ou contourné.
+	Phones(ctx context.Context, ids []string) (map[string]string, error)
 }
 
 // StaffAlerts prévient les membres du staff dont le périmètre couvre une
@@ -28,17 +35,30 @@ type StaffAlerts interface {
 
 // Policy rend la politique d'alerte d'un pays.
 type Policy interface {
+	// SOSSettings : ce que les APPLICATIONS reçoivent. ⚠️ Sans numéro.
 	SOSSettings(ctx context.Context, countryCode string) Settings
+	// EmergencyNumbers : ce que la CONSOLE compose, et si l'exploitation les a
+	// confirmés pour ce pays.
+	EmergencyNumbers(ctx context.Context, countryCode string) ([]Number, bool)
 }
 
-// Settings est la politique telle que ce module la sert aux applications.
+// Settings est la politique telle que ce module la sert aux APPLICATIONS.
+//
+// ⚠️ ELLE NE PORTE AUCUN NUMÉRO, et c'est structurel. Le téléphone de quelqu'un
+// en danger ne compose rien : l'alerte part au service client, un opérateur
+// appelle la personne, et c'est lui qui appelle les secours. Servir les numéros
+// « au cas où » aurait fini par un bouton d'appel — un champ qui existe se
+// câble, quelle que soit la spec.
 type Settings struct {
-	Button           bool     `json:"button"`
-	Shake            bool     `json:"shake"`
-	Crash            bool     `json:"crash"`
-	Voice            bool     `json:"voice"`
-	CountdownSeconds int      `json:"countdown_seconds"`
-	Numbers          []Number `json:"numbers"`
+	Button           bool `json:"button"`
+	Shake            bool `json:"shake"`
+	Crash            bool `json:"crash"`
+	Voice            bool `json:"voice"`
+	CountdownSeconds int  `json:"countdown_seconds"`
+	// CallsBack : ce que l'application doit PROMETTRE — « le service client a
+	// été prévenu et va vous appeler ». C'est la seule chose que la personne
+	// cherche à savoir après avoir appuyé.
+	CallsBack bool `json:"calls_back"`
 }
 
 // Number est un numéro de secours à composer.
@@ -296,8 +316,9 @@ func (s *Service) Mine(ctx context.Context, userID string) (*Response, error) {
 func (s *Service) SettingsFor(ctx context.Context) Settings {
 	if s.policy == nil {
 		// Sans politique branchée : le bouton existe, les détections aussi, et
-		// aucun numéro — jamais un numéro inventé.
-		return Settings{Button: true, Shake: true, Crash: true, CountdownSeconds: 10, Numbers: []Number{}}
+		// la promesse du rappel tient — c'est l'exploitation qui appelle, pas
+		// un réglage.
+		return Settings{Button: true, Shake: true, Crash: true, CountdownSeconds: 10, CallsBack: true}
 	}
 	return s.policy.SOSSettings(ctx, country.FromContext(ctx))
 }
@@ -389,6 +410,86 @@ func (s *Service) Close(ctx context.Context, actorID, id, outcome, resolution st
 	return &out, nil
 }
 
+// ContactInput : ce que l'opérateur a obtenu en appelant.
+type ContactInput struct {
+	// Reached : a-t-on eu quelqu'un au bout du fil ?
+	//
+	// ⚠️ EXPLICITE, et non déduit du fait qu'on a cliqué. « J'ai appelé » et
+	// « j'ai eu la personne » sont deux faits différents, et c'est le second qui
+	// dit si l'alerte s'apaise ou s'aggrave : dix sonneries sans réponse après un
+	// choc violent est l'information la plus inquiétante de l'écran.
+	Reached bool   `json:"reached"`
+	Note    string `json:"note" validate:"omitempty,max=1000"`
+}
+
+// Contacted : l'opérateur a appelé la personne — première étape du protocole.
+func (s *Service) Contacted(ctx context.Context, actorID, id string, in ContactInput) (*Response, error) {
+	a, err := s.load(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	by, err := primitive.ObjectIDFromHex(actorID)
+	if err != nil {
+		return nil, errNoActor
+	}
+	now := s.now()
+	if err := s.repo.MarkContacted(ctx, a.ID, by, in.Reached, strings.TrimSpace(in.Note), now); err != nil {
+		return nil, apperr.Internal(err)
+	}
+	slog.InfoContext(ctx, "sos: raiser contacted",
+		"alert_id", a.ID.Hex(), "reached", in.Reached,
+		"seconds_after", int(now.Sub(a.CreatedAt).Seconds()))
+	s.record(ctx, "sos.contacted", a, nil)
+	return s.Get(ctx, id)
+}
+
+// EmergencyInput : quels secours ont été appelés, et ce qu'ils ont répondu.
+type EmergencyInput struct {
+	Service string `json:"service"`
+	// Note : ⚠️ C'EST ELLE QUI FAIT CORRIGER LE CATALOGUE. « Le 118 sonne dans
+	// le vide » écrit ici est la seule façon dont on apprend qu'un numéro
+	// officiel ne répond plus — et c'est arrivé.
+	Note string `json:"note" validate:"omitempty,max=1000"`
+}
+
+var errEmergencyService = apperr.Validation(
+	"service is required: police, fire or ambulance").
+	WithMeta(map[string]any{"fields": []string{"service"}})
+
+// EmergencyCalled : l'opérateur a appelé les secours — seconde étape.
+//
+// ⚠️ ELLE N'EXIGE PAS QUE `Contacted` AIT EU LIEU, et c'est délibéré. L'ordre
+// normal est « joindre la personne, puis les secours » ; après un choc violent
+// sur quelqu'un d'injoignable, exiger le premier avant le second bloquerait le
+// seul cas où chaque seconde compte. On enregistre, on ne barre pas la route.
+func (s *Service) EmergencyCalled(ctx context.Context, actorID, id string, in EmergencyInput) (*Response, error) {
+	switch in.Service {
+	case "police", "fire", "ambulance":
+	default:
+		return nil, errEmergencyService
+	}
+	a, err := s.load(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	by, err := primitive.ObjectIDFromHex(actorID)
+	if err != nil {
+		return nil, errNoActor
+	}
+	now := s.now()
+	if err := s.repo.MarkEmergencyCalled(ctx, a.ID, by, in.Service, strings.TrimSpace(in.Note), now); err != nil {
+		return nil, apperr.Internal(err)
+	}
+	// ⚠️ EN WARN, ET NON EN INFO : « on a appelé la police pour un de nos
+	// chauffeurs » est la ligne qu'on relit après coup, et celle qu'on compte.
+	slog.WarnContext(ctx, "sos: EMERGENCY SERVICES CALLED",
+		"alert_id", a.ID.Hex(), "service", in.Service, "country", a.Country,
+		"contacted_first", a.ContactedAt != nil,
+		"seconds_after", int(now.Sub(a.CreatedAt).Seconds()))
+	s.record(ctx, "sos.emergency_called", a, nil)
+	return s.Get(ctx, id)
+}
+
 // --- LE DEDANS -----------------------------------------------------------
 
 func (s *Service) load(ctx context.Context, id string) (*Alert, error) {
@@ -443,6 +544,12 @@ func (s *Service) alertStaff(ctx context.Context, a *Alert, out *Response) {
 		"who":     firstNonEmpty(out.UserName, "un compte sans nom"),
 		"trigger": TriggerLabel(a.Source, a.Confirmed),
 		"where":   whereLabel(a),
+		// ⚠️ LE NUMÉRO EST DANS LA NOTIFICATION, et c'est ce qui permet
+		// d'appeler SANS ouvrir la console. Un opérateur réveillé à 2 h du
+		// matin par une bannière doit pouvoir composer depuis son téléphone ;
+		// l'obliger à ouvrir un navigateur d'abord ajoute une minute à un
+		// dispositif qui se compte en secondes.
+		"phone": firstNonEmpty(out.UserPhone, "numéro inconnu, ouvrez la console"),
 	}
 	data := map[string]string{
 		"type": "sos", "sos_id": a.ID.Hex(), "source": a.Source,
@@ -518,6 +625,7 @@ func (s *Service) responses(ctx context.Context, rows []Alert) []Response {
 		}
 	}
 	names := map[string]string{}
+	phones := map[string]string{}
 	if s.accounts != nil && len(ids) > 0 {
 		if m, err := s.accounts.UserNames(ctx, ids); err == nil {
 			names = m
@@ -525,6 +633,30 @@ func (s *Service) responses(ctx context.Context, rows []Alert) []Response {
 			// AU MIEUX : une alerte sans nom reste une alerte. L'écran montre
 			// l'identifiant.
 			slog.WarnContext(ctx, "sos: names not resolved", "error", err)
+		}
+		// ⚠️ ET LE TÉLÉPHONE, au mieux lui aussi : sans lui l'opérateur ouvre la
+		// fiche, ce qui est deux clics de trop mais reste faisable. Une alerte
+		// qui échouerait faute de numéro, non.
+		if m, err := s.accounts.Phones(ctx, ids); err == nil {
+			phones = m
+		} else {
+			slog.WarnContext(ctx, "sos: phones not resolved", "error", err)
+		}
+	}
+	// Les numéros de secours par PAYS, résolus une fois par pays rencontré :
+	// une file peut mêler deux pays, et ils ne se composent pas pareil.
+	type emergency struct {
+		numbers   []Number
+		confirmed bool
+	}
+	byCountry := map[string]emergency{}
+	if s.policy != nil {
+		for _, a := range rows {
+			if _, seen := byCountry[a.Country]; seen {
+				continue
+			}
+			nums, confirmed := s.policy.EmergencyNumbers(ctx, a.Country)
+			byCountry[a.Country] = emergency{numbers: nums, confirmed: confirmed}
 		}
 	}
 	out := make([]Response, 0, len(rows))
@@ -542,6 +674,13 @@ func (s *Service) responses(ctx context.Context, rows []Alert) []Response {
 			AcknowledgedAt: a.AcknowledgedAt,
 			ClosedAt:       a.ClosedAt, ClosedBy: a.ClosedBy,
 			Outcome: a.Outcome, Resolution: a.Resolution,
+		}
+		r.UserPhone = phones[a.UserID.Hex()]
+		r.ContactedAt, r.Reached = a.ContactedAt, a.Reached
+		r.EmergencyCalledAt, r.EmergencyService = a.EmergencyCalledAt, a.EmergencyService
+		r.EmergencyNote = a.EmergencyNote
+		if e, ok := byCountry[a.Country]; ok {
+			r.Numbers, r.NumbersConfirmed = e.numbers, e.confirmed
 		}
 		if a.AcknowledgedBy != nil {
 			r.AcknowledgedBy = names[a.AcknowledgedBy.Hex()]

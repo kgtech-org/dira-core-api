@@ -207,11 +207,41 @@ type Alert struct {
 	UpdatedAt      time.Time           `bson:"updated_at"`
 	AcknowledgedAt *time.Time          `bson:"acknowledged_at,omitempty"`
 	AcknowledgedBy *primitive.ObjectID `bson:"acknowledged_by,omitempty"`
-	ClosedAt       *time.Time          `bson:"closed_at,omitempty"`
-	ClosedBy       string              `bson:"closed_by,omitempty"`
-	ClosedByID     *primitive.ObjectID `bson:"closed_by_id,omitempty"`
-	Outcome        string              `bson:"outcome,omitempty"`
-	Resolution     string              `bson:"resolution,omitempty"`
+	// LE PROTOCOLE DU SERVICE CLIENT, horodaté.
+	//
+	// ⚠️ IL EST ENREGISTRÉ, PAS IMPOSÉ. L'ordre normal est « joindre la
+	// personne, puis appeler les secours si besoin » — et il faut pouvoir en
+	// sortir : après un choc violent sur quelqu'un d'injoignable, exiger un
+	// contact avant d'appeler les pompiers bloquerait le seul cas où chaque
+	// seconde compte. Le serveur garde donc la trace de ce qui a été fait, et
+	// refuse rien.
+	//
+	// ⚠️ ET CES DEUX DATES SONT CE QUI SE MESURE : « en combien de temps
+	// joint-on quelqu'un qui a déclenché ? » est la seule question qui dise si
+	// ce dispositif fonctionne. Sans elles, on ne saurait que compter les
+	// alertes.
+	ContactedAt *time.Time          `bson:"contacted_at,omitempty"`
+	ContactedBy *primitive.ObjectID `bson:"contacted_by,omitempty"`
+	// Reached : a-t-on VRAIMENT eu quelqu'un au bout du fil ?
+	//
+	// ⚠️ « APPELÉ » N'EST PAS « JOINT », et les confondre serait le pire
+	// mensonge de ce bloc : un opérateur qui a laissé sonner dix fois a fait
+	// son travail, mais la personne n'a pas répondu — et c'est un signal
+	// d'aggravation, pas une case cochée.
+	Reached           bool                `bson:"reached,omitempty"`
+	EmergencyCalledAt *time.Time          `bson:"emergency_called_at,omitempty"`
+	EmergencyCalledBy *primitive.ObjectID `bson:"emergency_called_by,omitempty"`
+	// EmergencyService : lequel — `police`, `fire`, `ambulance`.
+	EmergencyService string `bson:"emergency_service,omitempty"`
+	// EmergencyNote : ce que les secours ont répondu. Un numéro qui sonne dans
+	// le vide se note ici, et c'est ce qui fait corriger le catalogue.
+	EmergencyNote string `bson:"emergency_note,omitempty"`
+
+	ClosedAt   *time.Time          `bson:"closed_at,omitempty"`
+	ClosedBy   string              `bson:"closed_by,omitempty"`
+	ClosedByID *primitive.ObjectID `bson:"closed_by_id,omitempty"`
+	Outcome    string              `bson:"outcome,omitempty"`
+	Resolution string              `bson:"resolution,omitempty"`
 }
 
 // RecentlyCancelledFor : combien de temps une alerte annulée PAR LA PERSONNE

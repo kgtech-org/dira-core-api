@@ -147,6 +147,55 @@ func (r *Repository) Close(ctx context.Context, id primitive.ObjectID, by string
 	return &a, nil
 }
 
+// MarkContacted note que l'opérateur a appelé la personne.
+//
+// ⚠️ LE PREMIER APPEL SEUL EST HORODATÉ (`$setOnInsert` n'existe pas sur un
+// update, donc le filtre s'en charge) : ce qu'on mesure est « en combien de
+// temps a-t-on joint quelqu'un », et un second essai qui écraserait la date
+// rendrait ce délai toujours petit. `reached` et la note, elles, sont REMISES à
+// jour : la personne décroche parfois au troisième essai, et c'est le dernier
+// état qui compte.
+func (r *Repository) MarkContacted(ctx context.Context, id, by primitive.ObjectID, reached bool, note string, now time.Time) error {
+	set := bson.M{"reached": reached, "updated_at": now}
+	if note != "" {
+		set["contact_note"] = note
+	}
+	// Le premier essai pose la date et l'auteur.
+	if _, err := r.col.UpdateOne(ctx,
+		bson.M{"_id": id, "contacted_at": bson.M{"$exists": false}},
+		bson.M{"$set": bson.M{"contacted_at": now, "contacted_by": by}},
+	); err != nil {
+		return fmt.Errorf("sos: mark contacted: %w", err)
+	}
+	if _, err := r.col.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": set}); err != nil {
+		return fmt.Errorf("sos: mark contacted: %w", err)
+	}
+	return nil
+}
+
+// MarkEmergencyCalled note que l'opérateur a appelé les secours.
+//
+// ⚠️ LA PREMIÈRE FOIS SEULEMENT POUR LA DATE, pour la même raison : « combien
+// de temps avant que les secours soient prévenus » est ce qu'on mesure. Le
+// service et la note suivent le dernier appel — on appelle parfois la police
+// puis l'ambulance, et c'est la note qui raconte.
+func (r *Repository) MarkEmergencyCalled(ctx context.Context, id, by primitive.ObjectID, service, note string, now time.Time) error {
+	if _, err := r.col.UpdateOne(ctx,
+		bson.M{"_id": id, "emergency_called_at": bson.M{"$exists": false}},
+		bson.M{"$set": bson.M{"emergency_called_at": now, "emergency_called_by": by}},
+	); err != nil {
+		return fmt.Errorf("sos: mark emergency called: %w", err)
+	}
+	set := bson.M{"emergency_service": service, "updated_at": now}
+	if note != "" {
+		set["emergency_note"] = note
+	}
+	if _, err := r.col.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": set}); err != nil {
+		return fmt.Errorf("sos: mark emergency called: %w", err)
+	}
+	return nil
+}
+
 // Filter borne une liste d'alertes.
 type Filter struct {
 	// Live : seulement ce qui demande une action — les ouvertes, les prises, et
