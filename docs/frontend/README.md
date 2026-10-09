@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.58.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.59.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -259,6 +259,7 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] 📄 **COLLECTE DES PIÈCES** (v4.57.0, applications d'AGENT) : `documents_missing` **routée vers l'écran des documents**, jamais vers l'accueil ni une bannière muette ; **pas présentée comme une menace de suspension** (rien ne bloque le travail, le serveur n'a jamais bloqué) ; catégorie `support` donc **non coupable**, et rare (72 h par personne) → **pas** de bannière permanente
 - [ ] 📷 **PHOTO D'UN VÉHICULE NON MOTORISÉ** (v4.57.0, LIVRAISON) : `vehicle_side` **demandée** pour un vélo — c'est le seul endroit où le non-motorisé demande *plus* (pas de plaque, donc la photo est la seule identification) ; **aucun papier** en revanche (ni carte grise, ni assurance, ni contrôle) ; `vehicle_front` **jamais** pour un vélo (« plaque lisible » est une attente qu'il ne peut pas satisfaire) ; un livreur **à pied** n'a aucune photo à envoyer
 - [ ] 📦 **RETOUR SCANNÉ** (v4.57.0, applications d'AGENT) : l'écran montre **l'état, les dégâts et ce qui sera rendu de la caution AVANT** le scan — un « scanner pour rendre » nu fait accepter un montant qu'on n'a pas lu, ce qui vaut moins qu'un clic d'agent parce que ça en a l'air plus ; `POST /equipment/return` ne prend **que** le code (on accepte, on ne négocie pas — contester passe par le support) ; trois refus → trois gestes (`_unknown`/`_expired` = nouveau code, `_not_yours` = **bon écran**) ; un code de REMISE n'est pas un code de RETOUR ; `returned_via` **absent** sur un contrat rendu avant le scan → ne pas traduire par `staff`
+- [ ] 🎯 **OBJECTIFS À ATTEINDRE** (v4.59.0, **toutes** les applications de CLIENT et d'AGENT) : `GET /me/challenges`, **une seule route**, le public vient du JETON ; `percent` affiché **tel quel** (déjà borné à 100 — une barre à 140 % a l'air d'un bug) ; `value` **et** `target` ensemble, jamais le pourcentage seul (« 3 sur 5 » dit qu'il en reste deux, « 60 % » ne dit rien) ; `money: true` → « 15 000 F sur 20 000 F », pas « 15 000 fois » ; `ends_at` **affiché** — sans échéance ce n'est pas un objectif ; `reached` affiché **avant** `paid_xof` (deux moments), et `pending` dit **en clair** « bonus en cours de versement » parce que le silence se lit comme un refus ; `challenge_reached` **routée vers l'écran des objectifs** et **non coupable** ; ⚠️ **ni budget, ni nombre de gagnants, ni places restantes** ne sont servis — et n'essayez pas de les récupérer : les afficher transforme un objectif en course aux places ; un objectif se gagne **une seule fois** ; une course compte **à son règlement**, pas à son acceptation ; un objectif périodique **change d'`id`** et remet son compteur à zéro chaque lundi
 - [ ] 🆘 **BOUTON D'ALERTE** (v4.56.0, **toutes** les applications) : `POST /sos` appelé avec **ce qu'on a**, sans attendre un point GPS — aucun champ n'est obligatoire, pas même la position ; **réessai en boucle jusqu'à un `2xx`**, en tête de la file hors-ligne et sans attendre la fenêtre de synchronisation ; **aucune validation côté application** (pas de motif, pas de formulaire, pas de position exigée) ; bouton **laissé actif** après le premier appui (le double appui enrichit la même alerte) ; `GET /sos/me` appelé **au démarrage** (`200` + `alert: null` est le cas normal, pas un `404`) ; position poussée **toutes les 5–10 s** tant que l'alerte vit ; ⚠️ **AUCUN BOUTON D'APPEL (v4.58.0)** — ni vers les secours, ni vers nous : la route ne sert **aucun** numéro, et il ne faut en inventer aucun (ni 112, ni codé en dur). L'écran affiche `calls_back` : « le service client a été prévenu et va vous appeler » ; détections (`shake`/`crash`/`voice`) qui **proposent** via un compte à rebours de `countdown_seconds` avec **un seul** bouton « Annuler », GPS et batterie **préparés pendant** le rebours ; `confirmed: false` traité comme **plus** grave, jamais comme « envoyé par erreur » ; annulation **en un appui, sans seconde confirmation**, et dite comme « l'exploitation a été prévenue » — pas comme « effacé » ; **pas de verrou d'application** sur cet écran ; `vertical` + `ride_id`/`delivery_id` envoyés quand il y a une opération
 - [ ] 🏷️ **Motif d'annulation** (v4.55.0, applications de CLIENT **et** de CHAUFFEUR) : liste **demandée** à `GET /rides/cancel-reasons`, jamais écrite en dur — elle dépend du rôle du jeton, et un code de l'autre rôle est refusé (`422`, `fields: ["reason_code"]`) ; codes **traduits chez vous** (la route sert des codes, pas des phrases) ; `reason_code` **s'ajoute** à `reason`, il ne le remplace pas ; `grave` lu dans la réponse plutôt que testé sur `code === "accident"` ; côté chauffeur, un motif grave ouvre un ticket critique → confirmation à part, « le support a été alerté », et **l'annulation aboutit même si le ticket échoue** (pas de réessai) ; `cancelled_reason_code` **absent** sur les courses d'avant la 4.55.0 → affichez `cancelled_reason` telle quelle, ne traduisez pas l'absence par `other`
 - [ ] 📞 **Taux d'acceptation** (v4.55.0, application de CHAUFFEUR) : `rate` **absent** quand `called` vaut 0 → « — » ou « aucun appel reçu », **jamais 0 %** (qui se lit « il refuse tout ») ; `acceptance` **tout entier** peut manquer quand le suivi ne répond pas → masquez ou dites « indisponible », jamais zéro ; `declined` et `missed` **jamais additionnés** (un geste et une panne) ; ne recalculez pas le taux vous-même
@@ -333,6 +334,106 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.59.0 — 9 octobre 2026
+
+🎯 **DES OBJECTIFS À ATTEINDRE, AVEC UN BONUS À GAGNER.** Pour les chauffeurs,
+les livreurs **et** les clients. « Faites 20 courses cette semaine, gagnez
+5 000 F. »
+
+Les campagnes de notification existaient pour **informer** ; celles-ci
+**récompensent**, et c'était le manque.
+
+```
+GET /me/challenges   → { items: [ { title, target, value, percent, reward_xof, ends_at, reached, pending } ] }
+```
+
+> ⚠️ **AU SOCLE**, et **une seule route pour tous les rôles** : le public vient
+> du JETON. Pas de paramètre à passer — il déciderait de ce qu'on peut gagner.
+
+---
+
+### Ce que l'écran doit faire
+
+⚠️ **`percent` EST DÉJÀ BORNÉ À 100.** Sept courses sur un objectif de cinq font
+100 %, pas 140 % : une barre qui dépasse a l'air d'un bug, et chaque application
+l'aurait bornée à sa façon.
+
+⚠️ **`value` ET `target` ENSEMBLE, JAMAIS LE POURCENTAGE SEUL.** « 60 % » ne dit
+pas quoi faire ; « 3 sur 5 » dit qu'il en reste deux. Même règle que le taux
+d'acceptation (v4.55.0) : un chiffre dont on juge son avancement doit porter ce
+qui le compose.
+
+⚠️ **`reached` S'AFFICHE AVANT `paid_xof`** — ce sont deux moments. Et quand
+`pending: true`, dites-le **en clair** (« bonus en cours de versement ») :
+attendre l'argent pour annoncer la victoire ferait douter quelqu'un qui a compté
+ses courses lui-même, et le silence se lit comme un refus.
+
+⚠️ **`ends_at` EST CE QUI FAIT AGIR** : « 5 jours de travail » sans échéance n'est
+pas un objectif.
+
+---
+
+### ⚠️ Ce que vous ne recevez PAS, et pourquoi
+
+**Ni le budget, ni le nombre de gagnants, ni les places restantes.**
+
+Ce que l'entreprise a provisionné n'est pas l'affaire de quelqu'un qui joue :
+afficher « 240 000 F d'enveloppe » invite à calculer combien d'autres ont déjà
+gagné, et transforme un objectif en **course aux places** — où la moitié des
+gens abandonnent en se croyant trop tard.
+
+N'essayez pas de les récupérer : aucune route ne les sert à une application.
+
+---
+
+### ⚠️ Trois mesures sont refusées exprès — et ce n'est pas un manque
+
+Les **heures en ligne**, le **taux d'acceptation** et la **vitesse** sont tous
+les trois mesurés par la plateforme. Aucun objectif ne peut porter dessus, et
+c'est une décision :
+
+> - **les heures** paieraient l'attente, pas le travail — et rempliraient le
+>   vivier de gens qui ne veulent pas de course, dont les appels meurent sans
+>   réponse ;
+> - **une prime sur « ne jamais refuser »** achèterait les refus qu'on veut
+>   qu'un chauffeur se permette : fatigue, départ mal éclairé, passager qui
+>   l'inquiète ;
+> - **payer la vitesse tue des gens**, et il n'existe pas de version prudente de
+>   cette mesure.
+
+Si une maquette en affiche un, ce n'est **pas** un oubli de l'API.
+
+⚠️ **ET LA CIBLE EST BORNÉE PAR JOUR DE FENÊTRE** — 12 courses, 20 livraisons. Le
+serveur refuse d'ÉCRIRE un objectif au-delà : une cible au volume sur une fenêtre
+courte pousse à travailler fatigué. Vous ne verrez donc jamais « 100 courses en
+trois jours ».
+
+La mesure proposée en premier à l'exploitation est **« jours travaillés »** :
+elle récompense la régularité, pas le volume.
+
+---
+
+### Les règles qui vous concernent sans être visibles
+
+⚠️ **UN OBJECTIF SE GAGNE UNE SEULE FOIS**, même largement dépassé. Ce n'est pas
+un tarif : « 3 courses = 5 000 F » répété serait une prime au volume.
+
+⚠️ **UNE COURSE COMPTE À SON RÈGLEMENT, PAS À SON ACCEPTATION.** Sinon
+l'objectif se gagnerait en acceptant puis en annulant vingt fois. Si votre écran
+montre l'avancement en temps réel, attendez la fin de la course.
+
+⚠️ **UNE COMMANDE MULTI-BOUTIQUES COMPTE POUR UNE**, même si elle donne trois
+livraisons. Comptez par la route, pas par vos écrans.
+
+⚠️ **UN OBJECTIF PÉRIODIQUE CHANGE D'`id` ET REMET SON COMPTEUR À ZÉRO.** « 20
+courses cette semaine » est un objectif **neuf** chaque lundi : ne gardez pas
+l'avancement de la semaine passée en cache.
+
+⚠️ **ET LA SEMAINE COMMENCE LE LUNDI**, pas le jour du lancement. Si votre écran
+affiche « cette semaine », comptez du lundi au dimanche comme le serveur le fait
+— sinon vos deux nombres divergeront sans que personne ne comprenne pourquoi.
+
 
 ### 4.58.0 — 9 octobre 2026
 
