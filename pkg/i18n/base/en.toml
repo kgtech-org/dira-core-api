@@ -57,3 +57,7 @@ other = "This ticket is not about a lost item"
 # the announcement. The sentence exists for the console and the logs.
 [errors.erasure_unavailable]
 other = "Purging an erased account is not wired on this service"
+
+# A vehicle paper submitted by its OWNER (pkg/compliance).
+[errors.vehicle_not_in_your_fleet]
+other = "This vehicle does not belong to your fleet"

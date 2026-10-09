@@ -36,7 +36,14 @@ type DocumentResponse struct {
 	ID        string `json:"id"`
 	Kind      string `json:"kind"`
 	VehicleID string `json:"vehicle_id,omitempty"`
-	FileURL   string `json:"file_url,omitempty"`
+	// ByFleet : déposé par le PROPRIÉTAIRE du véhicule.
+	//
+	// ⚠️ À DIRE AU CHAUFFEUR, et non à cacher : il voit l'assurance de la
+	// voiture qu'il conduit, et il doit comprendre pourquoi elle est là sans
+	// qu'il l'ait envoyée — sinon il la redépose, et un opérateur regarde deux
+	// fois la même pièce.
+	ByFleet bool   `json:"by_fleet,omitempty"`
+	FileURL string `json:"file_url,omitempty"`
 	// State est l'état EFFECTIF, calculé à la lecture : `pending`, `valid`,
 	// `expiring`, `expired` ou `rejected`. C'est lui qu'il faut afficher.
 	State          string     `json:"state"`
@@ -56,11 +63,27 @@ type ComplianceResponse struct {
 	// véhicule : on ne réclame pas une assurance à quelqu'un qui n'a rien
 	// déclaré.
 	Missing []string `json:"missing,omitempty"`
+	// MissingFleet sont les pièces attendues d'une VOITURE DE SOCIÉTÉ — celles
+	// que son PROPRIÉTAIRE doit déposer, pas son conducteur.
+	//
+	// ⚠️⚠️ ELLES SONT SORTIES DE `Missing`, ET C'EST TOUT L'INTÉRÊT : la
+	// relance automatique se fonde sur `Missing`, et elle réclamait donc à un
+	// chauffeur la carte grise d'une voiture qui n'est pas la sienne, tous les
+	// trois jours, sans qu'il puisse rien y faire. Servies à part, elles
+	// restent visibles — l'exploitation voit ce qui manque, le partenaire voit
+	// ce qu'il doit déposer — sans mettre quelqu'un en demeure de fournir le
+	// papier d'un autre.
+	MissingFleet []string `json:"missing_fleet,omitempty"`
 	// Compliant dit si TOUT est en règle — pièces personnelles ET pièces de
 	// chaque véhicule déclaré.
 	//
 	// ⚠️ Informatif : rien n'est bloqué côté serveur. C'est l'exploitation qui
 	// suspend, depuis la liste de conformité de la console.
+	//
+	// ⚠️ ET IL COMPTE LES DEUX LISTES. Un dossier dont il ne manque que la
+	// carte grise de la voiture de société n'est pas « en règle » : la voiture
+	// roule sans papiers, que la faute soit celle du chauffeur ou non. C'est
+	// le DESTINATAIRE du rappel qui change, pas la réalité.
 	Compliant bool `json:"compliant"`
 }
 
@@ -90,6 +113,21 @@ type Fleet interface {
 	// sans noms reste actionnable par ses identifiants ; une file qui ne
 	// s'affiche pas ne l'est pas du tout.
 	AccountOf(ctx context.Context, driverID string) (userID string, err error)
+	// VehicleFleet rend la FLOTTE PRIVÉE d'un véhicule, ou "" quand il
+	// appartient à son conducteur.
+	//
+	// ⚠️ C'est ce qui empêche un propriétaire de déposer l'assurance d'une
+	// voiture qui n'est pas la sienne — ce qui la rendrait conforme sans que
+	// personne ne le sache. Le pendant exact de `VehicleOwner` pour l'autre
+	// déposant.
+	VehicleFleet(ctx context.Context, vehicleID string) (fleetID string, err error)
+	// VehiclesOfFleet liste le parc d'une flotte, pour dire à son propriétaire
+	// ce qu'il lui reste à déposer.
+	//
+	// ⚠️ Une verticale qui n'a pas de flottes rend une liste VIDE, pas une
+	// erreur : la conformité de ses livreurs ne doit pas dépendre d'une
+	// fonctionnalité qui ne la concerne pas.
+	VehiclesOfFleet(ctx context.Context, fleetID string) ([]VehicleRef, error)
 	// VehiclesOf liste les véhicules d'un chauffeur, avec ce qu'il faut pour
 	// savoir quels papiers ils exigent.
 	//
@@ -120,6 +158,18 @@ type Fleet interface {
 // une carte grise.
 type VehicleRef struct {
 	ID string
+	// Plate : ⚠️ SERVIE POUR LE PROPRIÉTAIRE, qui ne reconnaît pas ses
+	// voitures à un hexadécimal. Facultative — un vélo n'en a pas, et c'est
+	// d'ailleurs la raison pour laquelle on lui demande une photo.
+	Plate string
+	// FleetID : la société PROPRIÉTAIRE, ou "" quand le véhicule appartient à
+	// son conducteur.
+	//
+	// ⚠️ SERVI PAR `VehiclesOf`, et non demandé véhicule par véhicule : la
+	// verticale lit déjà la ligne du véhicule, elle a le champ sous la main.
+	// Une seconde lecture par voiture aurait fait payer la conformité d'un
+	// chauffeur au nombre de ses véhicules.
+	FleetID string
 	// Motorised : un vélo et un livreur à pied n'ont ni carte grise, ni
 	// assurance, ni contrôle technique.
 	//
@@ -198,6 +248,9 @@ type Store interface {
 	DocumentByID(ctx context.Context, id primitive.ObjectID) (*Document, error)
 	ReviewDocument(ctx context.Context, id, reviewer primitive.ObjectID, status, reason string) (*Document, error)
 	PendingOrExpiredDocuments(ctx context.Context, now time.Time, limit int) ([]Document, error)
+	// FleetDocumentsOfVehicles : les pièces déposées par une SOCIÉTÉ sur ses
+	// voitures. Lues par véhicule, parce que c'est lui qu'elles couvrent.
+	FleetDocumentsOfVehicles(ctx context.Context, vehicleIDs []primitive.ObjectID) ([]Document, error)
 }
 
 // Service applies the compliance rules of ONE vertical.
@@ -349,6 +402,16 @@ func (s *Service) complianceOf(ctx context.Context, driverID string) (*Complianc
 	if err != nil {
 		return nil, err
 	}
+	// ⚠️ LES PIÈCES DE SES VOITURES DE SOCIÉTÉ, DÉPOSÉES PAR LEUR PROPRIÉTAIRE.
+	// Sans cette seconde lecture, un chauffeur dont le partenaire a tout
+	// déposé restait « non conforme » : ses papiers existent, mais ils ne
+	// portent pas son nom. On lit par VÉHICULE, parce que c'est le véhicule
+	// qu'ils couvrent.
+	fleetDocs, err := s.repo.FleetDocumentsOfVehicles(ctx, fleetVehicleIDs(vehicles))
+	if err != nil {
+		return nil, err
+	}
+	docs = append(docs, fleetDocs...)
 	now := time.Now().UTC()
 	out := &ComplianceResponse{Documents: make([]DocumentResponse, 0, len(docs)), Compliant: true}
 
@@ -374,15 +437,213 @@ func (s *Service) complianceOf(ctx context.Context, driverID string) (*Complianc
 			continue
 		}
 		for _, kind := range KindsFor(v) {
-			if !covered[docKey(kind, &vid)] {
-				// Le véhicule est nommé : « assurance manquante » sur un parc
-				// de deux motos ne dit pas laquelle rouler.
-				out.Missing = append(out.Missing, kind+":"+v.ID)
-				out.Compliant = false
+			if covered[docKey(kind, &vid)] {
+				continue
 			}
+			// Le véhicule est nommé : « assurance manquante » sur un parc
+			// de deux motos ne dit pas laquelle rouler.
+			//
+			// ⚠️ MAIS LA LISTE DÉPEND DU PROPRIÉTAIRE. Une voiture de société
+			// réclame ses papiers à la SOCIÉTÉ : laisser la pièce dans
+			// `Missing` mettait le chauffeur en demeure de fournir le papier
+			// d'un autre — et la relance le lui redisait tous les trois jours.
+			if v.FleetID != "" {
+				out.MissingFleet = append(out.MissingFleet, kind+":"+v.ID)
+			} else {
+				out.Missing = append(out.Missing, kind+":"+v.ID)
+			}
+			out.Compliant = false
 		}
 	}
 	return out, nil
+}
+
+// fleetVehicleIDs garde les véhicules de SOCIÉTÉ, en identifiants.
+func fleetVehicleIDs(vehicles []VehicleRef) []primitive.ObjectID {
+	out := make([]primitive.ObjectID, 0, len(vehicles))
+	for _, v := range vehicles {
+		if v.FleetID == "" {
+			continue
+		}
+		if vid, err := primitive.ObjectIDFromHex(v.ID); err == nil {
+			out = append(out, vid)
+		}
+	}
+	return out
+}
+
+var (
+	errNotYourFleetVehicle = apperr.Forbidden("vehicle_not_in_your_fleet",
+		"this vehicle does not belong to your fleet")
+	// errPersonalDocumentForFleet : une société ne dépose pas un permis.
+	//
+	// ⚠️ LE REFUS EST EXPLICITE PLUTÔT QUE SILENCIEUX. Un propriétaire qui
+	// enverrait le permis de son chauffeur ferait une chose compréhensible et
+	// profondément fausse : ce document est une pièce D'IDENTITÉ, elle
+	// appartient à la personne, et c'est elle qui décide de la confier à Dira.
+	// Accepté, il aurait mis la pièce d'identité de quelqu'un dans le dossier
+	// d'une société.
+	errPersonalDocumentForFleet = apperr.Validation(
+		"this document belongs to the person, not to the company: only vehicle papers can be submitted by a fleet")
+)
+
+// SubmitFleetDocument enregistre le papier d'une voiture de SOCIÉTÉ, déposé par
+// son propriétaire.
+//
+// ⚠️⚠️ IL EXISTE PARCE QUE LES PAPIERS D'UNE VOITURE DE SOCIÉTÉ SONT CHEZ SON
+// PROPRIÉTAIRE. Jusqu'ici, la carte grise et l'assurance ne pouvaient être
+// déposées que par le conducteur : il restait en défaut pour une pièce qu'il
+// n'a pas, et la relance le lui redisait tous les trois jours.
+//
+// ⚠️ ET LE DÉPÔT DU CONDUCTEUR RESTE POSSIBLE, délibérément : les papiers sont
+// souvent dans la boîte à gants, et un chauffeur qui peut régulariser sa
+// voiture lui-même ne doit pas en être empêché parce que son patron ne répond
+// pas. Les deux pièces coexistent alors — clés d'unicité différentes —, et
+// l'une comme l'autre prouve l'assurance.
+func (s *Service) SubmitFleetDocument(ctx context.Context, fleetID string, req SubmitDocumentRequest) (*DocumentResponse, error) {
+	fleetOID, err := primitive.ObjectIDFromHex(fleetID)
+	if err != nil {
+		return nil, errNotYourFleetVehicle
+	}
+	// ⚠️ LE VÉHICULE EST OBLIGATOIRE ICI, alors qu'il est facultatif pour une
+	// personne : une société n'a que des papiers de voiture. Sans ce contrôle,
+	// `CheckOwner` aurait refusé la plupart des cas mais laissé passer un
+	// `licence` sans véhicule — c'est-à-dire le permis de quelqu'un rangé dans
+	// le dossier d'une entreprise.
+	if req.VehicleID == "" {
+		return nil, errPersonalDocumentForFleet.WithMeta(map[string]any{"kind": req.Kind})
+	}
+	vid, err := primitive.ObjectIDFromHex(req.VehicleID)
+	if err != nil {
+		return nil, errNotYourFleetVehicle
+	}
+	owner, err := s.fleet.VehicleFleet(ctx, req.VehicleID)
+	if err != nil {
+		return nil, err
+	}
+	if owner == "" || owner != fleetID {
+		return nil, errNotYourFleetVehicle
+	}
+	if err := CheckOwner(req.Kind, &vid); err != nil {
+		return nil, err
+	}
+	// ⚠️ ET LES PIÈCES DE LA PERSONNE SONT REFUSÉES MÊME AVEC UN VÉHICULE :
+	// `CheckOwner` dit qu'un permis ne porte pas de véhicule, pas qu'une
+	// société n'a pas à le déposer. Les deux règles ne disent pas la même
+	// chose, et c'est la seconde qui protège la pièce d'identité de quelqu'un.
+	if !isVehicleKind(req.Kind) {
+		return nil, errPersonalDocumentForFleet.WithMeta(map[string]any{"kind": req.Kind})
+	}
+	if req.ExpiresAt != nil && !req.ExpiresAt.After(time.Now().UTC()) {
+		return nil, apperr.Validation("expires_at is already past: this document does not bring the vehicle back in order")
+	}
+	if req.ExpiresAt == nil && NeedsExpiry(req.Kind) {
+		return nil, errDocNeedsExpiry.WithMeta(map[string]any{
+			"kind": req.Kind, "fields": []string{"expires_at"},
+		})
+	}
+	doc, err := s.repo.UpsertDocument(ctx, &Document{
+		// ⚠️ LA FLOTTE EST L'OWNER : c'est elle qui répond de cette pièce, et
+		// la clé d'unicité (`owner_id`, `kind`, `vehicle_id`) la distingue
+		// ainsi du dépôt d'un conducteur sur la même voiture.
+		OwnerID: fleetOID, FleetID: &fleetOID, VehicleID: &vid, Kind: req.Kind,
+		FileURL: req.FileURL, ExpiresAt: req.ExpiresAt,
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.record(ctx, "compliance.document.submit", doc.ID.Hex(), nil,
+		map[string]any{"kind": doc.Kind, "fleet_id": fleetID, "vehicle_id": req.VehicleID})
+	// ⚠️ LE MÊME SIGNAL QUE POUR UNE PERSONNE : sans lui, une pièce déposée par
+	// un partenaire n'aurait prévenu personne, et elle aurait attendu dans la
+	// file qu'un opérateur pense à regarder. C'est exactement le défaut qu'on
+	// vient de corriger côté VTC.
+	if s.watch != nil {
+		s.watch.DocumentSubmitted(ctx, fleetID, "", doc.Kind, req.VehicleID)
+	}
+	out := toDocumentResponse(doc, time.Now().UTC())
+	return &out, nil
+}
+
+// FleetCompliance rend l'état des papiers du parc d'une SOCIÉTÉ.
+//
+// ⚠️ PAR VÉHICULE, et jamais un drapeau global : « votre flotte n'est pas en
+// règle » sur douze voitures n'appelle aucun geste. C'est la plaque qui dit
+// quoi faire, et c'est pourquoi la verticale rend aussi les plaques.
+func (s *Service) FleetCompliance(ctx context.Context, fleetID string) (*FleetComplianceResponse, error) {
+	if _, err := primitive.ObjectIDFromHex(fleetID); err != nil {
+		return nil, errNotYourFleetVehicle
+	}
+	vehicles, err := s.fleet.VehiclesOfFleet(ctx, fleetID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]primitive.ObjectID, 0, len(vehicles))
+	for _, v := range vehicles {
+		if vid, err := primitive.ObjectIDFromHex(v.ID); err == nil {
+			ids = append(ids, vid)
+		}
+	}
+	docs, err := s.repo.FleetDocumentsOfVehicles(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	byVehicle := map[string][]DocumentResponse{}
+	covered := map[string]bool{}
+	for i := range docs {
+		d := &docs[i]
+		if d.VehicleID == nil {
+			continue
+		}
+		key := d.VehicleID.Hex()
+		byVehicle[key] = append(byVehicle[key], toDocumentResponse(d, now))
+		if d.Compliant(now) {
+			covered[docKey(d.Kind, d.VehicleID)] = true
+		}
+	}
+	out := &FleetComplianceResponse{
+		Vehicles: make([]FleetVehicleCompliance, 0, len(vehicles)), Compliant: true,
+	}
+	for _, v := range vehicles {
+		vid, err := primitive.ObjectIDFromHex(v.ID)
+		if err != nil {
+			continue
+		}
+		row := FleetVehicleCompliance{
+			VehicleID: v.ID, Plate: v.Plate,
+			Documents: byVehicle[v.ID], Compliant: true,
+		}
+		for _, kind := range KindsFor(v) {
+			if !covered[docKey(kind, &vid)] {
+				row.Missing = append(row.Missing, kind)
+				row.Compliant = false
+				out.Compliant = false
+			}
+		}
+		out.Vehicles = append(out.Vehicles, row)
+	}
+	return out, nil
+}
+
+// FleetComplianceResponse est l'état des papiers d'un parc.
+type FleetComplianceResponse struct {
+	Vehicles []FleetVehicleCompliance `json:"vehicles"`
+	// Compliant : tout le parc est en règle.
+	Compliant bool `json:"compliant"`
+}
+
+// FleetVehicleCompliance est une voiture et ses papiers.
+type FleetVehicleCompliance struct {
+	VehicleID string `json:"vehicle_id"`
+	// Plate : ⚠️ SERVIE, parce qu'un propriétaire ne reconnaît pas ses
+	// voitures à un hexadécimal de vingt-quatre caractères.
+	Plate     string             `json:"plate,omitempty"`
+	Documents []DocumentResponse `json:"documents,omitempty"`
+	// Missing porte des TYPES NUS (`insurance`), sans identifiant : le
+	// véhicule est déjà nommé par la ligne.
+	Missing   []string `json:"missing,omitempty"`
+	Compliant bool     `json:"compliant"`
 }
 
 // ReviewDocument records an administrator's decision on one paper.
@@ -436,6 +697,19 @@ func (s *Service) ComplianceQueue(ctx context.Context, limit int) ([]ComplianceQ
 	accounts := make(map[string]string, len(docs))
 	for i := range docs {
 		d := &docs[i]
+		// ⚠️ UNE PIÈCE DE SOCIÉTÉ N'A PAS DE CHAUFFEUR, et surtout pas celui
+		// dont l'identifiant se trouverait là. `owner_id` vaut alors la
+		// FLOTTE : la rendre comme un `driver_id` aurait fait cliquer
+		// l'opérateur sur la fiche d'un chauffeur qui n'existe pas — et pire,
+		// `AccountOf` aurait pu rendre un compte par coïncidence d'identifiant.
+		// On nomme la flotte, et le champ du chauffeur reste VIDE.
+		if d.FleetID != nil {
+			out = append(out, ComplianceQueueItem{
+				DocumentResponse: toDocumentResponse(d, now),
+				FleetID:          d.FleetID.Hex(),
+			})
+			continue
+		}
 		driverID := d.OwnerID.Hex()
 		userID, seen := accounts[driverID]
 		if !seen {
@@ -462,11 +736,19 @@ func (s *Service) ComplianceQueue(ctx context.Context, limit int) ([]ComplianceQ
 // la file à la console, comme elle le fait pour ses autres listes.
 type ComplianceQueueItem struct {
 	DocumentResponse
-	DriverID string `json:"driver_id"`
+	DriverID string `json:"driver_id,omitempty"`
 	// UserID est le COMPTE, quand la verticale a su le donner. Absent plutôt
 	// que vide : la console distingue « pas de compte lié » de « compte
 	// inconnu », et n'affiche un lien mort ni dans un cas ni dans l'autre.
 	UserID string `json:"user_id,omitempty"`
+	// FleetID est la SOCIÉTÉ qui a déposé la pièce — et alors `DriverID` est
+	// vide.
+	//
+	// ⚠️ L'UN OU L'AUTRE, JAMAIS LES DEUX : c'est ce qui dit à l'opérateur à
+	// qui il doit redemander une photo floue. Une pièce de voiture de société
+	// arbitrée comme celle d'un chauffeur aurait fait réclamer la carte grise à
+	// quelqu'un qui ne l'a pas.
+	FleetID string `json:"fleet_id,omitempty"`
 }
 
 func docKey(kind string, vehicleID *primitive.ObjectID) string {
@@ -485,5 +767,6 @@ func toDocumentResponse(d *Document, now time.Time) DocumentResponse {
 	if d.VehicleID != nil {
 		out.VehicleID = d.VehicleID.Hex()
 	}
+	out.ByFleet = d.FleetID != nil
 	return out
 }

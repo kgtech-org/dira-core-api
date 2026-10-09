@@ -1,6 +1,7 @@
 package compliance
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -153,4 +154,30 @@ func TestOwnerReadsItsOwnStateAndQueueAlwaysCarriesItems(t *testing.T) {
 	queue := call(adminSide, http.MethodGet, "/admin/compliance", "")
 	require.Equal(t, http.StatusOK, queue.Code)
 	assert.Contains(t, queue.Body.String(), `"items"`)
+}
+
+// ⚠️ LA SURFACE DU PARTENAIRE EST EXACTEMENT DEUX ROUTES, et elle n'existe que
+// si la verticale sait résoudre une flotte. La livraison ne monte rien : ses
+// livreurs n'ont aucune route de partenaire à essayer.
+func TestThePartnerSurfaceIsTwoRoutesAndOnlyOnDemand(t *testing.T) {
+	fx := newFixture()
+	h := NewHandler(fx.svc, Routes{Self: "driver", Owners: "drivers"})
+	pass := func(next http.Handler) http.Handler { return next }
+
+	silent := chi.NewRouter()
+	h.MountPartner(silent, pass, nil)
+	var mountedWithoutFleet []string
+	require.NoError(t, chi.Walk(silent, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		mountedWithoutFleet = append(mountedWithoutFleet, method+" "+route)
+		return nil
+	}))
+	assert.Empty(t, mountedWithoutFleet,
+		"sans résolveur de flotte, aucune route de partenaire ne doit exister")
+
+	open := chi.NewRouter()
+	h.MountPartner(open, pass, func(context.Context, string) (string, error) { return "", nil })
+	assert.Equal(t, []string{
+		"GET /partner/compliance",
+		"POST /partner/compliance/documents",
+	}, mounted(t, open))
 }

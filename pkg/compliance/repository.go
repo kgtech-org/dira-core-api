@@ -83,6 +83,36 @@ func (r *Repository) DocumentsByOwner(ctx context.Context, ownerID primitive.Obj
 	return out, nil
 }
 
+// FleetDocumentsOfVehicles rend les pièces déposées par une FLOTTE sur ces
+// véhicules.
+//
+// ⚠️ ON LIT PAR VÉHICULE, PAS PAR PROPRIÉTAIRE, parce que c'est le véhicule que
+// ces pièces couvrent : l'assurance d'une voiture de société reste valable
+// quand la voiture change de conducteur. Lue par conducteur, elle aurait été à
+// redéposer à chaque rotation.
+//
+// ⚠️ ET LA CLAUSE `fleet_id` EST INDISPENSABLE : sans elle, cette lecture
+// ramènerait aussi les pièces que le CONDUCTEUR a déposées sur la même
+// voiture, déjà lues par `DocumentsByOwner` — la fiche aurait affiché deux fois
+// la même assurance, et un opérateur l'aurait arbitrée deux fois.
+func (r *Repository) FleetDocumentsOfVehicles(ctx context.Context, vehicleIDs []primitive.ObjectID) ([]Document, error) {
+	if len(vehicleIDs) == 0 {
+		return nil, nil
+	}
+	cur, err := r.documents.Find(ctx, bson.M{
+		"vehicle_id": bson.M{"$in": vehicleIDs},
+		"fleet_id":   bson.M{"$exists": true},
+	}, options.Find().SetSort(bson.D{{Key: "kind", Value: 1}}))
+	if err != nil {
+		return nil, fmt.Errorf("compliance: fleet documents of vehicles: %w", err)
+	}
+	var out []Document
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, fmt.Errorf("compliance: decode fleet documents: %w", err)
+	}
+	return out, nil
+}
+
 // DocumentByID returns one paper, or nil when it does not exist.
 func (r *Repository) DocumentByID(ctx context.Context, id primitive.ObjectID) (*Document, error) {
 	var d Document

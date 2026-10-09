@@ -91,12 +91,62 @@ func (f *fakeStore) PendingOrExpiredDocuments(_ context.Context, now time.Time, 
 	return out, nil
 }
 
+// DocumentsOf et DeleteDocumentsOf font de cette doublure un `Purger` — ce
+// qu'elle n'était pas, si bien que le chemin d'EFFACEMENT n'était éprouvé par
+// aucun test : `PurgeOf` journalisait « ce dépôt ne sait pas purger » et
+// rendait zéro, ce qu'un test aurait pris pour « rien à effacer ».
+//
+// ⚠️ ELLES FILTRENT PAR PROPRIÉTAIRE, comme la base. C'est ce filtre qui laisse
+// en place les papiers d'une voiture de SOCIÉTÉ quand son conducteur ferme son
+// compte : ils portent la flotte comme propriétaire.
+func (f *fakeStore) DocumentsOf(_ context.Context, ownerID primitive.ObjectID) ([]Document, error) {
+	return f.DocumentsByOwner(context.Background(), ownerID)
+}
+
+func (f *fakeStore) DeleteDocumentsOf(_ context.Context, ownerID primitive.ObjectID) (int64, error) {
+	kept := make([]Document, 0, len(f.documents))
+	var n int64
+	for _, d := range f.documents {
+		if d.OwnerID == ownerID {
+			n++
+			continue
+		}
+		kept = append(kept, d)
+	}
+	f.documents = kept
+	return n, nil
+}
+
+// FleetDocumentsOfVehicles : les pièces d'une SOCIÉTÉ sur ces véhicules.
+//
+// ⚠️ LA DOUBLURE FILTRE SUR `FleetID`, comme la base. Sans cette clause, elle
+// rendrait aussi les dépôts du CONDUCTEUR sur la même voiture — déjà lus par
+// `DocumentsByOwner` — et la fiche aurait porté deux fois la même assurance
+// sans qu'aucun test ne le voie.
+func (f *fakeStore) FleetDocumentsOfVehicles(_ context.Context, vehicleIDs []primitive.ObjectID) ([]Document, error) {
+	var out []Document
+	for _, d := range f.documents {
+		if d.FleetID == nil || d.VehicleID == nil {
+			continue
+		}
+		for _, id := range vehicleIDs {
+			if *d.VehicleID == id {
+				out = append(out, d)
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
 // fakeFleet tient lieu de VERTICALE : elle seule sait qui est chauffeur et à
 // qui appartient un véhicule.
 type fakeFleet struct {
 	byUser   map[string]string       // compte -> chauffeur
 	vehicles map[string][]VehicleRef // chauffeur -> véhicules
 	owner    map[string]string       // véhicule -> chauffeur
+	fleetOf  map[string]string       // véhicule -> société propriétaire
+	parc     map[string][]VehicleRef // société -> véhicules
 	accounts map[string]string       // chauffeur -> compte
 	// accountErr simule un annuaire injoignable, pour vérifier que la file
 	// s'affiche quand même.
@@ -108,12 +158,22 @@ func newFleet() *fakeFleet {
 		byUser:   map[string]string{},
 		vehicles: map[string][]VehicleRef{},
 		owner:    map[string]string{},
+		fleetOf:  map[string]string{},
+		parc:     map[string][]VehicleRef{},
 		accounts: map[string]string{},
 	}
 }
 
 func (f *fakeFleet) DriverOf(_ context.Context, userID string) (string, error) {
 	return f.byUser[userID], nil
+}
+
+func (f *fakeFleet) VehicleFleet(_ context.Context, vehicleID string) (string, error) {
+	return f.fleetOf[vehicleID], nil
+}
+
+func (f *fakeFleet) VehiclesOfFleet(_ context.Context, fleetID string) ([]VehicleRef, error) {
+	return f.parc[fleetID], nil
 }
 
 // ⚠️ LA DOUBLURE REND LES CHAUFFEURS DANS UN ORDRE STABLE. Une `map` les rend

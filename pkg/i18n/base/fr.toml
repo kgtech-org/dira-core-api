@@ -70,3 +70,10 @@ other = "Ce ticket ne concerne pas un objet perdu"
 # l'annonce en file. La phrase existe pour la console et les journaux.
 [errors.erasure_unavailable]
 other = "La purge d'un compte effacé n'est pas branchée sur ce service"
+
+# Le dépôt d'un papier par le PROPRIÉTAIRE d'un véhicule (pkg/compliance).
+# ⚠️ Le pendant exact de `vehicle_not_found` pour l'autre déposant : déposer
+# l'assurance d'une voiture qui n'est pas la sienne la rendrait conforme sans
+# que son propriétaire le sache.
+[errors.vehicle_not_in_your_fleet]
+other = "Ce véhicule n'appartient pas à votre flotte"

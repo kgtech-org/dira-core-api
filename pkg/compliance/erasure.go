@@ -43,6 +43,13 @@ func (s *Service) SetFiles(f Files) { s.files = f }
 // Une image qui résiste n'empêche pas la ligne de partir : on journalise, et la
 // relance de l'annonce ne la retrouvera pas — c'est le prix assumé de ne pas
 // bloquer un effacement sur un bucket.
+// ⚠️ ET ELLE NE TOUCHE PAS AUX PAPIERS D'UNE VOITURE DE SOCIÉTÉ. Ceux-là
+// portent la FLOTTE comme `owner_id` (voir `Document.FleetID`), donc ce
+// balayage par propriétaire les laisse en place — et c'est juste : la carte
+// grise d'une voiture d'entreprise n'est pas une donnée personnelle du
+// chauffeur qui s'en va, et la voiture continue de rouler avec quelqu'un
+// d'autre. L'effacer aurait mis une société en défaut parce qu'un de ses
+// conducteurs a fermé son compte.
 func (s *Service) PurgeOf(ctx context.Context, ownerID primitive.ObjectID) (int64, error) {
 	purger, ok := s.repo.(Purger)
 	if !ok {

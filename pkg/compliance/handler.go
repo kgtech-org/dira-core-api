@@ -1,6 +1,7 @@
 package compliance
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -174,4 +175,79 @@ func (h *Handler) reviewDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, resp)
+}
+
+// FleetOf rend la flotte PRIVÉE du compte appelant, ou le refus qui dit
+// pourquoi il n'en a pas.
+//
+// ⚠️ ELLE EST FOURNIE PAR LA VERTICALE, et c'est la seule façon honnête : cette
+// bibliothèque ne sait pas ce qu'est une flotte, et le socle est le seul à
+// pouvoir dire si le contrat est suspendu. Un identifiant lu dans le jeton
+// aurait laissé un partenaire détaché continuer à déposer des papiers jusqu'à
+// l'expiration de sa session.
+type FleetOf func(ctx context.Context, userID string) (fleetID string, err error)
+
+// MountPartner expose les DEUX routes du propriétaire de flotte.
+//
+// ⚠️ MONTÉE À PART, et seulement par la verticale qui a des flottes : la
+// livraison ne l'appelle pas, et ses livreurs n'ont donc aucune route de
+// partenaire à essayer. Monter tout d'un bloc aurait ouvert une surface que
+// personne ne sert.
+//
+// ⚠️ DEUX ROUTES, PAS UNE : on REGARDE ce qui manque avant de déposer. Un
+// écran de dépôt sans l'état du parc aurait fait envoyer au hasard des papiers
+// déjà fournis.
+func (h *Handler) MountPartner(r chi.Router, authMW func(http.Handler) http.Handler, fleetOf FleetOf) {
+	if fleetOf == nil {
+		return
+	}
+	r.Group(func(g chi.Router) {
+		g.Use(authMW, middleware.RequireRole(auth.RolePartner))
+		g.Get("/partner/compliance", h.fleetCompliance(fleetOf))
+		g.Post("/partner/compliance/documents", h.submitFleetDocument(fleetOf))
+	})
+}
+
+// GET /partner/compliance — les papiers de SON parc, véhicule par véhicule.
+func (h *Handler) fleetCompliance(fleetOf FleetOf) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, _ := auth.UserFromContext(r.Context())
+		fleetID, err := fleetOf(r.Context(), userID)
+		if err != nil {
+			// ⚠️ LE REFUS DU SOCLE PASSE TEL QUEL (`partner_no_fleet`,
+			// `partner_fleet_suspended`) : sa phrase dit au partenaire quoi
+			// faire, et « interdit » ne dirait rien.
+			httpx.Error(w, r, err)
+			return
+		}
+		out, err := h.svc.FleetCompliance(r.Context(), fleetID)
+		if err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		httpx.JSON(w, http.StatusOK, out)
+	}
+}
+
+// POST /partner/compliance/documents — déposer le papier d'une de ses voitures.
+func (h *Handler) submitFleetDocument(fleetOf FleetOf) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, _ := auth.UserFromContext(r.Context())
+		fleetID, err := fleetOf(r.Context(), userID)
+		if err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		var req SubmitDocumentRequest
+		if err := httpx.Decode(r, &req); err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		out, err := h.svc.SubmitFleetDocument(r.Context(), fleetID, req)
+		if err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		httpx.JSON(w, http.StatusCreated, out)
+	}
 }
