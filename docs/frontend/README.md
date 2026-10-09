@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.61.0** · 9 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.61.1** · 9 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -253,6 +253,7 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] Pays : `POST /me/country/resolve` au démarrage (position de l'appareil si possible), `GET /countries` avant l'inscription, **`POST /auth/refresh` quand `updated: true`**, message « pas encore disponible » quand `supported: false` — sans bloquer
 - [ ] ⚠️ Un **seul** jeton pour les deux bases : ne dupliquez pas la session
 - [ ] Auth : stockage sécurisé, refresh **sérialisé**, déconnexion au second échec
+- [ ] 🚪 **`403 wrong_app`** (v4.61.1, **toutes** les applications) : `error.reason` lu, mais une valeur **inconnue** repliée sur `error.message` — jamais une phrase à trou (« Ouvrez l'application  ») ; la liste s'allonge (`courier` 4.37.0, `partner` 4.60.0) ; ⚠️ `partner` est une console **web** → **ni** bouton « ouvrir l'application », **ni** lien vers un magasin ; et **jamais** « identifiants invalides » — le mot de passe était juste
 - [ ] 🔑 **Porte par code** (v4.46.0, applications de CLIENT) : compte à rebours rendu depuis `expires_at`, bouton « renvoyer » gouverné par `resend_after`, nom demandé **seulement** si `created: true`, et l'écran fonctionne **sans** `dev_code` — il disparaîtra. Les applications d'agent et de marchand gardent `POST /auth/login` (`403 otp_not_available` sinon)
 - [ ] 📱 **Appareils** : `device_id` envoyé à la connexion **par toutes les applications** (il ne va pas dans le jeton d'un client, il reconnaît le même téléphone qui revient) ; un `401` au rafraîchissement se traite comme une session expirée, sans message d'erreur technique
 - [ ] 💸 **Annulation** (v4.50.0, applications de CLIENT) : `cancellation` lu **avant** d'afficher le bouton ; montant dit à l'écran de confirmation quand `fee_xof > 0`, jamais un « Annuler » nu ; `why` affiché quand c'est gratuit ; compte à rebours rendu depuis `grace_left_s` et **relu à chaque rafraîchissement** (le chauffeur peut arriver avant la fin de la grâce) ; « remboursement intégral » jamais promis sur une course en **espèces** — les frais y deviennent une dette
@@ -336,6 +337,54 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.61.1 — 9 octobre 2026
+
+📱 **AUCUN CONTRAT NE CHANGE** — cette version n'ajoute que des **instructions**,
+là où les deux précédentes se contentaient d'annoncer des champs. Rien à
+recoder si vous avez déjà traité 4.60.0 et 4.61.0 ; tout à relire si vous vous
+apprêtez à le faire.
+
+**`VTC-DRIVER.md`** porte désormais :
+
+- **Un tableau écran par écran** pour « mes véhicules » : ce que chaque `status`
+  affiche, ce qu'il ne propose pas, et pourquoi `maintenance` et `withdrawn` ne
+  se disent **pas** pareil — l'interlocuteur n'est pas le même (Dira dans un
+  cas, le propriétaire du véhicule dans l'autre).
+- **Les trois choses à dire, dans l'ordre**, sur l'écran d'un chauffeur dont on
+  vient de reprendre la voiture : ce qui s'est passé, que ce n'est pas une
+  sanction, et le geste suivant. Avec l'avertissement : **ne pas proposer « se
+  remettre en ligne »** sans véhicule actif, le serveur refuse.
+- **Le routage des deux notifications** (`data.type: "vehicle"`), l'obligation
+  de **relire le profil** à leur arrivée, et le rappel qu'elles sont **non
+  coupables** (catégorie `support`).
+- **Une liste de recette** : six scénarios à essayer, dont « couper les
+  notifications commerciales » et « reprendre une voiture NON active ».
+- **Un tableau `missing` / `missing_fleet`** qui dit, ligne par ligne, qui agit,
+  qui a un bouton, et ce qui compte dans `compliant` — avec l'interdiction
+  explicite de **concaténer les deux listes**.
+- **Les quatre cas d'une pièce `by_fleet`** : affichée, non remplaçable,
+  `rejected` (c'est le propriétaire qui reprend la photo), `expiring` (à montrer
+  quand même — c'est ce qui fait appeler son patron avant un contrôle).
+- **Le dépôt par le chauffeur reste accepté** sur une voiture de société, et la
+  spec dit comment le présenter : un geste discret, pas la liste par défaut.
+
+**Toutes les specs** portent la nouvelle valeur de `error.reason` (`partner`) et
+la règle qui va avec :
+
+> ⚠️ **UNE VALEUR DE `reason` INCONNUE N'EST PAS UNE ERREUR — ET SURTOUT PAS UN
+> BLANC.** La liste s'allonge (`courier` en 4.37.0, `partner` en 4.60.0) : une
+> application qui traduit `reason` en nom d'application affiche « Ouvrez
+> l'application  », phrase coupée. **Repli : `error.message`, déjà traduit.** Et
+> `partner` **ne s'ouvre pas depuis un téléphone** — c'est une console web, donc
+> ni bouton « ouvrir », ni lien vers un magasin d'applications.
+
+**`FOOD-DELIVERY.md`** dit ce qui **n'arrivera pas** : la livraison n'a pas de
+flottes privées, donc `missing_fleet` y est toujours absent et aucune pièce ne
+porte `by_fleet`. Écrit pour que personne ne cherche un champ qui ne viendra
+pas — et pour que la règle soit déjà connue le jour où il viendrait.
+
+---
 
 ### 4.61.0 — 9 octobre 2026
 

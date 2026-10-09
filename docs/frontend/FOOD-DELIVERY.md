@@ -1,6 +1,6 @@
 # App LIVREUR — LIVRAISON — contrat d'API
 
-> **Version 4.61.0** · 9 octobre 2026
+> **Version 4.61.1** · 9 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 
@@ -506,8 +506,24 @@ Le socle refuse désormais, **`403 wrong_app`**, et le refus DIT OÙ ALLER :
 | champ | ce qu'il porte |
 |---|---|
 | `error.code` | `wrong_app` |
-| `error.reason` | **l'application à ouvrir** : `client` · `driver` (courses) · `courier` (livraison, **v4.37.0**) · `merchant` · `console` |
+| `error.reason` | **l'application à ouvrir** : `client` · `driver` (courses) · `courier` (livraison, **v4.37.0**) · `merchant` · `partner` (**v4.60.0** — console web d'un propriétaire de flotte) · `console` |
 | `error.message` | la phrase déjà traduite, à afficher telle quelle si vous n'avez pas la vôtre |
+
+> ⚠️⚠️ **UNE VALEUR DE `reason` QUE VOUS NE CONNAISSEZ PAS N'EST PAS UNE
+> ERREUR — ET SURTOUT PAS UN BLANC.** La liste s'allonge : `courier` est arrivé
+> en v4.37.0, `partner` en v4.60.0, et le prochain rôle arrivera sans vous
+> prévenir. Une application qui traduit `reason` par un nom d'application
+> affiche alors « Ouvrez l'application  » — phrase coupée, sans nom.
+>
+> **La règle : si vous ne connaissez pas la valeur, affichez `error.message`
+> tel quel.** Il est déjà traduit par le serveur et il nomme l'application. Un
+> repli générique (« ce compte n'est pas un compte de cette application »)
+> convient aussi ; un trou dans la phrase, non.
+>
+> ⚠️ **ET `partner` NE S'OUVRE PAS DEPUIS UN TÉLÉPHONE** : c'est une console
+> **web**. Ne proposez ni « ouvrir l'application », ni lien vers un magasin
+> d'applications — il n'y en a pas. Dites « ce compte est un compte de
+> partenaire : il s'ouvre depuis la console web de Dira. »
 
 ⚠️ **`reason`, et rien d'autre.** L'enveloppe d'erreur du socle ne rend que
 `code`, `message`, `fields` et `reason` — il n'y a pas de `meta` sur le fil.
@@ -2722,6 +2738,7 @@ d'être lue.
 - ⚠️ **`pending` reste `pending` quelle que soit la date.** Une pièce jamais regardée n'a jamais compté — ne l'affichez pas « expirée ».
 - **`expires_at` absent = la pièce ne périme pas** (une carte grise). N'affichez pas « expiré » sur une absence de date.
 - **`missing` nomme ce qui n'a jamais été déposé**, véhicule compris : `insurance:<vehicle_id>`. Sans lui, un livreur qui n'a rien déposé verrait un écran sans défaut.
+- ⚠️ **`missing_fleet` ET `by_fleet` N'APPARAÎTRONT JAMAIS ICI** (v4.61.0). Depuis le 9 octobre 2026, les papiers d'un véhicule appartenant à une **société** sont déposés par son propriétaire, et la réponse les sépare de ce que la personne doit envoyer. **La livraison n'a pas de flottes privées** : il n'existe pas de société propriétaire de motos de livraison, `missing_fleet` est donc toujours absent et aucune pièce ne porte `by_fleet`. C'est dit ici pour que personne ne cherche un champ qui ne viendra pas — et pour que le jour où il viendrait, la règle soit déjà connue : **ne jamais concaténer les deux listes**, et pas de bouton « envoyer » sur `missing_fleet`.
 
 > ⚠️ **Un dépôt REMPLACE et repasse en `pending`**, même si l'ancienne pièce était validée. Dites-le avant l'envoi : le livreur doit savoir qu'il repart en vérification.
 

@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.61.0** · 9 octobre 2026
+> **Version 4.61.1** · 9 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -335,10 +335,25 @@ remplacent un mot de passe que pour un client. Les applications d'agent gardent
 ⚠️ **DITES QUELLE APPLICATION SE CONNECTE — `app`.** À la connexion, envoyez
 `app: "client"`. Le serveur refuse `403 wrong_app` quand le compte n'a pas le
 droit d'entrer ici, et **`error.reason` nomme l'application à ouvrir**
-(`client` · `driver` · `courier` · `merchant` · `console`). Sans ce mot, un
+(`client` · `driver` · `courier` · `merchant` · `partner` · `console`). Sans ce mot, un
 chauffeur se connectait dans l'application cliente, recevait un jeton
 parfaitement valide, puis voyait chaque écran répondre `403` — et croyait
 l'application cassée.
+
+> ⚠️⚠️ **UNE VALEUR DE `reason` QUE VOUS NE CONNAISSEZ PAS N'EST PAS UNE
+> ERREUR — ET SURTOUT PAS UN BLANC.** La liste s'allonge : `courier` est arrivé
+> en v4.37.0, **`partner` en v4.60.0** (la console web d'un propriétaire de
+> flotte), et le prochain rôle arrivera sans vous prévenir. Une application qui
+> traduit `reason` en nom d'application affiche alors « Ouvrez l'application  »
+> — phrase coupée, sans nom.
+>
+> **La règle : valeur inconnue → affichez `error.message` tel quel.** Il est
+> déjà traduit par le serveur et il nomme l'application.
+>
+> ⚠️ **ET `partner` NE S'OUVRE PAS DEPUIS UN TÉLÉPHONE** : ni bouton « ouvrir
+> l'application », ni lien vers un magasin — il n'y en a pas. « Ce compte est
+> un compte de partenaire : il s'ouvre depuis la console web de Dira. »
+
 
 ⚠️ **UN SEUL CARNET D'ADRESSES, ET C'EST VOULU.** « Maison » sert au repas
 comme au taxi. N'entretenez pas deux listes.
