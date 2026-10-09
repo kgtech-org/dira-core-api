@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/auth"
@@ -129,4 +131,75 @@ func TestAnAccountOfAnotherRoleIsNotLinkedToTheFleet(t *testing.T) {
 		require.Error(t, err, "rôle %q", role)
 		assert.Contains(t, err.Error(), "phone_belongs_to_another_role")
 	}
+}
+
+// --- LE PERSONNEL D'UNE FLOTTE (members.go) ---
+
+// ⚠️⚠️ LA RÈGLE QUI TIENT TOUTES LES AUTRES : `owner` NE SE DONNE PAS. Le
+// laisser passer aurait permis de fabriquer un second propriétaire — et le
+// propriétaire est précisément celui qui décide qui entre. Un `manager` promu
+// propriétaire pourrait mettre le signataire du contrat dehors.
+func TestOwnerIsSignedNotGranted(t *testing.T) {
+	require.NoError(t, CheckFleetRole(RoleManager))
+	require.NoError(t, CheckFleetRole(RoleViewer))
+	for _, role := range []string{RoleOwner, "admin", "", "propriétaire"} {
+		err := CheckFleetRole(role)
+		require.Error(t, err, "rôle %q", role)
+		assert.Contains(t, err.Error(), "fleet_role_unknown")
+	}
+}
+
+// ⚠️ UN COMPTABLE N'A AUCUNE RAISON DE POUVOIR COUPER LE TRAVAIL DE QUELQU'UN.
+// `CanWrite` est la seule fonction qui en décide, et elle vit au socle : trois
+// modules qui trancheraient chacun « est-ce que `viewer` peut ? » finiraient par
+// répondre trois choses, et c'est celui qu'on regarde le moins qui laisserait
+// passer.
+func TestOnlyTheOwnerAndTheManagerMayAct(t *testing.T) {
+	assert.True(t, CanWrite(RoleOwner))
+	assert.True(t, CanWrite(RoleManager))
+	assert.False(t, CanWrite(RoleViewer), "un lecteur LIT")
+	// ⚠️ ET UN RÔLE INCONNU NE PEUT RIEN : si une verticale recevait un rôle
+	// qu'elle ne connaît pas (jeton d'une version plus ancienne, données
+	// importées), le défaut doit être « regarder », jamais « agir ».
+	assert.False(t, CanWrite(""))
+	assert.False(t, CanWrite("invention_future"))
+}
+
+// ⚠️ LE PROPRIÉTAIRE D'ABORD : s'il figurait AUSSI dans `members` — données
+// anciennes, import — c'est son titre de propriétaire qui doit gagner. Sinon un
+// signataire se retrouverait `viewer` sur sa propre société, et ne pourrait plus
+// faire entrer personne.
+func TestTheOwnerKeepsHisTitleEvenIfAlsoListed(t *testing.T) {
+	owner := primitive.NewObjectID()
+	f := &Fleet{OwnerUserID: &owner, Members: []Member{{UserID: owner, Role: RoleViewer}}}
+	assert.Equal(t, RoleOwner, roleIn(f, owner))
+}
+
+func TestRoleInNamesEachMember(t *testing.T) {
+	owner, manager, viewer, stranger := primitive.NewObjectID(), primitive.NewObjectID(),
+		primitive.NewObjectID(), primitive.NewObjectID()
+	f := &Fleet{OwnerUserID: &owner, Members: []Member{
+		{UserID: manager, Role: RoleManager},
+		{UserID: viewer, Role: RoleViewer},
+	}}
+	assert.Equal(t, RoleOwner, roleIn(f, owner))
+	assert.Equal(t, RoleManager, roleIn(f, manager))
+	assert.Equal(t, RoleViewer, roleIn(f, viewer))
+	// ⚠️ UN INCONNU N'A PAS DE RÔLE — chaîne VIDE, et non un rôle par défaut :
+	// `CanWrite("")` est faux, donc l'absence de rôle ne donne aucun pouvoir.
+	assert.Empty(t, roleIn(f, stranger))
+}
+
+// ⚠️ UNE SEULE LECTURE POUR LES DEUX CAS (`$or`) : propriétaire OU membre. Si
+// la clause des membres disparaissait, un répartiteur parfaitement légitime
+// recevrait « votre contrat n'est pas enregistré » — un refus qui dit le
+// contraire de la vérité.
+func TestTheFleetIsFoundByOwnerOrByStaff(t *testing.T) {
+	uid := primitive.NewObjectID()
+	f := memberFilter(uid)
+	clauses, ok := f["$or"].([]bson.M)
+	require.True(t, ok, "le filtre doit chercher les deux")
+	require.Len(t, clauses, 2)
+	assert.Equal(t, uid, clauses[0]["owner_user_id"])
+	assert.Equal(t, uid, clauses[1]["members.user_id"])
 }

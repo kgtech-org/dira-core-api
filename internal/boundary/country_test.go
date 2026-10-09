@@ -41,6 +41,12 @@ var global = map[string]string{
 	// connexion d'un Sénégalais depuis un déploiement togolais doit le
 	// trouver, sans quoi il ne pourrait plus se connecter du tout.
 	"user.FindByPhone": "la connexion cherche un compte avant de connaître son pays",
+	// ⚠️ LA FLOTTE D'UN COMPTE CONNECTÉ, pas une liste d'exploitation : c'est le
+	// COMPTE qui la désigne, et il n'y en a qu'une. Y ajouter le pays de la
+	// requête n'ajouterait aucune protection et couperait un partenaire
+	// togolais dont le contrat est enregistré depuis Dakar — ou un répartiteur
+	// qui se connecte en voyage.
+	"fleet.ByMember":   "la flotte du compte connecté, désignée par son identifiant : plus étroit qu'un pays",
 	"user.FindByEmail": "la connexion cherche un compte avant de connaître son pays",
 	// Le rappel d'un prestataire de paiement arrive SANS requête de console :
 	// il porte une référence, pas un pays.

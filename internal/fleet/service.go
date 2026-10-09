@@ -24,6 +24,8 @@ type Service struct {
 	audit Auditor
 	// accounts ouvre l'accès du partenaire à sa console — voir access.go.
 	accounts Accounts
+	// identities nomme le personnel de la flotte — voir members.go. Facultatif.
+	identities Identities
 }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
@@ -78,9 +80,16 @@ type Response struct {
 	ContractRef  string `json:"contract_ref,omitempty"`
 	CommissionBp *int   `json:"commission_bp"`
 	Status       string `json:"status"`
-	Notes        string `json:"notes,omitempty"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
+	// Role est ce que le COMPTE APPELANT est dans cette flotte — `owner`,
+	// `manager` ou `viewer`. Rempli par `/partner/me` seulement : sur la liste
+	// d'exploitation, « le rôle de l'appelant » n'a pas de sens.
+	//
+	// ⚠️ SERVI POUR QUE LA CONSOLE DÉCIDE AVANT DE DESSINER : un bouton
+	// affiché puis refusé par le serveur a déjà promis quelque chose.
+	Role      string `json:"role,omitempty"`
+	Notes     string `json:"notes,omitempty"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 func toResponse(f *Fleet) Response {

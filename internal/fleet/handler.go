@@ -208,5 +208,78 @@ func (h *Handler) ownerFleet(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"fleet_id": out.ID, "name": out.Name, "status": out.Status,
+		// ⚠️ LE RÔLE TRAVERSE JUSQU'AUX VERTICALES, et il le faut : ce sont
+		// elles qui portent les écritures (reprendre une voiture, poser une
+		// limite de dette). Sans lui, un `viewer` — un comptable — pourrait
+		// couper le travail de quelqu'un depuis la console des courses, alors
+		// que le socle lui refuse déjà d'ajouter un collègue.
+		"role": out.Role,
 	})
+}
+
+// ---------------------------------------------------------------------------
+// LE PERSONNEL DE LA FLOTTE — voir members.go.
+// ---------------------------------------------------------------------------
+
+// MountPartnerStaff expose la gestion du personnel au PROPRIÉTAIRE.
+//
+// ⚠️ TOUJOURS SANS IDENTIFIANT DE FLOTTE DANS LE CHEMIN : elle vient du jeton.
+// Le seul identifiant de ces routes est celui d'un MEMBRE, qu'on retire — et il
+// est vérifié contre la flotte de l'appelant.
+func (h *Handler) MountPartnerStaff(r chi.Router, authMW func(http.Handler) http.Handler) {
+	r.Group(func(g chi.Router) {
+		g.Use(authMW, middleware.RequireRole(auth.RolePartner))
+		g.Get("/partner/members", h.partnerMembers)
+		g.Post("/partner/members", h.partnerAddMember)
+		g.Delete("/partner/members/{userID}", h.partnerRemoveMember)
+	})
+}
+
+// GET /partner/members — le personnel de la flotte.
+//
+// ⚠️ LISIBLE PAR TOUT LE PERSONNEL, y compris un `viewer` : savoir qui a accès
+// à la console n'est pas un pouvoir, c'est le contraire — c'est ce qui permet à
+// quelqu'un de signaler un compte qui ne devrait plus être là.
+func (h *Handler) partnerMembers(w http.ResponseWriter, r *http.Request) {
+	userID, _ := auth.UserFromContext(r.Context())
+	items, err := h.svc.Members(r.Context(), userID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// POST /partner/members {name, phone, email, role, password}
+//
+// ⚠️ SEUL LE PROPRIÉTAIRE, et c'est la règle qui tient les autres : un
+// `manager` qui pourrait ajouter quelqu'un s'ajouterait un second compte de
+// `manager` — ou mettrait le propriétaire dehors.
+func (h *Handler) partnerAddMember(w http.ResponseWriter, r *http.Request) {
+	userID, _ := auth.UserFromContext(r.Context())
+	var req AddMemberRequest
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := h.svc.AddMember(r.Context(), userID, req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusCreated, out)
+}
+
+// DELETE /partner/members/{userID} — détacher un compte.
+//
+// ⚠️ DÉTACHER, PAS SUPPRIMER : c'est peut-être le compte personnel de
+// quelqu'un, et une société n'a pas à pouvoir effacer la personne qu'elle
+// congédie.
+func (h *Handler) partnerRemoveMember(w http.ResponseWriter, r *http.Request) {
+	userID, _ := auth.UserFromContext(r.Context())
+	if err := h.svc.RemoveMember(r.Context(), userID, chi.URLParam(r, "userID")); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

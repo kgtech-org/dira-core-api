@@ -50,6 +50,13 @@ type Fleet struct {
 	// compte. L'exiger aurait obligé l'exploitation à créer un compte fantôme
 	// pour enregistrer un contrat signé sur papier.
 	OwnerUserID *primitive.ObjectID `bson:"owner_user_id,omitempty"`
+	// Members est le PERSONNEL de la société — un répartiteur, un comptable —
+	// en plus du propriétaire. Voir members.go.
+	//
+	// ⚠️ UNE SOCIÉTÉ N'EST PAS UNE PERSONNE. Avec un seul compte, trois
+	// personnes partagent un mot de passe — et plus rien ne dit qui a posé la
+	// limite de dette qui a coupé quelqu'un.
+	Members []Member `bson:"members,omitempty"`
 	// Contact est ce qu'on compose quand un véhicule de la flotte pose
 	// problème à deux heures du matin. Un identifiant de compte ne se compose
 	// pas.
