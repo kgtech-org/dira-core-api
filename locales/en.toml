@@ -482,3 +482,11 @@ other = "This objective is already live."
 
 [errors.challenge_unknown_actor]
 other = "Your session is no longer valid: sign in again."
+
+# THE PARTNER CONSOLE (internal/fleet, partner.go). Neither refusal means
+# "forbidden": the account IS a partner's, but operations must do something.
+[errors.partner_no_fleet]
+other = "No fleet is attached to this account yet. Ask Dira to link your contract."
+
+[errors.partner_fleet_suspended]
+other = "This fleet's contract is suspended: contact Dira. Your drivers keep working."

@@ -60,6 +60,29 @@ func (r *Repository) ByID(ctx context.Context, id primitive.ObjectID) (*Fleet, e
 
 // ByIDs resolves several fleets in ONE query, for the lists a vertical
 // decorates with an owner name.
+// ByOwner retrouve la flotte d'un compte gérant.
+//
+// ⚠️ UNE SEULE FLOTTE PAR COMPTE, par construction de la console partenaire :
+// le menu, les listes et les écritures partent tous de « sa » flotte. Si un
+// jour quelqu'un gère deux sociétés, c'est ICI que ça se verra — et il faudra
+// alors un sélecteur, pas un second compte.
+//
+// ⚠️ ET LA LECTURE N'EST PAS BORNÉE PAR PAYS, délibérément : c'est le COMPTE
+// CONNECTÉ qui la désigne, pas une liste d'exploitation. Un partenaire togolais
+// dont le contrat est enregistré depuis Dakar doit pouvoir se connecter — le
+// pays de la requête n'a rien à voir avec la propriété de sa flotte.
+func (r *Repository) ByOwner(ctx context.Context, ownerUserID primitive.ObjectID) (*Fleet, error) {
+	var f Fleet
+	err := r.fleets.FindOne(ctx, bson.M{"owner_user_id": ownerUserID}).Decode(&f)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fleet: by owner: %w", err)
+	}
+	return &f, nil
+}
+
 func (r *Repository) ByIDs(ctx context.Context, ids []primitive.ObjectID) (map[primitive.ObjectID]Fleet, error) {
 	out := make(map[primitive.ObjectID]Fleet, len(ids))
 	if len(ids) == 0 {
