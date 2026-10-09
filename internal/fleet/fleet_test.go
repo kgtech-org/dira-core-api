@@ -1,6 +1,10 @@
 package fleet
 
 import (
+	"github.com/go-chi/chi/v5"
+	"net/http"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -54,4 +58,38 @@ func TestSearchIsEscaped(t *testing.T) {
 // compte introuvable, alors que la flotte n'en a simplement pas.
 func TestOwnerIsOmittedWhenAbsent(t *testing.T) {
 	assert.Empty(t, toResponse(&Fleet{}).OwnerUserID)
+}
+
+// --- LA SURFACE PARTENAIRE ----------------------------------------------
+
+// ⚠️⚠️ LE TEST QUI PORTE TOUT L'ISOLEMENT : LA SURFACE PARTENAIRE N'A AUCUN
+// IDENTIFIANT DANS SES CHEMINS.
+//
+// C'est structurel, pas documentaire. Un `GET /partner/fleets/{id}` aurait
+// suffi à un partenaire curieux pour lire le parc d'un concurrent en changeant
+// un chiffre dans l'URL — et un garde oublié une seule fois, sur une seule
+// route, suffit. En n'offrant aucune route paramétrée, il n'y a rien à essayer.
+func TestThePartnerSurfaceHasNoIdentifierToTamperWith(t *testing.T) {
+	routes := mountedPartnerRoutes(t)
+	require.NotEmpty(t, routes, "la surface partenaire existe")
+	for _, r := range routes {
+		assert.NotContains(t, r, "{", "aucun paramètre de chemin : %s", r)
+	}
+	assert.Equal(t, []string{"GET /partner/me"}, routes)
+}
+
+// mountedPartnerRoutes liste les routes `/partner/...` servies par ce module.
+func mountedPartnerRoutes(t *testing.T) []string {
+	t.Helper()
+	r := chi.NewRouter()
+	NewHandler(&Service{}).Mount(r, func(next http.Handler) http.Handler { return next })
+	var out []string
+	_ = chi.Walk(r, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if strings.HasPrefix(route, "/partner/") {
+			out = append(out, method+" "+strings.TrimSuffix(route, "/"))
+		}
+		return nil
+	})
+	sort.Strings(out)
+	return out
 }

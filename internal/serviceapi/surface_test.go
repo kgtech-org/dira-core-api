@@ -97,6 +97,14 @@ var declaredSurface = []string{
 	// confierait un contrat et une commission qu'elle n'a aucune raison de
 	// porter, et qu'elle finirait par recopier chez elle.
 	"/internal/fleets/names",
+	// LA FLOTTE D'UN PARTENAIRE — ce qu'une verticale demande pour borner les
+	// listes de sa console partenaire.
+	//
+	// ⚠️ DEMANDÉE À CHAQUE REQUÊTE plutôt que mise dans le jeton : une
+	// revendication figée aurait laissé un partenaire détaché continuer à gérer
+	// sa flotte jusqu'à l'expiration de son jeton — et sa suspension aurait été
+	// sans effet jusque-là.
+	"/internal/fleets/of-owner",
 	"/internal/notifications/send",
 	"/internal/notifications/staff",
 	"/internal/payments/initiate",

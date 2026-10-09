@@ -18,7 +18,21 @@ const (
 	RoleClient   = "client"
 	RoleDriver   = "driver"
 	RoleMerchant = "merchant"
-	RoleAdmin    = "admin"
+	// RolePartner : un PARTENAIRE DE FLOTTE — celui qui loue ses véhicules à
+	// des chauffeurs et répond des espèces qu'ils encaissent.
+	//
+	// ⚠️ UN RÔLE À PART, ET SURTOUT PAS `admin`. Un partenaire n'est pas de la
+	// maison : il gère SON parc et rien d'autre. Lui donner `admin` avec une
+	// portée restreinte aurait fait reposer tout l'isolement sur la justesse
+	// de chaque garde — et un oubli, une fois, ouvre la console
+	// d'exploitation à quelqu'un d'extérieur.
+	//
+	// ⚠️ ET IL EST MODELÉ SUR `merchant`, qui est exactement la même forme : un
+	// mandant EXTERNE qui administre ses propres objets et ne voit que les
+	// siens. Inventer une troisième façon de faire aurait donné deux chemins à
+	// relire au lieu d'un.
+	RolePartner = "partner"
+	RoleAdmin   = "admin"
 )
 
 const (

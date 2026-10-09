@@ -404,7 +404,12 @@ var appRole = map[string]string{
 	AgentAppDriver:  auth.RoleDriver,
 	AgentAppCourier: auth.RoleDriver,
 	"merchant":      auth.RoleMerchant,
-	"console":       auth.RoleAdmin,
+	// ⚠️ LA CONSOLE PARTENAIRE EST UNE APPLICATION À PART, et c'est ce qui
+	// empêche un partenaire d'ouvrir celle de l'exploitation même si un garde
+	// de route venait à manquer : il est refusé à la CONNEXION,
+	// `403 wrong_app`, avant d'avoir un jeton.
+	"partner": auth.RolePartner,
+	"console": auth.RoleAdmin,
 }
 
 // appOfRole nomme l'application où ce compte doit aller — pour le DIRE à la
@@ -418,6 +423,7 @@ var appOfRole = map[string]string{
 	auth.RoleClient:   "client",
 	auth.RoleDriver:   AgentAppDriver,
 	auth.RoleMerchant: "merchant",
+	auth.RolePartner:  "partner",
 	auth.RoleAdmin:    "console",
 }
 

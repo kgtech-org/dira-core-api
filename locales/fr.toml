@@ -499,3 +499,15 @@ other = "Cet objectif est déjà lancé."
 
 [errors.challenge_unknown_actor]
 other = "Votre session n'est plus valable : reconnectez-vous."
+
+# LA CONSOLE PARTENAIRE (internal/fleet, partner.go).
+#
+# ⚠️ CES DEUX REFUS NE SONT PAS DES « INTERDITS », et c'est ce que les phrases
+# disent : le compte est bien celui d'un partenaire, mais il manque quelque
+# chose que l'EXPLOITATION doit faire. « Interdit » lui ferait croire qu'il
+# s'est trompé.
+[errors.partner_no_fleet]
+other = "Aucune flotte n'est encore rattachée à ce compte. Demandez à Dira d'y rattacher votre contrat."
+
+[errors.partner_fleet_suspended]
+other = "Le contrat de cette flotte est suspendu : contactez Dira. Vos chauffeurs, eux, continuent de travailler."
