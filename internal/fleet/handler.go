@@ -29,6 +29,15 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		g.With(admin).Post("/admin/fleets", h.create)
 		g.With(admin).Get("/admin/fleets/{id}", h.get)
 		g.With(admin).Patch("/admin/fleets/{id}", h.update)
+		// OUVRIR L'ACCÈS À LA CONSOLE PARTENAIRE — voir `access.go`.
+		//
+		// ⚠️ UNE ROUTE D'EXPLOITATION, et il ne peut pas en être autrement : un
+		// rôle `partner` donne des pouvoirs sur le TRAVAIL D'AUTRES PERSONNES
+		// (poser une limite de dette, reprendre une voiture). Un rôle qu'on
+		// obtient en postant un formulaire d'inscription ne peut pas porter
+		// cela — c'est pourquoi `/auth/register` le refuse, et pourquoi
+		// l'ouverture se fait ici, au moment où l'on enregistre le contrat.
+		g.With(admin).Post("/admin/fleets/{id}/access", h.openAccess)
 	})
 	r.Group(func(g chi.Router) {
 		// LA CONSOLE PARTENAIRE.
@@ -41,6 +50,32 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		g.Use(authMW, middleware.RequireRole(auth.RolePartner))
 		g.Get("/partner/me", h.partnerMe)
 	})
+}
+
+// POST /admin/fleets/{id}/access {password} — ouvrir l'accès du partenaire.
+//
+// ⚠️ LE CORPS NE PORTE QUE LE MOT DE PASSE : le nom, le numéro et l'adresse
+// viennent du CONTACT déjà enregistré sur la fiche. Deux endroits où taper le
+// gérant auraient divergé le jour où l'un des deux change — et c'est l'autre
+// qui sert à le joindre.
+func (h *Handler) openAccess(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		// ⚠️ Huit caractères au minimum, et c'est l'exploitant qui le CHOISIT
+		// plutôt qu'un tirage du serveur : il doit le transmettre par
+		// téléphone à quelqu'un qui le notera, et un mot de passe illisible au
+		// téléphone finit écrit sur la fiche de la flotte.
+		Password string `json:"password" validate:"required,min=8,max=120"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := h.svc.OpenAccess(r.Context(), chi.URLParam(r, "id"), req.Password)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
 }
 
 // GET /partner/me — MA flotte.

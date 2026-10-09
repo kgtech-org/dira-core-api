@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
+	"github.com/kgtech-org/dira-core-api/pkg/auth"
 )
 
 func bp(v int) *int { return &v }
@@ -92,4 +93,40 @@ func mountedPartnerRoutes(t *testing.T) []string {
 	})
 	sort.Strings(out)
 	return out
+}
+
+// --- L'ACCÈS DU PARTENAIRE À SA CONSOLE (access.go) ---
+
+// ⚠️ ON NE PROVISIONNE PAS UN ACCÈS SANS SAVOIR À QUI. Le téléphone identifie
+// le compte sur la plateforme, l'adresse est ce avec quoi on se connecte : sans
+// l'adresse, on aurait créé un compte incapable d'ouvrir sa propre console.
+func TestOpeningAnAccessNeedsBothContactFields(t *testing.T) {
+	_, err := accessPlan(&Fleet{Name: "Sodigaz", ContactPhone: "+22890000000"})
+	require.Error(t, err, "sans adresse")
+	_, err = accessPlan(&Fleet{Name: "Sodigaz", ContactEmail: "kodjo@sodigaz.tg"})
+	require.Error(t, err, "sans téléphone")
+
+	p, err := accessPlan(&Fleet{Name: "Sodigaz",
+		ContactPhone: " +22890000000 ", ContactEmail: " Kodjo@Sodigaz.TG "})
+	require.NoError(t, err)
+	assert.Equal(t, "+22890000000", p.Phone)
+	// L'adresse est RANGÉE en minuscules : c'est l'identifiant de connexion, et
+	// « Kodjo@ » puis « kodjo@ » auraient fait deux comptes pour une personne.
+	assert.Equal(t, "kodjo@sodigaz.tg", p.Email)
+	// Le nom de la SOCIÉTÉ à défaut du gérant : un compte sans nom s'affiche
+	// vide partout où on le croise.
+	assert.Equal(t, "Sodigaz", p.Name)
+}
+
+// ⚠️⚠️ LE PIÈGE QUI COMPTE : LE GÉRANT D'UNE FLOTTE EST SOUVENT DÉJÀ UN
+// PASSAGER DIRA. `EnsureAccount` rend alors son compte `client` tel quel. Le
+// rattacher aurait affiché « accès ouvert » sur la fiche pendant que la
+// connexion lui répond `403 wrong_app` — et personne n'aurait su pourquoi.
+func TestAnAccountOfAnotherRoleIsNotLinkedToTheFleet(t *testing.T) {
+	require.NoError(t, ownerRoleOK(auth.RolePartner))
+	for _, role := range []string{auth.RoleClient, auth.RoleDriver, auth.RoleMerchant, auth.RoleAdmin, ""} {
+		err := ownerRoleOK(role)
+		require.Error(t, err, "rôle %q", role)
+		assert.Contains(t, err.Error(), "phone_belongs_to_another_role")
+	}
 }

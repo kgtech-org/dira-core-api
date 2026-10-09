@@ -511,3 +511,14 @@ other = "Aucune flotte n'est encore rattachée à ce compte. Demandez à Dira d'
 
 [errors.partner_fleet_suspended]
 other = "Le contrat de cette flotte est suspendu : contactez Dira. Vos chauffeurs, eux, continuent de travailler."
+
+# --- L'ACCÈS D'UN PARTENAIRE À SA CONSOLE (internal/fleet/access.go) ---
+
+[errors.fleet_access_unavailable]
+other = "L'accès partenaire ne peut pas être ouvert sur ce serveur"
+
+# ⚠️ UN COMPTE, UN RÔLE, UNE APPLICATION. Lier quand même ce compte aurait
+# affiché « accès ouvert » sur la fiche et refusé l'entrée au partenaire, sans
+# que personne ne comprenne pourquoi. La phrase dit quoi faire.
+[errors.phone_belongs_to_another_role]
+other = "Ce numéro appartient déjà à un compte Dira qui n'est pas un partenaire : utilisez un autre numéro"
