@@ -20,6 +20,11 @@ type RegisterRequest struct {
 	// livreur qui vient de créer son compte est déjà connecté sur ce
 	// téléphone. Sans eux, sa toute première session serait la seule à
 	// n'être bornée à aucun appareil — et elle peut durer trente jours.
+	//
+	// ⚠️ `partner` N'EST PAS DANS CETTE LISTE, délibérément : `Register` refuse
+	// ce rôle — il donne des pouvoirs sur le travail d'autres personnes —, donc
+	// l'accepter ici n'ouvrirait rien et ferait croire le contraire. L'accès
+	// d'un partenaire s'ouvre depuis la fiche de sa flotte.
 	App        string `json:"app,omitempty" validate:"omitempty,oneof=client driver courier merchant console"`
 	DeviceID   string `json:"device_id,omitempty" validate:"omitempty,max=128"`
 	DeviceName string `json:"device_name,omitempty" validate:"omitempty,max=120"`
@@ -63,7 +68,13 @@ type LoginRequest struct {
 	//
 	// ABSENT = aucune vérification, le comportement d'avant : une
 	// application pas encore mise à jour continue de fonctionner.
-	App string `json:"app,omitempty" validate:"omitempty,oneof=client driver courier merchant console"`
+	// ⚠️⚠️ `partner` EST DANS CETTE LISTE, et il a failli ne pas y être. Le
+	// rôle existait, la table `appRole` le connaissait, la console partenaire
+	// l'envoyait — et la validation du corps le refusait par un `422` sur le
+	// champ `app` : un rôle complet, sans aucune porte. Ça ne s'est vu qu'en
+	// ouvrant la console pour de vrai. Voir `TestEveryKnownAppCanLogIn`, qui
+	// fige l'accord entre cette liste et `appRole`.
+	App string `json:"app,omitempty" validate:"omitempty,oneof=client driver courier merchant partner console"`
 	// DeviceID est l'IDENTIFIANT D'INSTALLATION de l'application : un chauffeur
 	// ou un livreur ne tient qu'UNE session, et c'est ce champ qui dit laquelle.
 	//

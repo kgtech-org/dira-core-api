@@ -42,6 +42,14 @@ func NewAdminUsers(repo *Repository, wallets WalletCreator, auditor *audit.Recor
 func (a *AdminUsers) SetDefaultCountry(code string) { a.defaultCountry = country.Normalize(code) }
 
 // AdminCreateUserRequest creates an account with any role (admin included).
+//
+// ⚠️ `partner` N'EST PAS DANS LA LISTE, ET C'EST VOLONTAIRE. Un compte de
+// partenaire sans flotte rattachée ne peut rien faire (`partner_no_fleet`) :
+// créé d'ici, il serait un compte mort que quelqu'un croira fonctionnel. Son
+// accès s'ouvre depuis la fiche de la FLOTTE
+// (`POST /admin/fleets/{id}/access`), qui crée le compte ET le rattache dans le
+// même geste — et qui refuse de rattacher un compte déjà pris par un autre
+// rôle. Une seule porte, parce que la seconde aurait eu un pire dénouement.
 type AdminCreateUserRequest struct {
 	Role     string `json:"role" validate:"required,oneof=client driver merchant admin"`
 	Name     string `json:"name" validate:"required,min=1,max=120"`

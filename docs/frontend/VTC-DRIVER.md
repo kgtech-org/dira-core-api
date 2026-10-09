@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.60.0** · 9 octobre 2026
+> **Version 4.61.1** · 9 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -596,11 +596,131 @@ et si c'était votre véhicule actif vous passez **hors ligne** avec
 > son propriétaire qui la récupère. L'interlocuteur n'est pas le même, et c'est
 > toute la différence pour celui qui lit l'écran.
 
-**3. Votre limite de dette change.** Le propriétaire peut la poser lui-même
+**3. Les papiers de la voiture ne vous sont plus demandés** (v4.61.0). Carte
+grise, assurance, contrôle technique et photos d'un véhicule de société sont
+déposés par **son propriétaire**, depuis sa console.
+
+```
+GET /driver/documents → { documents: [ … ], missing: [ … ], missing_fleet: [ … ], compliant }
+```
+
+> ⚠️⚠️ **`missing` NE CONTIENT PLUS CES PIÈCES — ELLES SONT DANS
+> `missing_fleet`.** On vous réclamait la carte grise d'une voiture qui n'est
+> pas la vôtre, et la relance `documents_missing` vous le redisait tous les
+> trois jours pour un papier que vous n'avez pas. **N'affichez PAS
+> `missing_fleet` comme une chose à faire** : c'est une information — « votre
+> société n'a pas encore envoyé l'assurance » —, et le bouton « envoyer » n'a
+> rien à faire à côté.
+>
+> ⚠️ **`compliant` RESTE `false` POUR AUTANT**, et c'est voulu : la voiture
+> roule sans papiers. Ne le présentez pas comme votre défaut — dites qui doit
+> agir.
+>
+> ⚠️ **ET `by_fleet: true` MARQUE LES PIÈCES DÉPOSÉES PAR LE PROPRIÉTAIRE.**
+> Elles apparaissent dans `documents` comme les autres. Affichez-les — sinon on
+> les redépose, et un opérateur regarde deux fois la même image — mais ne
+> proposez pas de les **remplacer** : ce n'est pas à vous de les renouveler.
+>
+> ⚠️ **VOUS POUVEZ ENCORE LES DÉPOSER VOUS-MÊME, et la route ne change pas.**
+> Les papiers sont souvent dans la boîte à gants : `POST /driver/documents`
+> avec le `vehicle_id` de la voiture de société est **accepté**, délibérément —
+> un chauffeur qui peut régulariser ne doit pas en être empêché parce que son
+> patron ne répond pas. Gardez-le accessible, sans en faire l'écran principal.
+
+**4. Votre limite de dette change.** Le propriétaire peut la poser lui-même
 depuis sa console. Rien de nouveau dans le contrat : `max_debt_source` vaut
 `partner` et `max_debt_by` porte **le nom de la société** (v4.55.0) — mais
 attendez-vous à la voir bouger plus souvent, et **nommez toujours l'auteur**
 dans le message de blocage.
+
+---
+
+#### 📱 ÉCRAN PAR ÉCRAN — ce que vous avez à faire
+
+**L'écran « MES VÉHICULES »** (`GET /drivers/me/vehicles`)
+
+| Ce que le serveur rend | Ce que l'écran montre | Ce qu'il NE fait pas |
+|---|---|---|
+| `status: "service"` | la voiture, sélectionnable | — |
+| `status: "maintenance"` | « immobilisé par Dira », grisé | ne pas proposer de la choisir |
+| `status: "withdrawn"` | « repris par le propriétaire », grisé | **ni « choisir », ni « supprimer »** |
+| `fleet_name` présent | le nom de la société sous la plaque | ne pas l'inventer quand il est absent |
+
+> ⚠️ **UN VÉHICULE `withdrawn` RESTE DANS LA LISTE, et il doit y rester.** C'est
+> une voiture que vous avez conduite : la faire disparaître d'un coup, sans un
+> mot, se lit comme une perte de données — « où est passée ma voiture ? ». Elle
+> reste, grisée, avec sa cause.
+>
+> ⚠️ **ET `PATCH /drivers/me/active-vehicle` DESSUS EST REFUSÉ.** N'affichez pas
+> le bouton : un bouton qui rend une erreur a promis quelque chose. Le refus
+> serait `409 vehicle_not_usable`.
+>
+> ⚠️ **`maintenance` ET `withdrawn` NE SE DISENT PAS PAREIL**, parce que
+> l'interlocuteur change : pour `maintenance`, c'est Dira (« contactez le
+> support ») ; pour `withdrawn`, c'est **le propriétaire du véhicule**
+> (« contactez votre société »). Un libellé commun — « indisponible » — envoie
+> la moitié des gens au mauvais endroit.
+
+**L'ÉCRAN D'ACCUEIL quand on vient de vous reprendre la voiture**
+
+Le profil (`GET /drivers/me`) revient avec `online: false`,
+`offline_reason: "fleet"`, et `active_vehicle_id` **absent**.
+
+> ⚠️ **TROIS CHOSES À DIRE, DANS CET ORDRE** — c'est l'écran qu'un chauffeur
+> regarde en comprenant qu'il ne travaille plus :
+> 1. **ce qui s'est passé** : « le propriétaire a repris AB-1234 » ;
+> 2. **que ce n'est pas une sanction** : « votre compte chauffeur reste
+>    actif » ;
+> 3. **le geste suivant** : s'il a un autre véhicule `service`, proposez-le en
+>    un bouton ; sinon, « contactez votre société ».
+>
+> ⚠️ **NE PROPOSEZ PAS « SE REMETTRE EN LIGNE » SEUL.** Sans véhicule actif, le
+> serveur refuse (`409 no_active_vehicle`) : le bouton tourne, échoue, et la
+> personne appelle le support. Le bouton utile est « choisir un véhicule ».
+
+**LES DEUX NOTIFICATIONS**
+
+```
+vehicle_assigned    → data: { type: "vehicle", vehicle_id }   vars: { vehicle, fleet }
+vehicle_taken_back  → data: { type: "vehicle", vehicle_id }   vars: { vehicle, fleet }
+```
+
+> ⚠️ **ROUTEZ-LES VERS L'ÉCRAN DES VÉHICULES**, pas vers l'accueil : `data.type`
+> vaut `vehicle` et `data.vehicle_id` dit laquelle. Un renvoi vers l'accueil
+> laisse chercher ce qui a changé.
+>
+> ⚠️ **ET RELISEZ LE PROFIL À LEUR ARRIVÉE** (`GET /drivers/me` +
+> `GET /drivers/me/vehicles`). Les deux messages annoncent un changement d'état
+> **décidé ailleurs** : sans relecture, l'application montre encore la voiture
+> comme active, et le dispatch n'appelle plus. C'est l'écart qui finit au
+> support.
+>
+> ⚠️ **CATÉGORIE `support`, DONC NON COUPABLE** : elles arrivent même si la
+> personne a coupé les offres commerciales. Ne les rangez pas dans un onglet
+> « promotions », et ne les comptez pas dans un badge publicitaire.
+>
+> ⚠️ **LE RATTACHEMENT NE DEMANDE PAS SON ACCORD** — c'est la voiture du
+> partenaire. Ce message est donc **le seul contre-pouvoir** du chauffeur :
+> montrez-le comme une notification À LIRE (bannière, boîte de réception), pas
+> comme une ligne d'historique qu'on découvre un mois plus tard. Et prévoyez
+> « ce n'est pas normal ? Contactez le support » : c'est par là qu'un
+> rattachement non voulu se signale.
+
+#### ✅ CE QU'UN RECETTEUR DOIT ESSAYER
+
+1. Se faire rattacher une voiture pendant que l'application est **ouverte** →
+   la notification arrive, la liste se recharge, la voiture est **active** si
+   on n'en avait aucune.
+2. Se faire reprendre **la voiture active** → hors ligne, cause `fleet`, le
+   message dit « compte actif », et l'écran propose l'autre véhicule s'il y en
+   a un.
+3. Se faire reprendre **une voiture non active** → rien ne change à l'état en
+   ligne ; la voiture passe simplement `withdrawn`.
+4. Essayer de **choisir** une voiture `withdrawn` → le bouton n'existe pas.
+5. Couper les notifications commerciales, se faire reprendre la voiture → **le
+   message arrive quand même**.
+6. Se faire poser une limite de dette par le propriétaire → le blocage nomme
+   **la société** (`max_debt_by`), pas « Dira ».
 
 ---
 
@@ -3163,8 +3283,24 @@ Le socle refuse désormais, **`403 wrong_app`**, et le refus DIT OÙ ALLER :
 | champ | ce qu'il porte |
 |---|---|
 | `error.code` | `wrong_app` |
-| `error.reason` | **l'application à ouvrir** : `client` · `driver` (courses) · `courier` (livraison, **v4.37.0**) · `merchant` · `console` |
+| `error.reason` | **l'application à ouvrir** : `client` · `driver` (courses) · `courier` (livraison, **v4.37.0**) · `merchant` · `partner` (**v4.60.0** — console web d'un propriétaire de flotte) · `console` |
 | `error.message` | la phrase déjà traduite, à afficher telle quelle si vous n'avez pas la vôtre |
+
+> ⚠️⚠️ **UNE VALEUR DE `reason` QUE VOUS NE CONNAISSEZ PAS N'EST PAS UNE
+> ERREUR — ET SURTOUT PAS UN BLANC.** La liste s'allonge : `courier` est arrivé
+> en v4.37.0, `partner` en v4.60.0, et le prochain rôle arrivera sans vous
+> prévenir. Une application qui traduit `reason` par un nom d'application
+> affiche alors « Ouvrez l'application  » — phrase coupée, sans nom.
+>
+> **La règle : si vous ne connaissez pas la valeur, affichez `error.message`
+> tel quel.** Il est déjà traduit par le serveur et il nomme l'application. Un
+> repli générique (« ce compte n'est pas un compte de cette application »)
+> convient aussi ; un trou dans la phrase, non.
+>
+> ⚠️ **ET `partner` NE S'OUVRE PAS DEPUIS UN TÉLÉPHONE** : c'est une console
+> **web**. Ne proposez ni « ouvrir l'application », ni lien vers un magasin
+> d'applications — il n'y en a pas. Dites « ce compte est un compte de
+> partenaire : il s'ouvre depuis la console web de Dira. »
 
 ⚠️ **`reason`, et rien d'autre.** L'enveloppe d'erreur du socle ne rend que
 `code`, `message`, `fields` et `reason` — il n'y a pas de `meta` sur le fil.
@@ -3681,6 +3817,86 @@ sinon vos deux nombres divergeront sans que personne ne comprenne pourquoi.
 GET  /driver/documents                                       mon état de conformité
 POST /driver/documents   { kind, file_url, vehicle_id?, expires_at? }
 ```
+
+La réponse porte **quatre** champs, et il faut les quatre :
+
+```json
+{
+  "documents": [
+    { "id": "…", "kind": "insurance", "vehicle_id": "…", "file_url": "…",
+      "state": "valid", "expires_at": "2027-03-01T00:00:00Z",
+      "by_fleet": true, "updated_at": "…" }
+  ],
+  "missing":       ["id_card", "selfie", "criminal_record", "licence"],
+  "missing_fleet": ["registration:<vehicle_id>", "insurance:<vehicle_id>"],
+  "compliant": false
+}
+```
+
+> ## ⚠️⚠️ `missing` ET `missing_fleet` NE SE CONCATÈNENT JAMAIS (v4.61.0)
+>
+> **`missing` = ce que VOUS devez envoyer. `missing_fleet` = ce que la SOCIÉTÉ
+> propriétaire de votre voiture doit envoyer.**
+>
+> Avant la v4.61.0, tout était dans `missing` : on réclamait au chauffeur la
+> carte grise d'une voiture qui n'est pas la sienne, et la relance
+> `documents_missing` le lui redisait **tous les trois jours** pour un papier
+> qu'il n'a pas. Les concaténer referait exactement ce défaut.
+>
+> | | `missing` | `missing_fleet` |
+> |---|---|---|
+> | Qui agit | le chauffeur | le propriétaire du véhicule |
+> | Bouton « envoyer » | **oui** | **non** |
+> | Forme | `kind` ou `kind:<vehicle_id>` | `kind:<vehicle_id>` |
+> | Compte dans `compliant` | oui | **oui aussi** |
+> | Dans la relance poussée | oui | **non** |
+>
+> ⚠️ **`missing_fleet` EST UNE INFORMATION, PAS UNE LISTE DE GESTES.** Écrivez
+> « votre société n'a pas encore envoyé l'assurance de AB-1234 » et rien de
+> plus — pas de bouton, pas de caméra, pas de « rappeler ». Un écran qui
+> propose d'agir sur une pièce qu'on ne peut pas fournir est pire qu'un écran
+> muet : il fait essayer, échouer, puis appeler.
+>
+> ⚠️ **ET `compliant: false` NE SE PRÉSENTE PAS COMME SON DÉFAUT.** La voiture
+> roule sans papiers — c'est vrai, et ça doit se voir —, mais la phrase dit QUI
+> doit agir : « dossier incomplet : votre société doit envoyer la carte
+> grise ». « Vous n'êtes pas en règle » sur une pièce qui ne lui appartient pas
+> est la phrase qui a fait appeler le support pendant des semaines.
+>
+> ⚠️ **`missing_fleet` PEUT ÊTRE ABSENT** (chauffeur propriétaire de sa
+> voiture, ou livreur) : traitez l'absence comme une liste vide, et n'affichez
+> pas un bloc vide « ce que votre société doit envoyer » à quelqu'un qui n'a
+> pas de société.
+
+> ### ⚠️ `by_fleet: true` — la pièce que le propriétaire a déposée
+>
+> Elle apparaît dans `documents` **comme les autres**, avec son `state`.
+>
+> - **AFFICHEZ-LA**, avec une marque discrète (« déposée par votre société »).
+>   Cachée, le chauffeur la redépose — et un opérateur arbitre deux fois la
+>   même image.
+> - **NE PROPOSEZ PAS « REMPLACER » DESSUS.** Ce n'est pas à lui de renouveler
+>   l'assurance d'une voiture qui n'est pas la sienne, et le dépôt créerait une
+>   **seconde** pièce (clés d'unicité différentes) : deux assurances pour une
+>   voiture, deux arbitrages.
+> - **UN `state: "rejected"` SUR UNE PIÈCE `by_fleet`** se dit « Dira a refusé
+>   la carte grise envoyée par votre société » + le motif. **Ne proposez pas de
+>   redéposer** : c'est le propriétaire qui reprend la photo.
+> - **UN `state: "expiring"` ou `"expired"`** sur une pièce `by_fleet` est à
+>   montrer aussi — c'est ce qui fait appeler son patron avant le contrôle de
+>   police. Mais toujours sans bouton d'envoi.
+
+> ### ⚠️ ET POURTANT, LE DÉPÔT PAR LE CHAUFFEUR RESTE ACCEPTÉ
+>
+> `POST /driver/documents` avec le `vehicle_id` d'une voiture de société
+> **fonctionne**, délibérément : les papiers sont souvent dans la boîte à
+> gants, et un chauffeur qui peut régulariser ne doit pas en être empêché parce
+> que son patron ne répond pas.
+>
+> **Gardez-le accessible sans en faire l'écran principal** : un geste discret
+> (« j'ai les papiers sur moi, les envoyer »), pas la liste de gestes par
+> défaut. Sa pièce et celle de la société coexistent alors, et **l'une comme
+> l'autre** suffit à couvrir le véhicule.
 
 Dix pièces, et **le type décide de son propriétaire** :
 

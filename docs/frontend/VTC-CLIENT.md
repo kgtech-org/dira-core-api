@@ -1,6 +1,6 @@
 # App CLIENT — COURSES (VTC) — contrat d'API
 
-> **Version 4.60.0** · 9 octobre 2026
+> **Version 4.61.1** · 9 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -3311,8 +3311,24 @@ Le socle refuse désormais, **`403 wrong_app`**, et le refus DIT OÙ ALLER :
 | champ | ce qu'il porte |
 |---|---|
 | `error.code` | `wrong_app` |
-| `error.reason` | **l'application à ouvrir** : `client` · `driver` (courses) · `courier` (livraison, **v4.37.0**) · `merchant` · `console` |
+| `error.reason` | **l'application à ouvrir** : `client` · `driver` (courses) · `courier` (livraison, **v4.37.0**) · `merchant` · `partner` (**v4.60.0** — console web d'un propriétaire de flotte) · `console` |
 | `error.message` | la phrase déjà traduite, à afficher telle quelle si vous n'avez pas la vôtre |
+
+> ⚠️⚠️ **UNE VALEUR DE `reason` QUE VOUS NE CONNAISSEZ PAS N'EST PAS UNE
+> ERREUR — ET SURTOUT PAS UN BLANC.** La liste s'allonge : `courier` est arrivé
+> en v4.37.0, `partner` en v4.60.0, et le prochain rôle arrivera sans vous
+> prévenir. Une application qui traduit `reason` par un nom d'application
+> affiche alors « Ouvrez l'application  » — phrase coupée, sans nom.
+>
+> **La règle : si vous ne connaissez pas la valeur, affichez `error.message`
+> tel quel.** Il est déjà traduit par le serveur et il nomme l'application. Un
+> repli générique (« ce compte n'est pas un compte de cette application »)
+> convient aussi ; un trou dans la phrase, non.
+>
+> ⚠️ **ET `partner` NE S'OUVRE PAS DEPUIS UN TÉLÉPHONE** : c'est une console
+> **web**. Ne proposez ni « ouvrir l'application », ni lien vers un magasin
+> d'applications — il n'y en a pas. Dites « ce compte est un compte de
+> partenaire : il s'ouvre depuis la console web de Dira. »
 
 ⚠️ **`reason`, et rien d'autre.** L'enveloppe d'erreur du socle ne rend que
 `code`, `message`, `fields` et `reason` — il n'y a pas de `meta` sur le fil.

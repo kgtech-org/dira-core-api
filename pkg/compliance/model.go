@@ -194,10 +194,27 @@ var (
 // document qu'aucune vue ne saurait classer.
 type Document struct {
 	ID primitive.ObjectID `bson:"_id,omitempty"`
-	// OwnerID est le CHAUFFEUR — livreur ou conducteur VTC. Le champ s'appelait
-	// `agent_id` : la même mécanique sert deux métiers, et un nom qui désigne
-	// l'un obligerait l'autre à s'écrire sous un mot qui n'est pas le sien.
-	OwnerID   primitive.ObjectID  `bson:"owner_id"`
+	// OwnerID est QUI RÉPOND DE CETTE PIÈCE : un chauffeur — livreur ou
+	// conducteur VTC — ou, depuis le 9 octobre 2026, une FLOTTE PRIVÉE (voir
+	// `FleetID`). Le champ s'appelait `agent_id` : la même mécanique sert deux
+	// métiers, et un nom qui désigne l'un obligerait l'autre à s'écrire sous un
+	// mot qui n'est pas le sien.
+	OwnerID primitive.ObjectID `bson:"owner_id"`
+	// FleetID marque une pièce déposée par le PROPRIÉTAIRE du véhicule, et non
+	// par celui qui le conduit. `OwnerID` vaut alors la flotte.
+	//
+	// ⚠️⚠️ IL EXISTE PARCE QU'ON RÉCLAMAIT À UN CHAUFFEUR LA CARTE GRISE D'UNE
+	// VOITURE QUI N'EST PAS LA SIENNE. Les papiers d'un véhicule de société
+	// sont chez son propriétaire : le chauffeur restait « en défaut » pour une
+	// pièce qu'il ne pouvait pas fournir, et la relance automatique le lui
+	// redisait tous les trois jours. Un rappel qu'on ne peut pas satisfaire
+	// n'est pas un rappel, c'est du bruit — et il use la seule catégorie de
+	// messages qu'on ne laisse pas couper.
+	//
+	// ⚠️ ET LA PIÈCE SUIT LE VÉHICULE, PAS LE CONDUCTEUR : quand la voiture
+	// change de chauffeur, son assurance reste valable. Portée par le
+	// conducteur, elle aurait été à redéposer à chaque rotation.
+	FleetID   *primitive.ObjectID `bson:"fleet_id,omitempty"`
 	VehicleID *primitive.ObjectID `bson:"vehicle_id,omitempty"`
 	Kind      string              `bson:"kind"`
 	// FileURL est la pièce elle-même, déposée par le module d'envoi de
@@ -248,6 +265,16 @@ func (d *Document) Compliant(now time.Time) bool {
 	st := d.State(now)
 	return st == DocValid || st == DocExpiring
 }
+
+// isVehicleKind dit si cette pièce est celle d'un VÉHICULE.
+//
+// ⚠️ Distinct de `CheckOwner`, qui vérifie la COHÉRENCE d'un dépôt (« un permis
+// ne porte pas de véhicule »). Ici la question est de savoir QUI a le droit de
+// déposer : une société dépose les papiers de ses voitures, jamais la pièce
+// d'identité de quelqu'un. Les deux règles se ressemblent et ne disent pas la
+// même chose — les confondre aurait rangé le permis d'un chauffeur dans le
+// dossier d'une entreprise.
+func isVehicleKind(kind string) bool { return docOwner[kind] == ownerVehicle }
 
 // CheckOwner vérifie que la pièce est rattachée à ce qu'elle doit l'être.
 func CheckOwner(kind string, vehicleID *primitive.ObjectID) error {
