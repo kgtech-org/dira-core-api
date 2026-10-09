@@ -485,3 +485,17 @@ other = "Ce code a expiré : demandez-en un nouveau au comptoir."
 
 [errors.equipment_return_not_yours]
 other = "Ce retour est celui de quelqu'un d'autre : vérifiez l'écran que vous scannez."
+
+# LES OBJECTIFS (internal/challenge). Les refus portent sur l'ÉCRITURE d'un
+# objectif, par l'exploitation — jamais sur la participation de quelqu'un.
+[errors.challenge_not_found]
+other = "Cet objectif n'existe pas."
+
+[errors.challenge_not_draft]
+other = "Un objectif lancé ne se réécrit pas : arrêtez-le et écrivez-en un nouveau."
+
+[errors.challenge_already_live]
+other = "Cet objectif est déjà lancé."
+
+[errors.challenge_unknown_actor]
+other = "Votre session n'est plus valable : reconnectez-vous."

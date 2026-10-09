@@ -212,6 +212,15 @@ const (
 	KeyEquipmentOverdue    = "equipment_overdue"
 	KeyEquipmentBlocked    = "equipment_blocked"
 	KeyEquipmentReturned   = "equipment_returned"
+	// UN OBJECTIF ATTEINT (`internal/challenge`) — « 20 courses cette semaine,
+	// 5 000 F pour vous ».
+	//
+	// ⚠️ ELLE ANNONCE UN GAIN, et c'est la seule de cette liste à le faire.
+	// Elle ne se range donc PAS dans `promotions` (coupable) : quelqu'un qui a
+	// travaillé pour un bonus doit apprendre qu'il l'a gagné, même s'il a coupé
+	// les offres commerciales. Un bonus versé sans que personne ne le sache ne
+	// motive personne — et c'est tout ce qu'un objectif cherche à faire.
+	KeyChallengeReached = "challenge_reached"
 	// LA COLLECTE DES PIÈCES (`pkg/compliance`) — « il vous manque… ».
 	//
 	// ⚠️ ELLE PARLE À L'AGENT, PAS AU STAFF, et c'est ce qui la distingue de
@@ -692,6 +701,19 @@ var defaults = map[string]Template{
 			LocaleEN: {Title: "Equipment overdue — [who]", Body: "[amount] unpaid for [item]."},
 		},
 	},
+	KeyChallengeReached: {
+		Key:         KeyChallengeReached,
+		Description: "AGENT / CLIENT — un objectif atteint, et le bonus versé.",
+		Enabled:     true,
+		Locales: map[string]Text{
+			// ⚠️ LE MONTANT EST DANS LE TITRE. C'est ce qu'une bannière montre
+			// avant qu'on la touche, et c'est la seule information qui compte :
+			// « objectif atteint » sans la somme fait ouvrir l'application pour
+			// savoir si ça valait la peine.
+			LocaleFR: {Title: "Objectif atteint — [amount] F", Body: "[title]. Le bonus est sur votre solde."},
+			LocaleEN: {Title: "Goal reached — [amount] F", Body: "[title]. The bonus is in your balance."},
+		},
+	},
 	KeyDocumentsMissing: {
 		Key: KeyDocumentsMissing,
 		Description: "AGENT — il manque des pièces à son dossier : lesquelles, et " +
@@ -887,6 +909,7 @@ var provided = map[string][]string{
 	KeyEquipmentBlocked:      {"item", "amount"},
 	KeyEquipmentReturned:     {"item", "refund", "owed"},
 	KeyStaffEquipOverdue:     {"who", "item", "amount"},
+	KeyChallengeReached:      {"title", "amount"},
 	KeyDocumentsMissing:      {"count", "documents"},
 	KeyStaffSOS:              {"who", "trigger", "where", "phone"},
 	KeyStaffSOSClosed:        {"who", "outcome", "by"},

@@ -468,3 +468,17 @@ other = "This code has expired: ask the counter for a new one."
 
 [errors.equipment_return_not_yours]
 other = "This return belongs to someone else: check which screen you are scanning."
+
+# OBJECTIVES (internal/challenge). These refusals are about WRITING an
+# objective, never about someone taking part in one.
+[errors.challenge_not_found]
+other = "This objective does not exist."
+
+[errors.challenge_not_draft]
+other = "A live objective cannot be rewritten: end it and write a new one."
+
+[errors.challenge_already_live]
+other = "This objective is already live."
+
+[errors.challenge_unknown_actor]
+other = "Your session is no longer valid: sign in again."

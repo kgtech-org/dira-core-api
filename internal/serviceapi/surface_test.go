@@ -65,6 +65,15 @@ var declaredSurface = []string{
 	// Les PAYS OUVERTS, pour une verticale qui veut les afficher ou les
 	// vérifier sans tenir sa propre liste. Le catalogue et les frontières,
 	// eux, sont dans `pkg/country`, partagés par le code.
+	// LES OBJECTIFS À ATTEINDRE (`internal/challenge`).
+	//
+	// ⚠️ DEUX ROUTES, ET ELLES VONT DANS LE MÊME SENS — la verticale POUSSE ce
+	// qu'elle a compté, puis TIRE ce qu'on lui doit. Le socle ne peut pas
+	// appeler une verticale ; un chauffeur VTC n'ayant pas de portefeuille ici,
+	// son bonus reste DÛ jusqu'à ce que les courses viennent le chercher. C'est
+	// le chemin des cautions de matériel, et pour la même raison.
+	"/internal/challenges/owed",
+	"/internal/challenges/report",
 	"/internal/countries",
 	// Le MATÉRIEL loué ou vendu aux agents : ce qu'un gain doit rendre au
 	// contrat, et si la personne est bloquée par un retard.

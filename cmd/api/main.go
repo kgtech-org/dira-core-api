@@ -30,6 +30,7 @@ import (
 	"github.com/kgtech-org/dira-core-api/api"
 	"github.com/kgtech-org/dira-core-api/internal/auditlog"
 	"github.com/kgtech-org/dira-core-api/internal/callback"
+	"github.com/kgtech-org/dira-core-api/internal/challenge"
 	"github.com/kgtech-org/dira-core-api/internal/config"
 	"github.com/kgtech-org/dira-core-api/internal/country"
 	"github.com/kgtech-org/dira-core-api/internal/equipment"
@@ -507,6 +508,52 @@ func run(logger *slog.Logger) error {
 	sosSvc.SetPolicy(sosPolicy{countries: countrySvc})
 	sosSvc.SetAuditor(auditRec)
 
+	// LES OBJECTIFS À ATTEINDRE — voir `internal/challenge`.
+	//
+	// ⚠️ AU SOCLE, parce que les trois publics y sont : un chauffeur
+	// (courses), un livreur (livraisons) et un client (les deux) participent
+	// aux mêmes opérations, le bonus sort du même argent, et l'exploitation
+	// doit pouvoir répondre à « combien devons-nous en bonus ce mois-ci ? » en
+	// UN endroit.
+	challengeRepo := challenge.NewRepository(mongo)
+	if err := challengeRepo.EnsureIndexes(ctx); err != nil {
+		// ⚠️ ON DÉMARRE QUAND MÊME pour les lectures, MAIS ON CRIE : l'index
+		// unique de l'avancement est ce qui tient « une seule ligne par
+		// personne et par objectif ». Sans lui, deux appels simultanés d'une
+		// verticale créent deux avancements à mi-chemin, et l'objectif ne se
+		// gagne jamais.
+		logger.Error("challenge: INDEX UNIQUE NON CRÉÉ — les avancements peuvent se dédoubler", "error", err)
+	}
+	challengeSvc := challenge.NewService(challengeRepo)
+	challengeSvc.SetPurse(tokenSvc)
+	challengeSvc.SetNotifier(notifySvc)
+	challengeSvc.SetAuditor(auditRec)
+	// ⚠️ LE GRAND LIVRE DES COURSES N'EST PAS BRANCHÉ ICI, et il faut le dire :
+	// un chauffeur VTC n'a pas de portefeuille au socle, son argent vit dans la
+	// verticale. Tant que `SetLedger` n'est pas câblé, un bonus de CHAUFFEUR
+	// n'est pas versé — le droit est enregistré, la place est rendue, et le
+	// journal le crie. Les bonus de CLIENT et de LIVREUR, eux, passent par le
+	// portefeuille et fonctionnent.
+	go func() {
+		// Le balayage des séries périodiques : il matérialise l'occurrence de
+		// la période courante. ⚠️ À l'heure, pas à la minute — une occurrence
+		// hebdomadaire n'a pas besoin d'être créée à la seconde près, et un
+		// balayage trop fréquent lirait toutes les séries pour rien.
+		challengeSvc.RunDue(ctx)
+		t := time.NewTicker(time.Hour)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				tctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+				challengeSvc.RunDue(tctx)
+				cancel()
+			}
+		}
+	}()
+
 	staffSvc.SetAuditor(auditRec)
 	// ⚠️ Réglé APRÈS construction, pour casser le cycle : le staff a besoin
 	// des comptes, et les comptes ont besoin des portées.
@@ -608,6 +655,9 @@ func run(logger *slog.Logger) error {
 		// LE BOUTON D'ALERTE : `POST /sos` pour qui est en danger,
 		// `/admin/sos` pour l'exploitation qui doit le voir dans la seconde.
 		sos.NewHandler(sosSvc).Mount(r, authMW)
+		// LES OBJECTIFS : `/me/challenges` pour qui joue, `/admin/challenges`
+		// pour l'exploitation qui les écrit et les lance.
+		challenge.NewHandler(challengeSvc).Mount(r, authMW)
 		financeH := finance.NewHandler(financeSvc)
 		financeH.Mount(r, authMW)
 		financeH.MountInternal(r, middleware.Service(cfg.ServiceToken))
@@ -662,6 +712,9 @@ func run(logger *slog.Logger) error {
 		internalAPI.SetStaff(staffSvc)
 		internalAPI.SetJournal(auditRec)
 		internalAPI.SetEquipment(equipmentSvc)
+		// Les objectifs : la verticale pousse ses faits comptés, et tire ce
+		// qu'on doit à un chauffeur — qui n'a pas de portefeuille ici.
+		internalAPI.SetChallenges(challengeSvc)
 		// ⚠️ LE BUCKET N'EST OUVERT QU'ICI. Quand un compte est effacé, la
 		// photo de son permis vit chez les COURSES et chez la LIVRAISON, dans
 		// des collections que le socle ne connaît pas : c'est à elles de dire
