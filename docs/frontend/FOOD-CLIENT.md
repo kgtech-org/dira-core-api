@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.58.0** · 8 octobre 2026
+> **Version 4.59.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -2207,6 +2207,117 @@ POST /banners/{id}/click  · une ouverture de carte publicitaire
 Trois compteurs, **204 sans corps**, publics. Ils existaient depuis le feed et n'étaient cités nulle part — c'est ce qui alimente les statistiques d'un marchand et le rendement d'un emplacement.
 
 > **Ne les attendez jamais.** Ils répondent `204` même quand le comptage échoue : l'application est en train de naviguer, et une statistique perdue ne justifie pas d'interrompre le geste. Appelez-les **sans `await`**, et n'affichez aucune erreur.
+
+---
+
+## 🎯 LES OBJECTIFS À ATTEINDRE — un bonus à gagner (v4.59.0)
+
+```
+GET /me/challenges   → { "items": [ … ] }
+```
+
+> ⚠️ **AU SOCLE** (`…/api/v1/me/challenges`, sans `/vtc` ni `/food`), et **une
+> seule route pour tous les rôles** : le public vient du JETON. Il n'y a pas de
+> paramètre à passer — et c'est voulu, puisqu'il déciderait de ce qu'on peut
+> gagner.
+
+```jsonc
+{ "items": [
+  { "id": "…",
+    "title": "5 jours de travail cette semaine",
+    "description": "…",
+    "metric_label": "Jours travaillés",
+    "target": 5,
+    "money": false,          // true ⇒ la cible est un MONTANT, pas un compte
+    "reward_xof": 5000,
+    "value": 3,              // où vous en êtes
+    "percent": 60,           // BORNÉ À 100
+    "ends_at": "2026-10-19T00:00:00Z",
+    "reached": false,
+    "paid_xof": 0,
+    "pending": false } ] }
+```
+
+### Ce que l'écran doit faire, et ce qu'il ne doit pas
+
+⚠️ **AFFICHEZ `percent` TEL QUEL — IL EST DÉJÀ BORNÉ À 100.** Quelqu'un qui a
+fait 7 courses sur un objectif de 5 est à 100 %, pas à 140 % : une barre qui
+dépasse a l'air d'un bug, et chaque application l'aurait bornée à sa façon.
+
+⚠️ **`value` ET `target` ENSEMBLE, JAMAIS LE POURCENTAGE SEUL.** « 60 % » ne dit
+pas quoi faire ; « 3 sur 5 » dit qu'il en reste deux. C'est la même règle que le
+taux d'acceptation (v4.55.0), et pour la même raison : un chiffre dont on juge
+son avancement doit porter ce qui le compose.
+
+⚠️ **`money: true` CHANGE L'AFFICHAGE** : « 15 000 F sur 20 000 F », et non
+« 15 000 fois sur 20 000 ». Le serveur le dit pour que vous n'ayez pas à deviner
+d'après le nom de la mesure.
+
+⚠️ **`ends_at` EST CE QUI FAIT AGIR.** « 5 jours de travail » sans échéance n'est
+pas un objectif. Affichez le temps restant, et laissez-le visible quand il
+devient court — c'est l'information qui décide de sortir travailler ce soir.
+
+⚠️ **`reached: true` S'AFFICHE AVANT `paid_xof`.** Ce sont deux moments : le
+franchissement ouvre le droit, le versement suit. Attendre l'argent pour
+annoncer la victoire ferait douter quelqu'un qui a compté ses courses lui-même.
+Quand `pending: true`, dites-le en clair — **« bonus en cours de versement »** —
+parce que le silence se lit comme un refus.
+
+### 🔔 La notification — `challenge_reached`
+
+```jsonc
+{ "key": "challenge_reached",
+  "title": "Objectif atteint — 5 000 F",
+  "body":  "5 jours de travail cette semaine. Le bonus est sur votre solde.",
+  "data":  { "type": "challenge", "challenge_id": "…" } }
+```
+
+⚠️ **ROUTEZ-LA VERS L'ÉCRAN DES OBJECTIFS**, pas vers l'accueil. Et **catégorie
+`support`, donc NON COUPABLE** : quelqu'un qui aurait coupé les offres
+commerciales doit tout de même apprendre qu'il vient d'être payé. Un bonus versé
+que personne ne sait n'a motivé personne — et c'est tout ce qu'un objectif
+cherche à faire.
+
+### Ce que vous ne recevez PAS, et pourquoi
+
+⚠️ **NI LE BUDGET, NI LE NOMBRE DE GAGNANTS, NI LES PLACES RESTANTES.** Ce que
+l'entreprise a provisionné n'est pas l'affaire de quelqu'un qui joue : afficher
+« 240 000 F d'enveloppe » invite à calculer combien d'autres ont déjà gagné, et
+transforme un objectif en **course aux places** — où la moitié des gens
+abandonnent en se croyant trop tard. N'essayez pas de les récupérer : aucune
+route ne les sert à une application.
+
+### Les règles qui vous concernent sans être visibles
+
+⚠️ **UN OBJECTIF SE GAGNE UNE SEULE FOIS**, même si vous dépassez largement la
+cible. Ce n'est pas un tarif : « 3 courses = 5 000 F » répété serait une prime au
+volume. N'affichez donc pas « 2 fois gagné ».
+
+⚠️ **UNE COURSE COMPTE À SON RÈGLEMENT, PAS À SON ACCEPTATION.** Une course
+acceptée puis annulée ne fait pas avancer l'objectif — sinon il se gagnerait en
+acceptant puis annulant vingt fois. Si votre écran montre l'avancement en temps
+réel, attendez la fin de la course pour l'incrémenter, ou relisez la route.
+
+⚠️ **UN OBJECTIF PÉRIODIQUE REMET SON COMPTEUR À ZÉRO.** « 20 courses cette
+semaine » est un objectif NEUF chaque lundi, avec son propre identifiant : ne
+gardez pas l'avancement de la semaine passée en cache, et ne supposez pas que
+l'`id` reste le même d'une période à l'autre.
+
+⚠️ **ET LA SEMAINE COMMENCE LE LUNDI**, pas le jour du lancement : si votre écran
+affiche « cette semaine », comptez du lundi au dimanche comme le serveur le fait,
+sinon vos deux nombres divergeront sans que personne ne comprenne pourquoi.
+
+---
+
+> ⚠️ **UNE COMMANDE COMPTE UNE FOIS, MÊME MULTI-BOUTIQUES.** Une commande chez
+> trois enseignes peut donner plusieurs livraisons ; elle ne fait avancer
+> « 5 commandes ce mois-ci » que **d'une**. Si votre écran compte les livraisons,
+> il affichera trois là où le serveur compte un — relisez la route plutôt que de
+> compter vous-même.
+
+> ⚠️ **VOS OBJECTIFS MÊLENT LES DEUX MÉTIERS.** « Dépensez 20 000 F » compte vos
+> commandes ET vos courses : c'est le même compte, au socle. `metric_label` dit
+> ce qui est mesuré.
 
 ---
 

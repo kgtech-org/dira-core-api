@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.58.0** · 8 octobre 2026
+> **Version 4.59.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -782,6 +782,7 @@ ceux des deux specs métier, qui restent à jour.
 | En route | `PATCH /rides/{id}/stops` · socket du suivi (§11) |
 | Reçu, relevé | 🧾 `GET /rides/{id}/receipt.pdf` · `GET /rides/statement.pdf?from=&to=` **(v4.52.0)** — distance **réellement parcourue** et sa source ; une course annulée porte désormais `cancel_fee_xof` |
 | Parler, noter | `GET/POST /rides/{id}/messages` · `POST /rides/{id}/rating` |
+| | 🎯 **DES OBJECTIFS À GAGNER (v4.59.0)** — `GET /me/challenges`, **au socle** et **commun aux deux métiers** : « 5 commandes ce mois-ci » compte vos commandes, « dépensez 20 000 F » compte les deux. ⚠️ `percent` **déjà borné à 100** ; `value` **et** `target` ensemble (« 3 sur 5 », pas « 60 % ») ; `reached` affiché **avant** `paid_xof`, et `pending` dit en clair « bonus en cours de versement ». ⚠️ **Ni budget ni nombre de gagnants servis** — les afficher ferait une course aux places. ⚠️ Une commande multi-boutiques compte pour **une**. Détail : §15 et `VTC-CLIENT` §🎯 |
 | | 🔒 **CE QUE VOUS AVEZ LE DROIT D'AFFICHER du chauffeur ou du livreur est réglé par l'exploitation, pays par pays et métier par métier (v4.49.0).** Le serveur **n'envoie pas** ce qu'on n'a pas le droit de montrer : un champ absent n'est pas une panne, c'est un champ fermé. ⚠️ `phone` présent ne veut **pas** dire affichable — lisez `show_phone` ; `direct_call` sans `show_phone` veut dire « un bouton qui appelle, et le numéro nulle part ». ⚠️ **N'écrivez aucune règle en dur** : ces décisions changent sans redéploiement. Détail : `VTC-CLIENT` et `FOOD-CLIENT`, section Confidentialité |
 | Programmer, s'abonner | `POST /schedules` · `POST /subscriptions` |
 
@@ -1036,6 +1037,48 @@ du métier.
 ---
 
 ## 15. Journal
+
+### 4.59.0 — 9 octobre 2026
+
+🎯 **DES OBJECTIFS À ATTEINDRE, AVEC UN BONUS À GAGNER** — et ils mêlent les deux
+métiers, ce qui en fait l'un des rares endroits où cette application n'a rien à
+réunir : le compte est déjà commun au socle.
+
+```
+GET /me/challenges   → { items: [ { title, target, value, percent, reward_xof, ends_at, reached, pending } ] }
+```
+
+⚠️ **UNE SEULE ROUTE, LE PUBLIC VIENT DU JETON.** Pas de paramètre à passer.
+
+⚠️ **`percent` EST DÉJÀ BORNÉ À 100** — une barre à 140 % a l'air d'un bug. Et
+affichez **`value` et `target` ensemble** : « 3 sur 5 » dit qu'il en reste deux,
+« 60 % » ne dit rien.
+
+⚠️ **`money: true` CHANGE L'AFFICHAGE** : « 15 000 F sur 20 000 F », pas
+« 15 000 fois ». Le serveur le dit pour que vous n'ayez pas à deviner d'après le
+nom de la mesure.
+
+⚠️ **`reached` S'AFFICHE AVANT `paid_xof`** (deux moments), et `pending: true` se
+dit **en clair** : « bonus en cours de versement ». Le silence se lit comme un
+refus.
+
+⚠️ **UNE COMMANDE MULTI-BOUTIQUES COMPTE POUR UNE**, même si elle donne trois
+livraisons. Et « dépensez 20 000 F » compte vos **commandes ET vos courses** :
+c'est le même compte, au socle.
+
+⚠️ **UN OBJECTIF PÉRIODIQUE CHANGE D'`id`** et remet son compteur à zéro chaque
+lundi : ne gardez pas l'avancement de la semaine passée en cache.
+
+⚠️ **ET VOUS NE RECEVEZ NI BUDGET NI NOMBRE DE GAGNANTS** : les afficher
+transformerait un objectif en course aux places, où la moitié des gens
+abandonnent en se croyant trop tard. Aucune route ne les sert.
+
+`challenge_reached` arrive en notification, **catégorie `support` donc non
+coupable** : quelqu'un qui a coupé les offres commerciales doit tout de même
+apprendre qu'il vient d'être payé.
+
+Détail : `VTC-CLIENT` et `FOOD-CLIENT`, section 🎯.
+
 
 ### 4.58.0 — 9 octobre 2026
 
