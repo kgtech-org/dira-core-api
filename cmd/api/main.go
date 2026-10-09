@@ -448,6 +448,10 @@ func run(logger *slog.Logger) error {
 
 	fleetSvc := fleet.NewService(fleet.NewRepository(mongo))
 	fleetSvc.SetAuditor(auditRec)
+	// OUVRIR L'ACCÈS D'UN PARTENAIRE à sa console : le rôle `partner` n'est
+	// pas auto-attribuable, donc c'est l'exploitation qui provisionne le
+	// compte depuis la fiche de la flotte. Voir internal/fleet/access.go.
+	fleetSvc.SetAccounts(fleetAccounts{svc: userSvc})
 
 	// LE STAFF : les employés de Dira, leur fonction et leur PÉRIMÈTRE.
 	//
@@ -856,6 +860,29 @@ func (a userAccounts) AccountsByIDs(ctx context.Context, ids []string) ([]staff.
 		out = append(out, staffRow(r))
 	}
 	return out, nil
+}
+
+// fleetAccounts adapte le module des comptes à ce que la fiche d'une flotte
+// doit pouvoir faire : provisionner le compte de son gérant, et relire ce que
+// ce compte est déjà.
+//
+// ⚠️ LA RELECTURE DU RÔLE EST LA MOITIÉ UTILE DE CET ADAPTATEUR.
+// `EnsureAccount` rend le compte existant d'un numéro connu sans toucher à son
+// rôle — et le gérant d'une flotte est très souvent déjà un passager Dira.
+// Sans elle, on rattacherait à la flotte un compte `client` que la connexion
+// refusera, après avoir annoncé « accès ouvert ».
+type fleetAccounts struct{ svc *user.Service }
+
+func (a fleetAccounts) EnsureAccount(ctx context.Context, role, phone, name, email, password, avatarURL string) (string, error) {
+	return a.svc.EnsureAccount(ctx, role, phone, name, email, password, avatarURL)
+}
+
+func (a fleetAccounts) RoleOf(ctx context.Context, userID string) (string, error) {
+	row, err := a.svc.AccountByID(ctx, userID)
+	if err != nil || row == nil {
+		return "", err
+	}
+	return row.Role, nil
 }
 
 func staffRow(r user.AccountRow) staff.AccountRow {
