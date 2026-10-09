@@ -522,3 +522,19 @@ other = "L'accès partenaire ne peut pas être ouvert sur ce serveur"
 # que personne ne comprenne pourquoi. La phrase dit quoi faire.
 [errors.phone_belongs_to_another_role]
 other = "Ce numéro appartient déjà à un compte Dira qui n'est pas un partenaire : utilisez un autre numéro"
+
+# --- LES OBJECTIFS : les deux refus qui PROPOSENT UNE SORTIE ---
+#
+# ⚠️ ILS ONT UN CODE, contrairement aux autres validations de ce module, et
+# c'est délibéré : la traduction se fait par CODE, donc un `apperr.Validation`
+# rend « Requête invalide » et la phrase pesée mot à mot n'atteint personne.
+# Une sortie que personne ne lit n'existe pas.
+
+# ⚠️ LA BORNE QUI PROTÈGE QUELQU'UN : une cible trop haute sur une fenêtre
+# courte pousse à conduire fatigué. Le message dit le GESTE — allonger la
+# période coûte la même somme et rend une semaine de sommeil.
+[errors.challenge_target_unsafe]
+other = "Cette cible demande plus de travail par jour que personne ne devrait en faire : baissez-la, ou allongez la période"
+
+[errors.challenge_budget_too_small]
+other = "L'enveloppe ne peut pas payer un seul gagnant : augmentez l'enveloppe, ou baissez la récompense"
