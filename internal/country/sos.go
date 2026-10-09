@@ -44,6 +44,9 @@ package country
 import (
 	"context"
 	"strings"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 	"github.com/kgtech-org/dira-core-api/pkg/country"
@@ -131,6 +134,22 @@ type SOS struct {
 	// CountdownSeconds : le délai d'annulation d'une détection. Zéro = le défaut.
 	CountdownSeconds int               `bson:"countdown_seconds,omitempty"`
 	Numbers          []EmergencyNumber `bson:"numbers,omitempty"`
+	// VerifiedAt, VerifiedBy : QUELQU'UN A COMPOSÉ CES NUMÉROS, et ça a répondu.
+	//
+	// ⚠️ C'EST UN FAIT DISTINCT DE « DES NUMÉROS SONT ENREGISTRÉS », et les
+	// confondre était un défaut de la première version : `confirmed` valait
+	// « la liste n'est pas vide », si bien qu'un simple enregistrement — ou un
+	// jeu de données rejoué — se présentait à l'opérateur comme une
+	// vérification humaine. Or ce drapeau ne sert qu'à une chose : lui dire
+	// s'il est le PREMIER à essayer. Mentir dessus le rendait inutile.
+	//
+	// ⚠️ ON NE PEUT PAS LE DÉDUIRE, ni le programmer. Vérifier un numéro de
+	// secours, c'est le COMPOSER et entendre quelqu'un répondre. Aucun code ne
+	// fait ça : la console a donc un geste explicite, et c'est une personne qui
+	// l'engage — avec son nom, parce qu'on vient le lui demander le jour où le
+	// numéro ne répond plus.
+	VerifiedAt *time.Time          `bson:"numbers_verified_at,omitempty"`
+	VerifiedBy *primitive.ObjectID `bson:"numbers_verified_by,omitempty"`
 }
 
 // SOSResponse est la politique telle que les APPLICATIONS la reçoivent — tous
@@ -171,14 +190,21 @@ type SOSAdminResponse struct {
 	// Numbers : ce que l'opérateur compose. Le catalogue du pays, remplacé par
 	// le réglage de l'exploitation quand il y en a un.
 	Numbers []EmergencyNumber `json:"numbers"`
-	// Confirmed dit si l'exploitation a VALIDÉ ces numéros pour ce pays, ou
-	// s'ils sortent encore du catalogue.
+	// VerifiedAt : quand quelqu'un les a composés. ⚠️ SERVI avec `Confirmed`,
+	// parce que « vérifié il y a trois ans » et « vérifié hier » ne valent pas
+	// la même chose — un numéro d'urgence change sans prévenir, et une
+	// confirmation vieillit.
+	VerifiedAt *time.Time `json:"verified_at,omitempty"`
+	// Confirmed dit si quelqu'un a COMPOSÉ ces numéros et entendu une réponse.
 	//
 	// ⚠️ SERVI, ET LA CONSOLE DOIT LE MONTRER. Les sources publiques se
 	// contredisent, et un numéro officiel peut être hors service : un opérateur
 	// qui compose doit savoir si quelqu'un chez nous a déjà vérifié, ou s'il
 	// est le premier à essayer. « Non confirmé » n'empêche pas d'appeler — ça
 	// dit de vérifier qu'on est bien tombé au bon endroit.
+	//
+	// ⚠️ ET IL NE SE DÉDUIT PAS DE LA PRÉSENCE DE NUMÉROS. Enregistrer une
+	// liste n'est pas l'avoir appelée ; un jeu de données rejoué non plus.
 	Confirmed bool `json:"confirmed"`
 }
 
@@ -201,6 +227,9 @@ type SOSUpdateRequest struct {
 }
 
 var (
+	errNothingToVerify = apperr.Validation(
+		"nothing to verify: this country has no emergency number at all").
+		WithMeta(map[string]any{"fields": []string{"numbers"}})
 	errNoSOSUpdate = apperr.Validation(
 		"nothing to update: send shake, crash, voice, countdown_seconds or numbers")
 	errBadEmergencyKind = apperr.Validation(
@@ -254,8 +283,14 @@ func sosAdminResponse(code string, s SOS) SOSAdminResponse {
 		SOSResponse: sosResponse(s),
 		// ⚠️ UNE TRANCHE VIDE, JAMAIS `nil` : `numbers: null` en JSON fait
 		// planter une console qui boucle dessus sans vérifier.
-		Numbers:   []EmergencyNumber{},
-		Confirmed: len(s.Numbers) > 0,
+		Numbers: []EmergencyNumber{},
+		// ⚠️ « CONFIRMÉ » VEUT DIRE « QUELQU'UN LES A COMPOSÉS », et rien
+		// d'autre. Il valait « la liste n'est pas vide » dans la première
+		// version : un enregistrement suffisait à faire croire à une
+		// vérification humaine, et l'opérateur perdait l'avertissement qui
+		// l'aurait fait vérifier qu'il tombe au bon endroit.
+		Confirmed:  s.VerifiedAt != nil,
+		VerifiedAt: s.VerifiedAt,
 	}
 	seen := make(map[string]bool, len(s.Numbers))
 	for _, n := range s.Numbers {
@@ -406,7 +441,65 @@ func (s *Service) UpdateSOS(ctx context.Context, code string, req SOSUpdateReque
 		if err != nil {
 			return nil, err
 		}
+		// ⚠️ CHANGER UN NUMÉRO RETIRE LA CONFIRMATION. Elle portait sur la
+		// liste qu'on avait appelée ; la garder après une modification
+		// présenterait un numéro jamais composé comme vérifié — exactement le
+		// mensonge que ce drapeau existe pour éviter.
+		if !sameNumbers(cur.Numbers, nums) {
+			cur.VerifiedAt, cur.VerifiedBy = nil, nil
+		}
 		cur.Numbers = nums
+	}
+	sec := inst.Security
+	sec.SOS = cur
+	if err := s.repo.SetSecurity(ctx, info.Code, sec); err != nil {
+		return nil, apperr.Internal(err)
+	}
+	out := sosAdminResponse(info.Code, cur)
+	return &out, nil
+}
+
+// VerifyNumbers enregistre que quelqu'un a COMPOSÉ les numéros de ce pays.
+//
+// ⚠️ UN GESTE À PART DE L'ENREGISTREMENT, et c'est tout l'intérêt. Saisir une
+// liste et l'avoir appelée sont deux choses : la première se fait depuis un
+// bureau avec une page de résultats de recherche, la seconde demande un
+// téléphone et trente secondes par numéro. Les fondre en un seul bouton aurait
+// fait de « confirmé » un synonyme de « enregistré », c'est-à-dire rien.
+//
+// ⚠️ ET ELLE PORTE UN NOM. On vient le demander à quelqu'un le jour où un
+// numéro ne répond plus — pas pour le blâmer, mais parce qu'il sait quand il a
+// appelé et ce qu'il a entendu.
+//
+// ⚠️ ELLE EXIGE QU'IL Y AIT DES NUMÉROS À AVOIR APPELÉS : confirmer une liste
+// vide n'est pas une vérification, c'est une case cochée.
+func (s *Service) VerifyNumbers(ctx context.Context, code, actorID string) (*SOSAdminResponse, error) {
+	info, ok := country.Lookup(code)
+	if !ok {
+		return nil, errUnknownCountry
+	}
+	inst, _, err := s.repo.One(ctx, info.Code)
+	if err != nil {
+		return nil, apperr.Internal(err)
+	}
+	cur := inst.Security.SOS
+	// ⚠️ ON VÉRIFIE SUR LA LISTE EFFECTIVE — catalogue compris. L'exploitation
+	// n'a rien à ressaisir pour confirmer : si le catalogue donne 17 et 18 et
+	// qu'ils répondent, il n'y a rien à corriger, et exiger une saisie
+	// identique aurait fait recopier des chiffres pour rien (donc en faire
+	// une faute de frappe une fois sur dix).
+	effective := sosAdminResponse(info.Code, cur)
+	if len(effective.Numbers) == 0 {
+		return nil, errNothingToVerify
+	}
+	// ⚠️ LA LISTE EST FIGÉE AU MOMENT DE LA CONFIRMATION. Sans cela, on
+	// confirmerait le catalogue — qui peut changer au prochain déploiement —, et
+	// la confirmation porterait sur des numéros que personne n'a appelés.
+	cur.Numbers = effective.Numbers
+	now := time.Now().UTC()
+	cur.VerifiedAt = &now
+	if aid, err := primitive.ObjectIDFromHex(actorID); err == nil {
+		cur.VerifiedBy = &aid
 	}
 	sec := inst.Security
 	sec.SOS = cur
@@ -433,4 +526,26 @@ func (s *Service) SOSOf(ctx context.Context, code string) SOSResponse {
 		return sosResponse(SOS{})
 	}
 	return sosResponse(inst.Security.SOS)
+}
+
+// sameNumbers dit si deux listes portent les mêmes numéros.
+//
+// ⚠️ ELLE COMPARE LE GENRE ET LE NUMÉRO, PAS LE LIBELLÉ. Renommer un bouton
+// « Police » en « Police secours » ne change pas ce qu'on compose : retirer la
+// confirmation pour une correction d'orthographe aurait appris à l'exploitation
+// que ce drapeau ne veut rien dire.
+func sameNumbers(a, b []EmergencyNumber) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]string, len(a))
+	for _, n := range a {
+		seen[n.Kind] = n.Number
+	}
+	for _, n := range b {
+		if seen[n.Kind] != n.Number {
+			return false
+		}
+	}
+	return true
 }
