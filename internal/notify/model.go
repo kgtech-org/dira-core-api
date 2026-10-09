@@ -723,8 +723,12 @@ var defaults = map[string]Template{
 			// ce qu'une bannière de notification montre avant qu'on la touche.
 			// « Nouvelle alerte » aurait obligé à ouvrir pour savoir si ça
 			// pouvait attendre.
-			LocaleFR: {Title: "SOS — [who]", Body: "[trigger] · [where]. Ouvrez Sécurité › SOS."},
-			LocaleEN: {Title: "SOS — [who]", Body: "[trigger] · [where]. Open Safety › SOS."},
+			// ⚠️ LE CORPS DIT LE GESTE, et pas seulement le fait. C'est le
+			// service client qui appelle — la personne, puis les secours si
+			// besoin : « APPELEZ-LE » est l'instruction, et un opérateur
+			// réveillé à 2 h du matin ne doit pas avoir à s'en souvenir.
+			LocaleFR: {Title: "SOS — [who]", Body: "[trigger] · [where]. APPELEZ-LE : [phone]. Puis Sécurité › SOS."},
+			LocaleEN: {Title: "SOS — [who]", Body: "[trigger] · [where]. CALL THEM: [phone]. Then Safety › SOS."},
 		},
 	},
 	KeyStaffSOSClosed: {
@@ -884,7 +888,7 @@ var provided = map[string][]string{
 	KeyEquipmentReturned:     {"item", "refund", "owed"},
 	KeyStaffEquipOverdue:     {"who", "item", "amount"},
 	KeyDocumentsMissing:      {"count", "documents"},
-	KeyStaffSOS:              {"who", "trigger", "where"},
+	KeyStaffSOS:              {"who", "trigger", "where", "phone"},
 	KeyStaffSOSClosed:        {"who", "outcome", "by"},
 	KeyStaffEquipRequested:   {"who", "item", "mode"},
 	KeyStaffFinanceAlert:     {"kind", "who", "detail"},

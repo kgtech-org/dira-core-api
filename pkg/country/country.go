@@ -42,6 +42,48 @@ type Info struct {
 	Locale      string     `json:"locale"`       // langue par défaut des messages
 	Timezone    string     `json:"timezone"`     // IANA
 	Center      [2]float64 `json:"center"`       // [lng, lat] de la capitale économique
+	// Emergency : les numéros de SECOURS du pays — police, pompiers, ambulance.
+	//
+	// Au catalogue au même titre que la monnaie, et pour la même raison : ce
+	// sont des faits du pays, pas des réglages d'exploitation. Les laisser à
+	// saisir obligeait chaque pays ouvert à les retrouver, et un pays ouvert un
+	// vendredi soir restait sans numéro tout le week-end.
+	//
+	// ⚠️ UN POINT DE DÉPART, PAS UNE VÉRITÉ, et il faut le dire clairement. Les
+	// sources publiques se CONTREDISENT d'un site à l'autre, et un relevé mené
+	// en Guinée en 2024 a trouvé plusieurs numéros officiels HORS SERVICE. Ces
+	// valeurs viennent des sources les mieux concordantes au 8 octobre 2026 ;
+	// l'exploitation les CONFIRME ou les corrige pays par pays depuis la
+	// console, et c'est son réglage qui fait foi (voir
+	// `internal/country.SOS.Numbers`).
+	//
+	// ⚠️ CE QUI REND CE COMPROMIS ACCEPTABLE : PERSONNE EN DANGER NE COMPOSE CES
+	// NUMÉROS. Les applications ne les reçoivent même pas. Ils s'affichent sur
+	// l'écran d'un opérateur du service client, qui appelle d'abord la personne
+	// puis les secours — quelqu'un qui, s'il tombe sur un numéro faux,
+	// l'entend, raccroche et prend le suivant. Le même numéro composé
+	// automatiquement par un téléphone au fond d'une poche aurait coûté les
+	// trente secondes qui comptent, et c'est pourquoi il ne l'est pas.
+	Emergency Emergency `json:"emergency"`
+}
+
+// Emergency porte les numéros de secours d'un pays, tels qu'on les COMPOSE sur
+// place.
+//
+// ⚠️ PAS DE FORME E.164. `17`, `118`, `1515` ne sont pas des numéros
+// internationaux : les préfixer de l'indicatif du pays les rendrait
+// incomposables. Un champ vide veut dire « on n'a pas de numéro fiable pour ce
+// service dans ce pays » — et c'est une réponse honnête, que la console affiche
+// comme telle.
+type Emergency struct {
+	Police    string `json:"police,omitempty"`
+	Fire      string `json:"fire,omitempty"`
+	Ambulance string `json:"ambulance,omitempty"`
+}
+
+// Any dit si au moins un numéro est connu.
+func (e Emergency) Any() bool {
+	return e.Police != "" || e.Fire != "" || e.Ambulance != ""
 }
 
 // Catalog est la liste des pays où Dira PEUT s'installer : l'UEMOA, la
@@ -54,20 +96,71 @@ type Info struct {
 // qui n'y figure pas demande un déploiement, et c'est normal — il faut aussi
 // une monnaie, des villes et des chauffeurs.
 var Catalog = []Info{
-	{Code: "TG", Name: "Togo", Currency: "XOF", PhonePrefix: "+228", Locale: "fr", Timezone: "Africa/Lome", Center: [2]float64{1.2255, 6.1319}},
-	{Code: "BJ", Name: "Bénin", Currency: "XOF", PhonePrefix: "+229", Locale: "fr", Timezone: "Africa/Porto-Novo", Center: [2]float64{2.4183, 6.3654}},
-	{Code: "BF", Name: "Burkina Faso", Currency: "XOF", PhonePrefix: "+226", Locale: "fr", Timezone: "Africa/Ouagadougou", Center: [2]float64{-1.5197, 12.3714}},
-	{Code: "CI", Name: "Côte d'Ivoire", Currency: "XOF", PhonePrefix: "+225", Locale: "fr", Timezone: "Africa/Abidjan", Center: [2]float64{-4.0083, 5.3600}},
-	{Code: "GW", Name: "Guinée-Bissau", Currency: "XOF", PhonePrefix: "+245", Locale: "pt", Timezone: "Africa/Bissau", Center: [2]float64{-15.5983, 11.8636}},
-	{Code: "ML", Name: "Mali", Currency: "XOF", PhonePrefix: "+223", Locale: "fr", Timezone: "Africa/Bamako", Center: [2]float64{-8.0029, 12.6392}},
-	{Code: "NE", Name: "Niger", Currency: "XOF", PhonePrefix: "+227", Locale: "fr", Timezone: "Africa/Niamey", Center: [2]float64{2.1098, 13.5116}},
-	{Code: "SN", Name: "Sénégal", Currency: "XOF", PhonePrefix: "+221", Locale: "fr", Timezone: "Africa/Dakar", Center: [2]float64{-17.4467, 14.6928}},
-	{Code: "GN", Name: "Guinée", Currency: "GNF", PhonePrefix: "+224", Locale: "fr", Timezone: "Africa/Conakry", Center: [2]float64{-13.5784, 9.6412}},
-	{Code: "GH", Name: "Ghana", Currency: "GHS", PhonePrefix: "+233", Locale: "en", Timezone: "Africa/Accra", Center: [2]float64{-0.1870, 5.6037}},
-	{Code: "NG", Name: "Nigeria", Currency: "NGN", PhonePrefix: "+234", Locale: "en", Timezone: "Africa/Lagos", Center: [2]float64{3.3792, 6.5244}},
-	{Code: "CM", Name: "Cameroun", Currency: "XAF", PhonePrefix: "+237", Locale: "fr", Timezone: "Africa/Douala", Center: [2]float64{9.7679, 4.0511}},
-	{Code: "TD", Name: "Tchad", Currency: "XAF", PhonePrefix: "+235", Locale: "fr", Timezone: "Africa/Ndjamena", Center: [2]float64{15.0600, 12.1100}},
-	{Code: "GA", Name: "Gabon", Currency: "XAF", PhonePrefix: "+241", Locale: "fr", Timezone: "Africa/Libreville", Center: [2]float64{9.4500, 0.4100}},
+	// ⚠️ LES NUMÉROS DE SECOURS SONT UN POINT DE DÉPART, RELEVÉ LE 8 OCTOBRE
+	// 2026, et chaque ligne porte ce qu'on en sait. Les sources publiques se
+	// contredisent ; l'exploitation confirme depuis la console, pays par pays.
+	// Un champ VIDE est une réponse — « on n'a pas de numéro fiable » — et non
+	// un oubli : mieux vaut un bouton absent qu'un bouton qui ne mène à rien.
+	//
+	// Police secours 17 / pompiers 18 est le schéma de l'ancienne AOF, et il
+	// tient pour le Sénégal, le Burkina, le Mali, le Niger et le Tchad. Le Togo,
+	// le Bénin, la Guinée, le Cameroun et la Guinée-Bissau ont basculé en
+	// 117/118. La Côte d'Ivoire, le Ghana, le Nigeria et le Gabon ont chacun
+	// leur propre plan.
+	{Code: "TG", Name: "Togo", Currency: "XOF", PhonePrefix: "+228", Locale: "fr", Timezone: "Africa/Lome", Center: [2]float64{1.2255, 6.1319},
+		// ⚠️ Le 117 est le numéro depuis un FIXE ; depuis un mobile, plusieurs
+		// sources donnent le 161. L'opérateur appelle d'un poste fixe, donc
+		// 117 — mais c'est exactement le genre d'écart que l'exploitation doit
+		// confirmer. L'ambulance (SAMU) n'est pas retenue : les sources donnent
+		// 111, 8200 ou 8220 sans concorder.
+		Emergency: Emergency{Police: "117", Fire: "118"}},
+	{Code: "BJ", Name: "Bénin", Currency: "XOF", PhonePrefix: "+229", Locale: "fr", Timezone: "Africa/Porto-Novo", Center: [2]float64{2.4183, 6.3654},
+		// Le régulateur béninois (ARCEP) donne 117 pour la police, 118 pour les
+		// pompiers et 112 pour le SAMU. ⚠️ La presse locale a signalé en 2025
+		// l'indisponibilité du 117 : à confirmer.
+		Emergency: Emergency{Police: "117", Fire: "118", Ambulance: "112"}},
+	{Code: "BF", Name: "Burkina Faso", Currency: "XOF", PhonePrefix: "+226", Locale: "fr", Timezone: "Africa/Ouagadougou", Center: [2]float64{-1.5197, 12.3714},
+		Emergency: Emergency{Police: "17", Fire: "18"}},
+	{Code: "CI", Name: "Côte d'Ivoire", Currency: "XOF", PhonePrefix: "+225", Locale: "fr", Timezone: "Africa/Abidjan", Center: [2]float64{-4.0083, 5.3600},
+		// ⚠️ Plan PROPRE à la Côte d'Ivoire, et c'est le pays où se tromper est
+		// le plus facile : ni 17 ni 117 n'y mènent à la police. Les sources
+		// donnent 110, 111 ou 170 ; le 111 est décrit comme l'équivalent local
+		// du « 911 ».
+		Emergency: Emergency{Police: "111", Fire: "180", Ambulance: "185"}},
+	{Code: "GW", Name: "Guinée-Bissau", Currency: "XOF", PhonePrefix: "+245", Locale: "pt", Timezone: "Africa/Bissau", Center: [2]float64{-15.5983, 11.8636},
+		Emergency: Emergency{Police: "117", Fire: "118", Ambulance: "119"}},
+	{Code: "ML", Name: "Mali", Currency: "XOF", PhonePrefix: "+223", Locale: "fr", Timezone: "Africa/Bamako", Center: [2]float64{-8.0029, 12.6392},
+		Emergency: Emergency{Police: "17", Fire: "18", Ambulance: "15"}},
+	{Code: "NE", Name: "Niger", Currency: "XOF", PhonePrefix: "+227", Locale: "fr", Timezone: "Africa/Niamey", Center: [2]float64{2.1098, 13.5116},
+		Emergency: Emergency{Police: "17", Fire: "18", Ambulance: "15"}},
+	{Code: "SN", Name: "Sénégal", Currency: "XOF", PhonePrefix: "+221", Locale: "fr", Timezone: "Africa/Dakar", Center: [2]float64{-17.4467, 14.6928},
+		// Le SAMU sénégalais est donné à 1515 par les sources les plus
+		// précises, et à 15 par d'autres. 1515 retenu, à confirmer.
+		Emergency: Emergency{Police: "17", Fire: "18", Ambulance: "1515"}},
+	{Code: "GN", Name: "Guinée", Currency: "GNF", PhonePrefix: "+224", Locale: "fr", Timezone: "Africa/Conakry", Center: [2]float64{-13.5784, 9.6412},
+		// ⚠️ LE PAYS OÙ CE CHAMP A LE PLUS BESOIN D'ÊTRE CONFIRMÉ. Un relevé de
+		// la presse guinéenne en septembre 2024 a composé les numéros
+		// officiels un par un : le 117 (police) et le 18 (pompiers)
+		// répondaient, plusieurs autres NON. Aucun numéro d'ambulance fiable
+		// n'a été trouvé — il reste donc vide plutôt qu'inventé.
+		Emergency: Emergency{Police: "117", Fire: "18"}},
+	{Code: "GH", Name: "Ghana", Currency: "GHS", PhonePrefix: "+233", Locale: "en", Timezone: "Africa/Accra", Center: [2]float64{-0.1870, 5.6037},
+		Emergency: Emergency{Police: "191", Fire: "192", Ambulance: "193"}},
+	{Code: "NG", Name: "Nigeria", Currency: "NGN", PhonePrefix: "+234", Locale: "en", Timezone: "Africa/Lagos", Center: [2]float64{3.3792, 6.5244},
+		// ⚠️ UN SEUL NUMÉRO POUR TOUT, et c'est voulu : le Nigeria route les
+		// trois services par le 112. Y mettre trois fois le même n'est pas une
+		// erreur de recopie — et le dire évite qu'on « corrige » en inventant
+		// un 191 nigérian.
+		Emergency: Emergency{Police: "112", Fire: "112", Ambulance: "112"}},
+	{Code: "CM", Name: "Cameroun", Currency: "XAF", PhonePrefix: "+237", Locale: "fr", Timezone: "Africa/Douala", Center: [2]float64{9.7679, 4.0511},
+		Emergency: Emergency{Police: "117", Fire: "118", Ambulance: "119"}},
+	{Code: "TD", Name: "Tchad", Currency: "XAF", PhonePrefix: "+235", Locale: "fr", Timezone: "Africa/Ndjamena", Center: [2]float64{15.0600, 12.1100},
+		// L'ambulance tchadienne n'a pas de numéro court concordant : laissée
+		// vide plutôt que remplie d'un numéro à dix chiffres non vérifié.
+		Emergency: Emergency{Police: "17", Fire: "18"}},
+	{Code: "GA", Name: "Gabon", Currency: "XAF", PhonePrefix: "+241", Locale: "fr", Timezone: "Africa/Libreville", Center: [2]float64{9.4500, 0.4100},
+		// ⚠️ Plan propre au Gabon : 1730 pour la police, pas 17.
+		Emergency: Emergency{Police: "1730", Fire: "18", Ambulance: "1300"}},
 }
 
 // Preloaded sont les pays OUVERTS D'OFFICE au démarrage du socle : ceux où

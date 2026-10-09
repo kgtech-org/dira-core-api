@@ -1,6 +1,9 @@
 package country
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLocate(t *testing.T) {
 	cases := []struct {
@@ -74,5 +77,91 @@ func TestNormalizeAndPhone(t *testing.T) {
 	}
 	if _, ok := ByPhone("+33612345678"); ok {
 		t.Fatal("France is not in the catalog")
+	}
+}
+
+// --- LES NUMÉROS DE SECOURS ---------------------------------------------
+
+// ⚠️ UN NUMÉRO DE SECOURS NE S'ÉCRIT PAS EN E.164. `17`, `118`, `1515` sont des
+// numéros COURTS : les préfixer de l'indicatif du pays (`+228 17`) les rendrait
+// incomposables. Ce test fige la règle parce que la tentation de « normaliser »
+// un numéro de téléphone est forte partout ailleurs dans cette base.
+func TestAnEmergencyNumberIsNeverInInternationalForm(t *testing.T) {
+	for _, c := range Catalog {
+		for name, n := range map[string]string{
+			"police": c.Emergency.Police, "fire": c.Emergency.Fire,
+			"ambulance": c.Emergency.Ambulance,
+		} {
+			if n == "" {
+				continue
+			}
+			if strings.ContainsAny(n, "+ ") {
+				t.Errorf("%s: %s = %q — ni `+` ni espace dans un numéro court", c.Code, name, n)
+			}
+			for _, r := range n {
+				if r < '0' || r > '9' {
+					t.Errorf("%s: %s = %q — seulement des chiffres", c.Code, name, n)
+					break
+				}
+			}
+			if len(n) > 6 {
+				t.Errorf("%s: %s = %q — un numéro de secours est court ; au-delà, "+
+					"c'est un numéro ordinaire qui n'a rien à faire ici", c.Code, name, n)
+			}
+		}
+	}
+}
+
+// ⚠️ TOUT PAYS DU CATALOGUE A AU MOINS LA POLICE ET LES POMPIERS. Ce sont les
+// deux numéros qu'un opérateur appelle vraiment : « il y a eu un accident » et
+// « quelqu'un est agressé ». Un pays ouvert sans eux laisserait le service
+// client sans rien à composer, et c'est l'écran où il n'y a pas le temps de
+// chercher.
+//
+// ⚠️ L'AMBULANCE, ELLE, PEUT MANQUER — et c'est une réponse, pas un oubli. Les
+// sources ne concordent pas pour le Togo, la Guinée ni le Tchad : un numéro
+// inventé serait pire que son absence, parce que la console afficherait un
+// bouton qui ne mène à rien.
+func TestEveryCatalogueCountryHasPoliceAndFire(t *testing.T) {
+	for _, c := range Catalog {
+		if c.Emergency.Police == "" {
+			t.Errorf("%s (%s) : pas de numéro de police", c.Code, c.Name)
+		}
+		if c.Emergency.Fire == "" {
+			t.Errorf("%s (%s) : pas de numéro de pompiers", c.Code, c.Name)
+		}
+	}
+}
+
+// ⚠️ LES PAYS AU PLAN PARTICULIER SONT FIGÉS ICI, un par un. « Police = 17 »
+// est le schéma de l'ancienne AOF, et il est faux dans cinq de nos pays : la
+// Côte d'Ivoire (111), le Ghana (191), le Nigeria (112), le Gabon (1730) et
+// tous ceux passés en 117. Quelqu'un qui « harmoniserait » le catalogue par
+// réflexe casserait exactement ces lignes — et ce test est là pour l'arrêter.
+func TestTheCountriesWithTheirOwnPlanAreNotHarmonised(t *testing.T) {
+	for code, police := range map[string]string{
+		"CI": "111", "GH": "191", "NG": "112", "GA": "1730",
+		"TG": "117", "BJ": "117", "GN": "117", "CM": "117", "GW": "117",
+		"SN": "17", "ML": "17", "NE": "17", "BF": "17", "TD": "17",
+	} {
+		info, ok := Lookup(code)
+		if !ok {
+			t.Fatalf("%s a disparu du catalogue", code)
+		}
+		if info.Emergency.Police != police {
+			t.Errorf("%s : police = %q, attendu %q — si le pays a vraiment changé "+
+				"de plan, corrigez le test AVEC sa source", code, info.Emergency.Police, police)
+		}
+	}
+}
+
+// `Any` répond à la seule question que la console pose : « ai-je quelque chose
+// à composer ? ».
+func TestAnySaysWhetherThereIsAnythingToDial(t *testing.T) {
+	if (Emergency{}).Any() {
+		t.Error("rien à composer doit se dire")
+	}
+	if !(Emergency{Police: "17"}).Any() {
+		t.Error("un seul numéro suffit à afficher la section")
 	}
 }

@@ -1046,6 +1046,32 @@ func (s *Service) UserNames(ctx context.Context, ids []string) (map[string]strin
 	return s.repo.FindNamesByIDs(ctx, oids)
 }
 
+// Phones résout les numéros de plusieurs comptes d'un coup.
+//
+// ⚠️ IL EXISTE POUR UN SEUL APPELANT, L'ALERTE SOS, et c'est pourquoi il n'est
+// pas une méthode de confort : le protocole du service client commence par un
+// appel à la personne, et le numéro doit être SUR la ligne de l'alerte. Le
+// laisser chercher sur la fiche ajoute deux clics à un écran qui se compte en
+// secondes — et c'est le genre de détail qui décide si un protocole est suivi
+// ou contourné.
+//
+// ⚠️ UN COMPTE EFFACÉ N'A PLUS DE NUMÉRO, et rien n'est inventé : la clé
+// manque, et l'écran dit « pas de numéro » plutôt que d'afficher un vide qui
+// ressemble à une panne.
+func (s *Service) Phones(ctx context.Context, ids []string) (map[string]string, error) {
+	rows, err := s.AccountsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(rows))
+	for _, r := range rows {
+		if r.Phone != "" {
+			out[r.ID] = r.Phone
+		}
+	}
+	return out, nil
+}
+
 // EnsureAccount ouvre un compte de n'importe quel rôle, ou rend l'existant.
 //
 // ⚠️ Sert au PROVISIONNEMENT : le jeu de démonstration d'une verticale, qui ne

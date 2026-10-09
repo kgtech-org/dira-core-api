@@ -15,14 +15,31 @@ package country
 // de la regarder. C'est une décision d'exploitation, pays par pays, pas une
 // constante de code.
 //
-// ⚠️ ET AUCUN NUMÉRO N'EST PRÉCHARGÉ. C'est la décision la plus importante de
-// ce fichier, et elle va contre l'habitude du reste de la base, où l'on
-// précharge des défauts raisonnables. Un numéro d'urgence approximatif serait
-// COMPOSÉ PAR QUELQU'UN EN DANGER : « probablement le 17 » n'est pas une valeur
-// par défaut acceptable. Tant que l'exploitation n'a pas saisi le numéro de ce
-// pays, les applications N'AFFICHENT PAS le bouton d'appel — c'est écrit dans
-// les specs. Un bouton absent envoie chercher le 112 ; un bouton qui compose un
-// mauvais numéro fait perdre les trente secondes qui comptent.
+// ⚠️⚠️ LES APPLICATIONS NE REÇOIVENT AUCUN NUMÉRO À COMPOSER, ET C'EST LA
+// DÉCISION CENTRALE DE CE FICHIER.
+//
+// Ce n'est pas une précaution de données, c'est le PROTOCOLE : l'alerte part au
+// SERVICE CLIENT, un opérateur appelle d'abord la personne, et c'est LUI qui
+// appelle les secours s'il le faut. Le téléphone de quelqu'un en danger ne
+// compose rien.
+//
+// Pourquoi c'est mieux, et pas seulement différent :
+//   - QUELQU'UN RÉPOND TOUJOURS. Les secours d'un pays peuvent sonner dans le
+//     vide — un relevé mené en Guinée en 2024 a trouvé plusieurs numéros
+//     officiels hors service. Un opérateur qui tombe sur un numéro mort
+//     l'entend, raccroche et prend le suivant ; une personne en panique, non.
+//   - L'OPÉRATEUR SAIT CE QU'IL DIT. « Un chauffeur à tel carrefour, voiture
+//     grise, immatriculée, course en cours » se transmet ; un passager terrorisé
+//     ne décrit pas sa position.
+//   - ET LE PREMIER APPEL EST SOUVENT LE BON : la moitié des cas se règlent en
+//     joignant la personne — un téléphone tombé, un dos-d'âne, une dispute qui
+//     s'est calmée. Appeler la police pour ça la ferait cesser de nous écouter.
+//
+// Les numéros, eux, viennent du CATALOGUE (`pkg/country.Emergency`), au même
+// titre que la monnaie : ce sont des faits du pays. L'exploitation les CONFIRME
+// ou les corrige ici, pays par pays, et c'est son réglage qui fait foi — parce
+// que les sources publiques se contredisent et qu'un numéro change sans
+// prévenir. Ils ne sortent que vers la CONSOLE.
 
 import (
 	"context"
@@ -116,8 +133,13 @@ type SOS struct {
 	Numbers          []EmergencyNumber `bson:"numbers,omitempty"`
 }
 
-// SOSResponse est la politique telle que la console la lit et que les
-// applications la reçoivent — tous les champs posés, aucun à deviner.
+// SOSResponse est la politique telle que les APPLICATIONS la reçoivent — tous
+// les champs posés, aucun à deviner.
+//
+// ⚠️ ELLE NE PORTE AUCUN NUMÉRO, et c'est structurel plutôt que documentaire.
+// Écrire « n'affichez pas de bouton d'appel » dans une spec, en servant le
+// champ quand même, aurait fini par un bouton : un champ qui existe se câble.
+// Les numéros vivent dans `SOSAdminResponse`, que seule la console lit.
 type SOSResponse struct {
 	// Button est TOUJOURS `true`. Il est rendu quand même, et c'est délibéré :
 	// une application qui lit ce bloc doit pouvoir écrire son écran sans cas
@@ -130,9 +152,34 @@ type SOSResponse struct {
 	// CountdownSeconds : le délai AVANT envoi d'une détection. ⚠️ Il ne
 	// s'applique PAS au bouton : appuyer, c'est avoir déjà décidé.
 	CountdownSeconds int `json:"countdown_seconds"`
-	// Numbers peut être VIDE, et l'application doit le supporter : pas de
-	// bouton d'appel plutôt qu'un mauvais numéro.
+	// CallsBack dit à l'application CE QU'ELLE DOIT PROMETTRE : « le service
+	// client a été prévenu et va vous appeler ».
+	//
+	// ⚠️ SERVI PLUTÔT QUE SUPPOSÉ, parce que c'est la seule chose que la
+	// personne cherche à savoir après avoir appuyé, et parce qu'une application
+	// qui écrirait « appelez la police » à la place enverrait quelqu'un composer
+	// un numéro qu'on ne lui a pas donné. Vaut toujours `true` aujourd'hui ; le
+	// champ existe pour que l'écran n'ait rien à deviner, et pour qu'on puisse
+	// répondre par écrit le jour où on demanderait l'inverse.
+	CallsBack bool `json:"calls_back"`
+}
+
+// SOSAdminResponse est la politique telle que LA CONSOLE la lit — avec les
+// numéros, parce que c'est elle qui appelle.
+type SOSAdminResponse struct {
+	SOSResponse
+	// Numbers : ce que l'opérateur compose. Le catalogue du pays, remplacé par
+	// le réglage de l'exploitation quand il y en a un.
 	Numbers []EmergencyNumber `json:"numbers"`
+	// Confirmed dit si l'exploitation a VALIDÉ ces numéros pour ce pays, ou
+	// s'ils sortent encore du catalogue.
+	//
+	// ⚠️ SERVI, ET LA CONSOLE DOIT LE MONTRER. Les sources publiques se
+	// contredisent, et un numéro officiel peut être hors service : un opérateur
+	// qui compose doit savoir si quelqu'un chez nous a déjà vérifié, ou s'il
+	// est le premier à essayer. « Non confirmé » n'empêche pas d'appeler — ça
+	// dit de vérifier qu'on est bien tombé au bon endroit.
+	Confirmed bool `json:"confirmed"`
 }
 
 // SOSUpdateRequest règle la politique depuis la console. Tout est facultatif.
@@ -176,10 +223,7 @@ func sosResponse(s SOS) SOSResponse {
 		Crash:            defaultSOSCrash,
 		Voice:            defaultSOSVoice,
 		CountdownSeconds: s.CountdownSeconds,
-		// ⚠️ UNE TRANCHE VIDE, JAMAIS `nil` : `numbers: null` en JSON fait
-		// planter une application qui boucle dessus sans vérifier, et c'est
-		// l'écran d'urgence.
-		Numbers: []EmergencyNumber{},
+		CallsBack:        true,
 	}
 	if s.Shake != nil {
 		out.Shake = *s.Shake
@@ -193,7 +237,63 @@ func sosResponse(s SOS) SOSResponse {
 	if out.CountdownSeconds == 0 {
 		out.CountdownSeconds = defaultSOSCountdown
 	}
-	out.Numbers = append(out.Numbers, s.Numbers...)
+	return out
+}
+
+// sosAdminResponse ajoute les numéros, pour la console.
+//
+// ⚠️ LE CATALOGUE D'ABORD, LE RÉGLAGE ENSUITE — exactement comme la monnaie
+// d'un pays. Le catalogue donne le fait connu, l'exploitation le corrige quand
+// elle a vérifié, et c'est son réglage qui gagne.
+//
+// ⚠️ UN GENRE RÉGLÉ REMPLACE CELUI DU CATALOGUE, IL NE S'AJOUTE PAS. Deux
+// « police » sur l'écran d'un opérateur, c'est une hésitation d'une seconde au
+// moment où il n'en a pas.
+func sosAdminResponse(code string, s SOS) SOSAdminResponse {
+	out := SOSAdminResponse{
+		SOSResponse: sosResponse(s),
+		// ⚠️ UNE TRANCHE VIDE, JAMAIS `nil` : `numbers: null` en JSON fait
+		// planter une console qui boucle dessus sans vérifier.
+		Numbers:   []EmergencyNumber{},
+		Confirmed: len(s.Numbers) > 0,
+	}
+	seen := make(map[string]bool, len(s.Numbers))
+	for _, n := range s.Numbers {
+		seen[n.Kind] = true
+		out.Numbers = append(out.Numbers, n)
+	}
+	if info, ok := country.Lookup(code); ok {
+		for _, n := range catalogueNumbers(info.Emergency) {
+			if !seen[n.Kind] {
+				out.Numbers = append(out.Numbers, n)
+			}
+		}
+	}
+	return out
+}
+
+// catalogueNumbers traduit les numéros du catalogue en lignes affichables.
+//
+// Les libellés sont écrits ici, dans la langue de l'exploitation : le catalogue
+// porte des FAITS (un numéro), pas la façon de les présenter.
+func catalogueNumbers(e country.Emergency) []EmergencyNumber {
+	out := make([]EmergencyNumber, 0, 3)
+	for _, c := range []struct {
+		kind, label, number string
+	}{
+		{EmergencyPolice, "Police secours", e.Police},
+		{EmergencyFire, "Sapeurs-pompiers", e.Fire},
+		{EmergencyAmbulance, "Ambulance / SAMU", e.Ambulance},
+	} {
+		// ⚠️ UN NUMÉRO VIDE NE DONNE PAS DE LIGNE. Les sources ne concordent
+		// pas pour l'ambulance de plusieurs pays ; une ligne « Ambulance : »
+		// sans numéro serait un bouton qui ne mène à rien, ce qui est pire que
+		// son absence.
+		if c.number == "" {
+			continue
+		}
+		out = append(out, EmergencyNumber{Kind: c.kind, Label: c.label, Number: c.number})
+	}
 	return out
 }
 
@@ -239,8 +339,9 @@ func keepDialable(s string) string {
 	return b.String()
 }
 
-// SOSPolicy rend la politique d'un pays, telle que la console la lit.
-func (s *Service) SOSPolicy(ctx context.Context, code string) (*SOSResponse, error) {
+// SOSPolicy rend la politique d'un pays, telle que la console la lit — avec les
+// numéros.
+func (s *Service) SOSPolicy(ctx context.Context, code string) (*SOSAdminResponse, error) {
 	info, ok := country.Lookup(code)
 	if !ok {
 		return nil, errUnknownCountry
@@ -249,12 +350,32 @@ func (s *Service) SOSPolicy(ctx context.Context, code string) (*SOSResponse, err
 	if err != nil {
 		return nil, apperr.Internal(err)
 	}
-	out := sosResponse(inst.Security.SOS)
+	out := sosAdminResponse(info.Code, inst.Security.SOS)
 	return &out, nil
 }
 
+// EmergencyOf rend les numéros EFFECTIFS d'un pays — l'adaptateur que le module
+// d'alerte appelle pour les poser sur l'écran de l'opérateur.
+//
+// ⚠️ AU MIEUX : un pays inconnu ou une base muette rendent le catalogue, jamais
+// une erreur. Faire échouer l'affichage d'une alerte SOS parce qu'un réglage est
+// illisible serait exactement la mauvaise façon d'échouer.
+func (s *Service) EmergencyOf(ctx context.Context, code string) ([]EmergencyNumber, bool) {
+	info, ok := country.Lookup(code)
+	if !ok {
+		return nil, false
+	}
+	inst, _, err := s.repo.One(ctx, info.Code)
+	if err != nil {
+		out := sosAdminResponse(info.Code, SOS{})
+		return out.Numbers, false
+	}
+	out := sosAdminResponse(info.Code, inst.Security.SOS)
+	return out.Numbers, out.Confirmed
+}
+
 // UpdateSOS règle la politique d'alerte d'un pays.
-func (s *Service) UpdateSOS(ctx context.Context, code string, req SOSUpdateRequest) (*SOSResponse, error) {
+func (s *Service) UpdateSOS(ctx context.Context, code string, req SOSUpdateRequest) (*SOSAdminResponse, error) {
 	info, ok := country.Lookup(code)
 	if !ok {
 		return nil, errUnknownCountry
@@ -292,7 +413,7 @@ func (s *Service) UpdateSOS(ctx context.Context, code string, req SOSUpdateReque
 	if err := s.repo.SetSecurity(ctx, info.Code, sec); err != nil {
 		return nil, apperr.Internal(err)
 	}
-	out := sosResponse(cur)
+	out := sosAdminResponse(info.Code, cur)
 	return &out, nil
 }
 

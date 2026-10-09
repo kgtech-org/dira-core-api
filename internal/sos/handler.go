@@ -44,6 +44,12 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		g.Get("/admin/sos/history", h.history)
 		g.Get("/admin/sos/{id}", h.one)
 		g.Post("/admin/sos/{id}/ack", h.ack)
+		// LE PROTOCOLE DU SERVICE CLIENT : appeler la personne, puis les
+		// secours. ⚠️ Deux routes et non une case à cocher sur la fermeture :
+		// ce sont des gestes HORODATÉS, et ce qu'on mesure est le DÉLAI entre
+		// le déclenchement et chacun d'eux.
+		g.Post("/admin/sos/{id}/contacted", h.contacted)
+		g.Post("/admin/sos/{id}/emergency-called", h.emergencyCalled)
 		g.Post("/admin/sos/{id}/close", h.close)
 	})
 }
@@ -163,6 +169,50 @@ func (h *Handler) one(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ack(w http.ResponseWriter, r *http.Request) {
 	actorID, _ := auth.UserFromContext(r.Context())
 	out, err := h.svc.Acknowledge(r.Context(), actorID, chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// POST /admin/sos/{id}/contacted {reached, note?} — l'opérateur a appelé la
+// personne.
+//
+// ⚠️ `reached` EST UNE RÉPONSE, PAS UNE CASE COCHÉE PAR LE CLIC. « J'ai
+// appelé » et « j'ai eu la personne » sont deux faits : dix sonneries sans
+// réponse après un choc violent est l'information la plus inquiétante de
+// l'écran, et la déduire du clic l'aurait effacée.
+func (h *Handler) contacted(w http.ResponseWriter, r *http.Request) {
+	actorID, _ := auth.UserFromContext(r.Context())
+	var in ContactInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := h.svc.Contacted(r.Context(), actorID, chi.URLParam(r, "id"), in)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// POST /admin/sos/{id}/emergency-called {service, note?} — l'opérateur a appelé
+// les secours.
+//
+// ⚠️ ELLE N'EXIGE PAS QU'ON AIT D'ABORD JOINT LA PERSONNE. L'ordre normal est
+// « joindre, puis appeler » ; après un choc violent sur quelqu'un
+// d'injoignable, exiger le premier avant le second bloquerait le seul cas où
+// chaque seconde compte.
+func (h *Handler) emergencyCalled(w http.ResponseWriter, r *http.Request) {
+	actorID, _ := auth.UserFromContext(r.Context())
+	var in EmergencyInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	out, err := h.svc.EmergencyCalled(r.Context(), actorID, chi.URLParam(r, "id"), in)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return

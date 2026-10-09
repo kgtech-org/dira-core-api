@@ -985,17 +985,26 @@ type sosPolicy struct{ countries *country.Service }
 
 func (p sosPolicy) SOSSettings(ctx context.Context, code string) sos.Settings {
 	s := p.countries.SOSOf(ctx, code)
-	out := sos.Settings{
+	// ⚠️ AUCUN NUMÉRO NE PASSE PAR ICI, et c'est le point. Ce que cette
+	// fonction sert part vers les APPLICATIONS : leur donner des numéros
+	// finirait par un bouton d'appel, alors que le protocole veut que ce soit
+	// le service client qui appelle. Les numéros vont à la console par
+	// `EmergencyNumbers`, un chemin séparé.
+	return sos.Settings{
 		Button: s.Button, Shake: s.Shake, Crash: s.Crash, Voice: s.Voice,
-		CountdownSeconds: s.CountdownSeconds,
-		// ⚠️ Une tranche VIDE, jamais `nil` : `numbers: null` ferait planter
-		// une application qui boucle dessus — et c'est l'écran d'urgence.
-		Numbers: make([]sos.Number, 0, len(s.Numbers)),
+		CountdownSeconds: s.CountdownSeconds, CallsBack: s.CallsBack,
 	}
-	for _, n := range s.Numbers {
-		out.Numbers = append(out.Numbers, sos.Number{Kind: n.Kind, Label: n.Label, Number: n.Number})
+}
+
+// EmergencyNumbers rend les numéros d'un pays à la CONSOLE — le catalogue,
+// corrigé par le réglage de l'exploitation.
+func (p sosPolicy) EmergencyNumbers(ctx context.Context, code string) ([]sos.Number, bool) {
+	nums, confirmed := p.countries.EmergencyOf(ctx, code)
+	out := make([]sos.Number, 0, len(nums))
+	for _, n := range nums {
+		out = append(out, sos.Number{Kind: n.Kind, Label: n.Label, Number: n.Number})
 	}
-	return out
+	return out, confirmed
 }
 
 // staffAlerts prévient les membres du staff dont le périmètre couvre une

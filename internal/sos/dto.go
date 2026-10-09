@@ -6,6 +6,14 @@ import "time"
 type Response struct {
 	ID     string `json:"id"`
 	UserID string `json:"user_id"`
+	// UserPhone : le numéro à appeler EN PREMIER.
+	//
+	// ⚠️ SERVI SUR LA LIGNE DE L'ALERTE, et pas laissé à chercher sur la fiche
+	// de la personne. C'est le protocole : l'opérateur appelle la personne avant
+	// d'appeler les secours. Deux clics pour trouver un numéro, sur un écran qui
+	// se compte en secondes, c'est le genre de détail qui décide si le protocole
+	// est suivi ou contourné.
+	UserPhone string `json:"user_phone,omitempty"`
 	// UserName : le nom, résolu AU MIEUX. ⚠️ Vide, l'écran doit afficher
 	// l'identifiant plutôt que rien : un opérateur peut appeler un compte sans
 	// nom, il ne peut rien faire d'une ligne vide.
@@ -41,10 +49,34 @@ type Response struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 	AcknowledgedAt *time.Time `json:"acknowledged_at,omitempty"`
 	AcknowledgedBy string     `json:"acknowledged_by,omitempty"`
-	ClosedAt       *time.Time `json:"closed_at,omitempty"`
-	ClosedBy       string     `json:"closed_by,omitempty"`
-	Outcome        string     `json:"outcome,omitempty"`
-	Resolution     string     `json:"resolution,omitempty"`
+	// LE PROTOCOLE, tel que la console le montre et le coche.
+	ContactedAt *time.Time `json:"contacted_at,omitempty"`
+	// Reached : on a eu quelqu'un au bout du fil. ⚠️ « appelé » n'est pas
+	// « joint » — `contacted_at` dit qu'on a essayé, `reached` dit si ça a
+	// marché.
+	Reached           bool       `json:"reached,omitempty"`
+	EmergencyCalledAt *time.Time `json:"emergency_called_at,omitempty"`
+	EmergencyService  string     `json:"emergency_service,omitempty"`
+	EmergencyNote     string     `json:"emergency_note,omitempty"`
+	// Numbers : les numéros de secours DU PAYS DE L'ALERTE, posés sur la ligne.
+	//
+	// ⚠️ SUR L'ALERTE, et non à chercher dans les réglages : une alerte de
+	// Conakry et une de Dakar ne se composent pas pareil, et l'opérateur n'a pas
+	// à savoir lequel des deux pays il regarde. ⚠️ Peut être VIDE — un pays sans
+	// numéro fiable se dit, et la console affiche alors « aucun numéro pour ce
+	// pays » plutôt qu'un bouton mort.
+	Numbers []Number `json:"numbers,omitempty"`
+	// NumbersConfirmed : l'exploitation a-t-elle VALIDÉ ces numéros pour ce
+	// pays, ou sortent-ils encore du catalogue ?
+	//
+	// ⚠️ MONTRÉ À L'OPÉRATEUR. Les sources publiques se contredisent et un
+	// numéro officiel peut être hors service : celui qui compose doit savoir
+	// s'il est le premier à essayer.
+	NumbersConfirmed bool       `json:"numbers_confirmed"`
+	ClosedAt         *time.Time `json:"closed_at,omitempty"`
+	ClosedBy         string     `json:"closed_by,omitempty"`
+	Outcome          string     `json:"outcome,omitempty"`
+	Resolution       string     `json:"resolution,omitempty"`
 	// CancelledSeconds : combien de secondes après le déclenchement la personne
 	// a annulé.
 	//
