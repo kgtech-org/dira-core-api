@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.59.0** · 8 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.60.0** · 9 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -263,6 +263,7 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] 🆘 **BOUTON D'ALERTE** (v4.56.0, **toutes** les applications) : `POST /sos` appelé avec **ce qu'on a**, sans attendre un point GPS — aucun champ n'est obligatoire, pas même la position ; **réessai en boucle jusqu'à un `2xx`**, en tête de la file hors-ligne et sans attendre la fenêtre de synchronisation ; **aucune validation côté application** (pas de motif, pas de formulaire, pas de position exigée) ; bouton **laissé actif** après le premier appui (le double appui enrichit la même alerte) ; `GET /sos/me` appelé **au démarrage** (`200` + `alert: null` est le cas normal, pas un `404`) ; position poussée **toutes les 5–10 s** tant que l'alerte vit ; ⚠️ **AUCUN BOUTON D'APPEL (v4.58.0)** — ni vers les secours, ni vers nous : la route ne sert **aucun** numéro, et il ne faut en inventer aucun (ni 112, ni codé en dur). L'écran affiche `calls_back` : « le service client a été prévenu et va vous appeler » ; détections (`shake`/`crash`/`voice`) qui **proposent** via un compte à rebours de `countdown_seconds` avec **un seul** bouton « Annuler », GPS et batterie **préparés pendant** le rebours ; `confirmed: false` traité comme **plus** grave, jamais comme « envoyé par erreur » ; annulation **en un appui, sans seconde confirmation**, et dite comme « l'exploitation a été prévenue » — pas comme « effacé » ; **pas de verrou d'application** sur cet écran ; `vertical` + `ride_id`/`delivery_id` envoyés quand il y a une opération
 - [ ] 🏷️ **Motif d'annulation** (v4.55.0, applications de CLIENT **et** de CHAUFFEUR) : liste **demandée** à `GET /rides/cancel-reasons`, jamais écrite en dur — elle dépend du rôle du jeton, et un code de l'autre rôle est refusé (`422`, `fields: ["reason_code"]`) ; codes **traduits chez vous** (la route sert des codes, pas des phrases) ; `reason_code` **s'ajoute** à `reason`, il ne le remplace pas ; `grave` lu dans la réponse plutôt que testé sur `code === "accident"` ; côté chauffeur, un motif grave ouvre un ticket critique → confirmation à part, « le support a été alerté », et **l'annulation aboutit même si le ticket échoue** (pas de réessai) ; `cancelled_reason_code` **absent** sur les courses d'avant la 4.55.0 → affichez `cancelled_reason` telle quelle, ne traduisez pas l'absence par `other`
 - [ ] 📞 **Taux d'acceptation** (v4.55.0, application de CHAUFFEUR) : `rate` **absent** quand `called` vaut 0 → « — » ou « aucun appel reçu », **jamais 0 %** (qui se lit « il refuse tout ») ; `acceptance` **tout entier** peut manquer quand le suivi ne répond pas → masquez ou dites « indisponible », jamais zéro ; `declined` et `missed` **jamais additionnés** (un geste et une panne) ; ne recalculez pas le taux vous-même
+- [ ] 🏢 **VOITURE DE SOCIÉTÉ** (v4.60.0, application de CHAUFFEUR) : `offline_reason: "fleet"` traité (**quatrième valeur** — « Dira vous a mis hors ligne » devient faux une fois sur deux, une cause inconnue s'affiche **sans coupable**) ; véhicule `withdrawn` **grisé et non sélectionnable** (`PATCH /drivers/me/active-vehicle` serait refusé), et **jamais confondu avec `maintenance`** — le propriétaire reprend son bien, l'exploitation immobilise une voiture, l'interlocuteur n'est pas le même ; `vehicle_assigned` et `vehicle_taken_back` **routées vers l'écran des véhicules** et montrées **comme une notification à lire** (le rattachement ne demande pas son accord : c'est son seul contre-pouvoir) ; le message de reprise dit **« votre compte chauffeur reste actif »** — un propriétaire n'a **aucun** pouvoir sur un compte, et perdre sa voiture en passant hors ligne se lit sinon comme une exclusion de Dira
 - [ ] 🧱 **Plafond de dette** (v4.55.0, application de CHAUFFEUR) : `max_debt_xof` **affiché depuis le relevé**, aucune valeur en dur — il est réglé **par pays** ; `max_debt_source` (`country` | `partner`) nommé dans le message de blocage, parce que l'interlocuteur change (l'exploitation, ou le propriétaire du véhicule) ; `max_debt_by` affiché quand il est là ; source absente traitée comme `country`
 - [ ] 🔒 **Confidentialité** (v4.49.0) : **aucune** règle d'affichage en dur — ni par pays, ni par métier. `show_phone` lu **avant** d'écrire un numéro à l'écran ; `direct_call` sans `show_phone` = un bouton qui appelle et le numéro **nulle part** ; `in_app_alert` lu pour **cacher** (et non désactiver) le bouton du klaxon ; nom affiché **tel que servi**, jamais reconstruit depuis `first_name` + `last_name` ; un champ absent traité comme fermé, **sans réessai** ; véhicule et argent à encaisser toujours montrés ; tout fermé → l'écran mène à la **conversation**
 - [ ] 🗑️ **Suppression de compte** (v4.47.0) : `DELETE /me` dans les applications de **CLIENT** — écran de conséquences **avant** la preuve d'identité (`password` ou `code`), **`erase_at` affiché**, « les courses et les commandes passées restent, anonymes » dit **avant** le bouton, `409 wallet_not_empty` renvoyé vers le solde. Les applications d'**agent** et de **marchand** n'affichent **pas** de bouton (`403 erasure_not_self_serve`) mais mettent « écrire au support ». **Toutes** traitent `403 account_closed` comme une fin de session **définitive** — pas comme une suspension
@@ -334,6 +335,51 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.60.0 — 9 octobre 2026
+
+🏢 **LES PROPRIÉTAIRES DE FLOTTE ONT LEUR CONSOLE.** Une société qui possède des
+voitures conduites par des chauffeurs Dira peut maintenant voir son parc,
+rattacher une voiture, la reprendre, poser une limite de dette et lire ses
+gains — depuis une application web à elle (`dira-partner`).
+
+**Pour les applications mobiles, un seul document change : `VTC-DRIVER.md`.**
+Rien à appeler de nouveau, mais **trois choses peuvent arriver à un chauffeur
+sans qu'il ait rien fait** :
+
+| Ce qui arrive | Ce que le téléphone reçoit |
+|---|---|
+| On lui rattache une voiture | `vehicle_assigned` (`data.type: "vehicle"`, `data.vehicle_id`) |
+| On reprend la voiture | `vehicle_taken_back`, véhicule `status: "withdrawn"`, et **`offline_reason: "fleet"`** s'il la conduisait |
+| Sa limite de dette change | rien de neuf : `max_debt_source: "partner"`, `max_debt_by` = le nom de la société |
+
+> ⚠️ **`offline_reason` A UNE QUATRIÈME VALEUR : `fleet`.** Une application qui
+> traduisait « toute cause autre que `driver`/`stale` » par « Dira vous a mis
+> hors ligne » **mentira désormais une fois sur deux** — et enverra au support
+> quelqu'un dont le différend est avec son propriétaire. Une cause inconnue
+> s'affiche **sans coupable**.
+
+> ⚠️ **`withdrawn` N'EST PAS `maintenance`.** Le premier est le propriétaire qui
+> récupère son bien, le second l'exploitation qui immobilise une voiture. Et un
+> véhicule `withdrawn` **ne se choisit plus** : n'offrez pas
+> `PATCH /drivers/me/active-vehicle` dessus.
+
+> ⚠️ **CE N'EST JAMAIS UNE SUSPENSION.** Un propriétaire n'a **aucun** pouvoir
+> sur le compte d'un chauffeur — il ne peut pas le suspendre, c'était une
+> décision de produit explicite. Perdre sa voiture et passer hors ligne au même
+> instant se lit pourtant comme une exclusion de Dira : l'écran doit dire
+> « votre compte reste actif ».
+
+> ⚠️ **ET LE RATTACHEMENT NE DEMANDE PAS SON ACCORD** (la voiture n'est pas la
+> sienne) : la notification est donc **son seul contre-pouvoir**. À montrer
+> comme une notification à lire, pas comme une ligne d'historique.
+
+**`403 wrong_app` a une valeur de plus : `partner`.** Elle ne concerne aucune
+application mobile — aucune n'envoie `app: "partner"` — mais `error.reason` peut
+désormais la porter, et une application qui ouvrirait une application d'après
+cette valeur doit savoir qu'elle existe.
+
+---
 
 ### 4.59.0 — 9 octobre 2026
 

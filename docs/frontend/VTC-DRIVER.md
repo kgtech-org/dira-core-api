@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.59.0** · 8 octobre 2026
+> **Version 4.60.0** · 9 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -486,7 +486,15 @@ PATCH /drivers/me/active-vehicle    { "vehicle_id": "…" }
 > ligne** : `online: false`, `offline_reason: "stale"`, `offline_at`. Dites-le
 > (« Vous avez été mis hors ligne : position non reçue depuis 5 min »), au lieu
 > d'afficher un état incohérent. `offline_reason` vaut `driver` quand c'est
-> vous qui vous êtes retiré, `admin` sinon.
+> vous qui vous êtes retiré, `stale` quand c'est le silence du suivi,
+> `admin` quand c'est l'exploitation, et **`fleet` (v4.60.0) quand le
+> propriétaire de votre véhicule l'a repris** — voir « LA VOITURE QUI N'EST
+> PAS LA VÔTRE » plus bas.
+>
+> ⚠️ **NE TRADUISEZ PAS UNE CAUSE INCONNUE PAR « Dira vous a mis hors
+> ligne ».** C'est faux une fois sur deux, et ça envoie au support quelqu'un
+> dont le différend est avec son propriétaire. Une cause que vous ne
+> connaissez pas s'affiche « vous avez été mis hors ligne », sans coupable.
 
 > **La journée — `GET /drivers/me/stats`.** `rides` et `driver_xof` comptent
 > les courses **terminées** du jour (`date`, défaut aujourd'hui) dans **votre
@@ -546,6 +554,55 @@ travaillé.
 > `suspended`) ; `online` est ce que le chauffeur choisit maintenant. Les
 > confondre laisserait un chauffeur suspendu lever sa propre suspension en se
 > remettant en ligne.
+
+### 🏢 LA VOITURE QUI N'EST PAS LA VÔTRE — une flotte, un propriétaire (v4.60.0)
+
+Une partie des voitures de Dira appartiennent à des **sociétés** : un
+propriétaire achète des véhicules et les confie à des chauffeurs. Depuis le
+9 octobre 2026, ces propriétaires ont leur propre console, et **trois choses
+peuvent donc changer sans que vous ayez rien fait**.
+
+**1. On vous rattache une voiture.** Vous recevez `vehicle_assigned`
+(`data.type: "vehicle"`, `data.vehicle_id`) : « *Société Kodjo* vous rattache
+*AB-1234*. Il est prêt à rouler. » Le véhicule apparaît dans
+`GET /drivers/me/vehicles`, et il devient votre véhicule **actif** si vous
+n'en aviez aucun.
+
+> ⚠️ **ON NE VOUS DEMANDE PAS VOTRE ACCORD, ET C'EST ASSUMÉ** : la voiture est
+> celle du propriétaire. Ce message est donc **le seul contre-pouvoir** que vous
+> avez — montrez-le **comme une notification à lire**, pas comme une ligne
+> d'historique. Quelqu'un qui apprend tout de suite qu'on lui rattache un
+> véhicule peut le signaler ; quelqu'un qui le découvre dans son relevé, non.
+
+**2. On reprend la voiture.** Vous recevez `vehicle_taken_back` : « *Société
+Kodjo* a repris *AB-1234*. Votre compte chauffeur reste actif : vous pouvez
+rouler avec un autre véhicule. » Le véhicule passe à **`status: "withdrawn"`**,
+et si c'était votre véhicule actif vous passez **hors ligne** avec
+`offline_reason: "fleet"`.
+
+> ⚠️ **CE N'EST PAS UNE SUSPENSION, ET L'ÉCRAN DOIT LE DIRE.** Un propriétaire
+> **ne peut pas** vous suspendre — il n'a aucun pouvoir sur votre compte. Perdre
+> sa voiture et passer hors ligne au même instant se lit comme une exclusion de
+> Dira : dites « *votre propriétaire a repris ce véhicule* » et **« votre compte
+> reste actif »**, jamais « vous avez été désactivé ».
+>
+> ⚠️ **UN VÉHICULE `withdrawn` NE SE CHOISIT PLUS.** N'offrez pas
+> `PATCH /drivers/me/active-vehicle` dessus : le serveur le refuserait, et le
+> bouton aurait promis quelque chose. Il reste dans la liste — c'est une voiture
+> que vous avez conduite — mais grisé, avec sa cause.
+>
+> ⚠️ **ET `maintenance` ET `withdrawn` NE SE CONFONDENT PAS** : le premier est
+> l'exploitation qui immobilise une voiture (assurance, contrôle), le second est
+> son propriétaire qui la récupère. L'interlocuteur n'est pas le même, et c'est
+> toute la différence pour celui qui lit l'écran.
+
+**3. Votre limite de dette change.** Le propriétaire peut la poser lui-même
+depuis sa console. Rien de nouveau dans le contrat : `max_debt_source` vaut
+`partner` et `max_debt_by` porte **le nom de la société** (v4.55.0) — mais
+attendez-vous à la voir bouger plus souvent, et **nommez toujours l'auteur**
+dans le message de blocage.
+
+---
 
 > ⚠️ **HORS LIGNE VEUT DIRE AUCUN APPEL — y compris par le véhicule
 > (v4.26.0).** L'attribution juge deux choses : le COMPTE et le VÉHICULE.
