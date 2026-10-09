@@ -1,6 +1,6 @@
 # App CLIENT — LIVRAISON — contrat d'API
 
-> **Version 4.57.0** · 8 octobre 2026
+> **Version 4.58.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `https://api-staging.dira.llc/api/v1/food` · Suivi : `wss://tracking-staging.dira.llc`
 
 
@@ -1974,32 +1974,48 @@ sérieux.
 ### ⚙️ CE QUE LE PAYS DÉCIDE — `GET /sos/settings`
 
 ```jsonc
-{ "button": true,              // TOUJOURS true
-  "shake": true,               // la secousse propose l'alerte
-  "crash": true,               // la détection de choc la propose
-  "voice": false,              // le mot-clé vocal — ÉTEINT par défaut
-  "countdown_seconds": 10,     // le délai d'annulation d'une DÉTECTION
-  "numbers": [                 // ⚠️ PEUT ÊTRE VIDE
-    { "kind": "police", "label": "Police secours", "number": "17" },
-    { "kind": "platform", "label": "Astreinte Dira", "number": "+22890000001" } ] }
+{ "button": true,            // TOUJOURS true
+  "shake": true,             // la secousse propose l'alerte
+  "crash": true,             // la détection de choc la propose
+  "voice": false,            // le mot-clé vocal — ÉTEINT par défaut
+  "countdown_seconds": 10,   // le délai d'annulation d'une DÉTECTION
+  "calls_back": true }       // ⚠️ CE QUE VOUS DEVEZ PROMETTRE : on vous rappelle
 ```
 
 ⚠️ **RELISEZ-LA À CHAQUE OUVERTURE**, et n'écrivez aucune de ces valeurs en
 dur : elles changent depuis la console, sans redéploiement, et un pays peut
 couper une détection du jour au lendemain.
 
-⚠️⚠️ **`numbers` PEUT ÊTRE VIDE, ET C'EST VOULU. N'AFFICHEZ ALORS AUCUN BOUTON
-D'APPEL.** Aucun numéro d'urgence n'est préchargé, pour aucun pays : un numéro
-approximatif serait **composé par quelqu'un en danger**, et « probablement le
-17 » n'est pas une valeur par défaut acceptable. **N'inventez rien** — pas de
-112, pas de numéro codé dans l'application, pas de repli « au cas où ». Un
-bouton absent envoie chercher le secours autrement ; un bouton qui compose un
-mauvais numéro fait perdre les trente secondes qui comptent.
+### ⚠️⚠️ IL N'Y A AUCUN NUMÉRO À COMPOSER, ET CE N'EST PAS UN OUBLI (v4.58.0)
 
-⚠️ **COMPOSEZ `number` TEL QUEL.** Les numéros courts (`17`, `118`, `1515`) ne
-sont **pas** des numéros E.164 : ne les préfixez pas de l'indicatif du pays, ne
-les « corrigez » pas, ne les reformatez pas. `kind` sert à choisir l'icône,
-`label` à écrire le bouton (et s'il est vide, nommez le genre vous-même).
+**Le téléphone de la personne en danger ne compose rien.** L'alerte part au
+**SERVICE CLIENT** : un opérateur l'appelle, et c'est **lui** qui appelle les
+secours s'il le faut.
+
+Cette route **ne sert donc aucun numéro**, et il n'y a pas de champ `numbers` à
+lire. **N'en inventez aucun** — pas de 112, pas de numéro codé dans
+l'application, pas de repli « au cas où », pas de liste tirée d'un site. Un
+écran qui proposerait « appeler la police » enverrait quelqu'un composer un
+numéro que nous ne lui avons pas donné.
+
+⚠️ **CE QUE VOUS AFFICHEZ À LA PLACE** : « **Le service client a été prévenu et
+va vous appeler.** » C'est `calls_back`, et c'est la seule chose que la personne
+cherche à savoir après avoir appuyé.
+
+⚠️ **POURQUOI C'EST MIEUX, ET PAS SEULEMENT DIFFÉRENT** — dites-le à votre
+équipe produit, parce que la question viendra :
+>
+> - **Quelqu'un répond toujours.** Les secours d'un pays peuvent sonner dans le
+>   vide : un relevé mené en Guinée en 2024 a composé les numéros officiels un
+>   par un et en a trouvé plusieurs **hors service**. Un opérateur qui tombe sur
+>   un numéro mort l'entend, raccroche et prend le suivant ; une personne en
+>   panique, non.
+> - **L'opérateur sait ce qu'il dit.** « Un chauffeur au carrefour X, voiture
+>   grise immatriculée AB-1234-CD, course en cours » se transmet. Quelqu'un de
+>   terrorisé ne décrit pas sa position.
+> - **Le premier appel est souvent le bon** : téléphone tombé, dos-d'âne,
+>   dispute déjà calmée. Appeler la police pour ça la ferait cesser de nous
+>   écouter.
 
 ### 🫨 LES DÉTECTIONS — ⚠️ ELLES PROPOSENT, ELLES N'ENVOIENT PAS
 
@@ -2069,12 +2085,17 @@ aucun flux audio à nos serveurs — aucune route ne l'accepte.
 
 Pendant qu'une alerte est vivante :
 
-> - **« L'exploitation a été prévenue »** — la seule chose que la personne
->   cherche à savoir. Dites-le dès le `201`, pas après un aller-retour.
-> - **Les boutons d'appel** de `numbers`, en grand — et rien quand la liste est
->   vide.
+> - **« Le service client a été prévenu et va vous appeler »** — la seule chose
+>   que la personne cherche à savoir. Dites-le dès le `201`, pas après un
+>   aller-retour.
 > - **Annuler**, en un appui.
-> - **De quoi ajouter une note**, facultatif et secondaire.
+> - **De quoi ajouter une note**, facultatif et secondaire — et elle sert
+>   vraiment : l'opérateur la lit avant d'appeler, et « un homme me suit » change
+>   ce qu'il dit au téléphone.
+> - ⚠️ **AUCUN BOUTON D'APPEL**, ni vers les secours, ni vers nous. C'est
+>   l'exploitation qui appelle ; un bouton « appeler Dira » ferait patienter
+>   quelqu'un en danger dans une file d'attente téléphonique pendant qu'un
+>   opérateur essaie de le joindre sur la même ligne.
 >
 > ⚠️ **ET RIEN D'AUTRE.** Pas de menu, pas de navigation, pas de retour
 > accidentel vers la course. Cet écran se tient devant quelqu'un dont les mains

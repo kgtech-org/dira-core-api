@@ -1,6 +1,6 @@
 # App CLIENT UNIFIÉE — LIVRAISON **et** COURSES — contrat d'API
 
-> **Version 4.57.0** · 8 octobre 2026
+> **Version 4.58.0** · 8 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Livraison : `…/api/v1/food` · Courses : `…/api/v1/vtc` · Combiné : `…/api/v1/analytics` · Suivi : `wss://tracking-staging.dira.llc`
 
 ---
@@ -883,15 +883,24 @@ peut-être ») : une annulation peut être **contrainte**, et promettre que « t
 est effacé » serait un mensonge. Pas de deuxième confirmation pour annuler — un
 appui suffit.
 
-### ⚠️ `numbers` PEUT ÊTRE VIDE : n'affichez alors AUCUN bouton d'appel
+### ⚠️⚠️ IL N'Y A AUCUN NUMÉRO À COMPOSER, ET CE N'EST PAS UN OUBLI (v4.58.0)
 
-Aucun numéro d'urgence n'est préchargé, pour aucun pays. Un numéro approximatif
-serait **composé par quelqu'un en danger**, et « probablement le 17 » n'est pas
-une valeur par défaut acceptable. **N'inventez rien** — pas de 112, pas de
-numéro codé dans l'application.
+**Le téléphone de la personne en danger ne compose rien.** L'alerte part au
+**service client** : un opérateur l'appelle, et c'est **lui** qui appelle les
+secours s'il le faut.
 
-Et **composez `number` tel quel** : `17`, `118`, `1515` ne sont pas des numéros
-E.164. Ne les préfixez pas de l'indicatif du pays.
+`GET /sos/settings` **ne sert aucun numéro** — il n'y a pas de champ `numbers` à
+lire. **N'en inventez aucun** : pas de 112, pas de numéro codé dans
+l'application, pas de repli « au cas où ». Un écran qui proposerait « appeler la
+police » enverrait quelqu'un composer un numéro que nous ne lui avons pas donné.
+
+⚠️ **CE QUE VOUS AFFICHEZ À LA PLACE** : « **Le service client a été prévenu et
+va vous appeler.** » C'est `calls_back`, et c'est la seule chose que la personne
+cherche à savoir après avoir appuyé.
+
+⚠️ **ET AUCUN BOUTON « APPELER DIRA » NON PLUS.** Il ferait patienter quelqu'un
+en danger dans une file d'attente téléphonique pendant qu'un opérateur essaie de
+le joindre sur la même ligne.
 
 ### ⚠️ LES DÉTECTIONS PROPOSENT, ELLES N'ENVOIENT PAS
 
@@ -1028,6 +1037,34 @@ du métier.
 
 ## 15. Journal
 
+### 4.58.0 — 9 octobre 2026
+
+☎️ **LE SERVICE CLIENT APPELLE, PAS VOTRE TÉLÉPHONE.** Le bouton d'alerte
+(v4.56.0) ne propose plus d'appeler les secours : l'alerte part au service
+client, un opérateur **appelle la personne**, et c'est lui qui appelle les
+secours s'il le faut.
+
+⚠️⚠️ **`GET /sos/settings` N'A PLUS DE CHAMP `numbers`** — il a disparu, ce n'est
+pas un oubli. **Retirez les boutons d'appel de l'écran d'urgence**, et n'en
+inventez aucun : ni 112, ni numéro codé dans l'application, ni repli « au cas
+où ». Un écran qui proposerait « appeler la police » enverrait quelqu'un composer
+un numéro que nous ne lui avons pas donné.
+
+⚠️ **AFFICHEZ `calls_back`** : « le service client a été prévenu et va vous
+appeler ». C'est la seule chose que la personne cherche à savoir.
+
+⚠️ **ET PAS DE BOUTON « APPELER DIRA » NON PLUS** : il ferait patienter quelqu'un
+en danger dans une file d'attente téléphonique pendant qu'un opérateur essaie de
+le joindre sur la même ligne.
+
+⚠️ **CE QUI COMPTE ENCORE PLUS MAINTENANT** : le **numéro du compte** doit être
+juste (c'est par lui qu'on rappelle — un compte sans numéro joignable est un
+compte qu'on ne peut pas secourir), la **note facultative** est lue par
+l'opérateur *avant* qu'il appelle, et la **position poussée toutes les 5–10 s**
+est ce qu'il transmet aux secours.
+
+Détail : section 🆘, et `VTC-CLIENT` / `FOOD-CLIENT`.
+
 ### 4.56.0 — 8 octobre 2026
 
 🆘 **LE BOUTON D'ALERTE**, au socle (`…/api/v1/sos`) et commun aux deux
@@ -1048,8 +1085,10 @@ avec un seul bouton « Annuler ». À l'expiration, l'alerte part avec
 `confirmed: false` — **plus grave, pas moins** : personne n'a annulé parce que
 personne ne pouvait. Côté client, **seule `shake` a du sens**.
 
-⚠️ **`numbers` PEUT ÊTRE VIDE → aucun bouton d'appel, et aucun numéro
-inventé.** Composez `number` tel quel : 17 n'est pas +228 17.
+⚠️ **AUCUN NUMÉRO À COMPOSER (v4.58.0)** : le téléphone ne compose rien, le
+**service client** rappelle. Pas de champ `numbers`, pas de bouton d'appel — ni
+vers les secours, ni vers nous. Affichez `calls_back` : « le service client a été
+prévenu et va vous appeler ».
 
 ⚠️ **ANNULER NE SUPPRIME PAS L'ALERTE** (quinze minutes à l'écran de
 l'exploitation) : dites « l'exploitation a été prévenue », pas « effacé ». Une
