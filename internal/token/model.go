@@ -87,6 +87,19 @@ const (
 	// ReasonCommission : la part de la plateforme retenue sur un gain versé
 	// à un agent (mode `commission`), ou prise sur son solde pour une course
 	// en espèces.
+	// ReasonBonus : un OBJECTIF ATTEINT (`internal/challenge`) — « 20 courses
+	// cette semaine, 5 000 F ».
+	//
+	// ⚠️ UN MOTIF À PART DE `promo_credit`, et ce n'est pas du rangement. Un
+	// geste commercial est discrétionnaire et se discute ; un bonus d'objectif
+	// est DÛ dès que la cible est franchie, et il se compte pour savoir ce que
+	// les objectifs coûtent. Les confondre aurait rendu la question « combien
+	// avons-nous versé en bonus ce mois-ci ? » impossible à poser.
+	//
+	// ⚠️ ET IL CRÉDITE LE SOLDE RÉEL, pas le promotionnel : c'est de l'argent
+	// gagné en travaillant (ou en commandant), pas une remise. Un livreur doit
+	// pouvoir le retirer.
+	ReasonBonus      = "bonus"
 	ReasonCommission = "commission"
 	// ReasonCommissionDue : la commission d'une course en espèces que le
 	// solde n'a pas pu payer — portée à la DETTE (`debt_xof`). Le mouvement
@@ -119,6 +132,10 @@ const (
 	// RefEquipment : un CONTRAT de matériel (`internal/equipment`). Chaque
 	// prélèvement et chaque remboursement de caution s'y rattache.
 	RefEquipment = "equipment"
+	// RefChallenge : un OBJECTIF (`internal/challenge`). La référence rend le
+	// versement idempotent — un bonus payé deux fois est de l'argent perdu que
+	// personne ne réclame.
+	RefChallenge = "challenge"
 )
 
 // Unités du grand livre.

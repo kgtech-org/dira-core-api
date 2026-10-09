@@ -19,18 +19,19 @@ import (
 
 // Les collections du socle dont les documents portent un `country`.
 var collections = []string{
-	"users",       // internal/user
-	"wallets",     // internal/token
-	"campaigns",   // internal/notify
-	"fleets",      // internal/fleet
-	"items",       // internal/equipment — le matériel
-	"contracts",   // internal/equipment — ventes, locations, prêts
-	"entries",     // internal/finance — le journal comptable
-	"tickets",     // pkg/support
-	"uses",        // pkg/promo — le grand livre des promotions
-	"payment.col", // internal/payment
-	"audit.col",   // pkg/audit — le journal des actions
-	"sos.col",     // internal/sos — les appels au secours
+	"users",         // internal/user
+	"wallets",       // internal/token
+	"campaigns",     // internal/notify
+	"fleets",        // internal/fleet
+	"items",         // internal/equipment — le matériel
+	"contracts",     // internal/equipment — ventes, locations, prêts
+	"entries",       // internal/finance — le journal comptable
+	"tickets",       // pkg/support
+	"uses",          // pkg/promo — le grand livre des promotions
+	"payment.col",   // internal/payment
+	"audit.col",     // pkg/audit — le journal des actions
+	"sos.col",       // internal/sos — les appels au secours
+	"challenge.col", // internal/challenge — les objectifs à atteindre
 }
 
 // Les lectures légitimement SANS pays, et pourquoi. Chacune se relit à

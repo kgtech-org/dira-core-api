@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/kgtech-org/dira-core-api/internal/challenge"
 	"github.com/kgtech-org/dira-core-api/internal/equipment"
 	"github.com/kgtech-org/dira-core-api/internal/payment"
 	"github.com/kgtech-org/dira-core-api/internal/token"
@@ -171,6 +172,20 @@ type Handler struct {
 	// privacy : CE QUE DEUX INCONNUS S'ÉCHANGENT sur une course, réglé par
 	// pays et par métier depuis la console. Voir `disclose.go`.
 	privacy Privacy
+	// challenges : LES OBJECTIFS À ATTEINDRE. La verticale pousse ce qu'elle a
+	// compté, puis tire ce qu'on doit à un chauffeur.
+	challenges Challenges
+}
+
+// Challenges est le guichet des objectifs, vu par la surface de service.
+//
+// ⚠️ DÉCLARÉE ICI, CÔTÉ CONSOMMATEUR, comme les autres : la surface de service
+// ne connaît du module d'objectifs que ces deux gestes, et surtout pas sa
+// capacité à en créer. Une verticale qui pourrait écrire un objectif pourrait
+// s'en écrire un à elle-même.
+type Challenges interface {
+	Report(ctx context.Context, audience, metric, userID, ref string, delta int) error
+	ClaimOwed(ctx context.Context, userID string) ([]challenge.OwedResponse, error)
 }
 
 // Files est le STOCKAGE D'OBJETS, et le socle est le seul à l'ouvrir.
@@ -225,6 +240,10 @@ func (h *Handler) SetJournal(j Journal) { h.journal = j }
 
 // SetEquipment branche le guichet du matériel (câblage).
 func (h *Handler) SetEquipment(e Equipment) { h.equipment = e }
+
+// SetChallenges branche les objectifs (câblage). Sans eux, les faits poussés
+// sont acceptés et ne comptent nulle part — journalisé.
+func (h *Handler) SetChallenges(c Challenges) { h.challenges = c }
 
 // forgetFiles retire des objets du stockage, nommés par leur URL publique.
 //
@@ -305,6 +324,10 @@ func (h *Handler) Mount(r chi.Router, serviceMW func(http.Handler) http.Handler)
 		// plus est un canal qu'on ignore.
 		g.Post("/internal/alerts", h.alerts)
 		g.Post("/internal/equipment/collect", h.equipmentCollect)
+		// LES OBJECTIFS : la verticale POUSSE un fait compté, puis TIRE ce
+		// qu'on doit à un chauffeur.
+		g.Post("/internal/challenges/report", h.challengeReport)
+		g.Post("/internal/challenges/owed", h.challengeOwed)
 		g.Post("/internal/equipment/standing", h.equipmentStanding)
 		g.Post("/internal/push/data", h.signal)
 		// OUBLIER DES FICHIERS — la part de l'effacement d'un compte que seule
@@ -730,6 +753,73 @@ func (h *Handler) equipmentStanding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, resp)
+}
+
+// POST /internal/challenges/report {audience, metric, user_id, ref, delta}
+//
+// ⚠️ `ref` EST OBLIGATOIRE, ET C'EST TOUTE LA FIABILITÉ DU DISPOSITIF. Une
+// verticale réessaie — c'est l'intérêt même de sa file hors ligne — et sans
+// référence la même course compterait deux fois : un objectif à 20 se gagnerait
+// à 10, et le bonus serait versé pour de bon. L'identifiant de la course ou de
+// la commande fait cette clé.
+//
+// ⚠️ `202` ET AUCUNE ERREUR UTILE : un objectif qui n'avance pas ne doit jamais
+// faire échouer la course qui l'a déclenché. Le socle journalise, la verticale
+// n'attend rien.
+func (h *Handler) challengeReport(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Audience string `json:"audience" validate:"required"`
+		Metric   string `json:"metric" validate:"required"`
+		UserID   string `json:"user_id" validate:"required,len=24,hexadecimal"`
+		Ref      string `json:"ref" validate:"required,max=120"`
+		Delta    int    `json:"delta" validate:"omitempty,min=1"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if h.challenges == nil {
+		slog.WarnContext(r.Context(), "serviceapi: challenge report dropped, no module")
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+	delta := req.Delta
+	if delta == 0 {
+		delta = 1
+	}
+	if err := h.challenges.Report(r.Context(), req.Audience, req.Metric, req.UserID, req.Ref, delta); err != nil {
+		slog.WarnContext(r.Context(), "serviceapi: challenge report failed",
+			"user_id", req.UserID, "metric", req.Metric, "error", err)
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// POST /internal/challenges/owed {user_id} — ce qu'on doit en bonus à
+// quelqu'un, réclamé par la verticale qui tient son argent.
+//
+// ⚠️ ELLE MARQUE AVANT DE RENDRE, et le compromis est assumé : si l'appel
+// aboutit ici et échoue au retour, la verticale réessaiera et ne verra plus
+// rien — le bonus est perdu, mais TRAÇABLE (`reached_at` et `paid_at` posés,
+// aucune écriture dans le grand livre). L'inverse — rendre puis marquer — ferait
+// payer DEUX fois, ce qui est de l'argent sorti que personne ne réclame.
+func (h *Handler) challengeOwed(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID string `json:"user_id" validate:"required,len=24,hexadecimal"`
+	}
+	if err := httpx.Decode(r, &req); err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	if h.challenges == nil {
+		httpx.JSON(w, http.StatusOK, map[string]any{"items": []any{}})
+		return
+	}
+	items, err := h.challenges.ClaimOwed(r.Context(), req.UserID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 // POST /internal/audit — une entrée d'audit d'une verticale, rangée telle

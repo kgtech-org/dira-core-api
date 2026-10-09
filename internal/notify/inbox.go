@@ -70,6 +70,13 @@ func categoryOf(key string) string {
 		return CategorySupport
 	case KeyLostItemReported, KeyLostItemFound, KeyLostItemNotFound, KeyTicketReply, KeyTicketResolved:
 		return CategorySupport
+	case KeyChallengeReached:
+		// ⚠️ RANGÉE DANS `support`, DONC NON COUPABLE — et ce n'est pas du
+		// rangement par défaut. Un objectif atteint annonce un GAIN : quelqu'un
+		// qui a travaillé pour un bonus doit apprendre qu'il l'a gagné, même
+		// s'il a coupé les offres commerciales. La ranger dans `promotions`
+		// aurait laissé un chauffeur ne jamais savoir qu'on venait de le payer.
+		return CategorySupport
 	case KeyDocumentsMissing:
 		// ⚠️ RANGÉE DANS `support`, DONC NON COUPABLE. Un livreur qui couperait
 		// cette catégorie ne saurait jamais ce qu'on lui demande d'envoyer, et

@@ -370,6 +370,31 @@ func (s *Service) RefundEquipment(ctx context.Context, ownerID string, amountXOF
 	return s.moveMoney(ctx, ownerID, "balance_xof", amountXOF, KindPurchase, ReasonEquipment, RefEquipment, contractID, key, nil)
 }
 
+// CreditBonus verse le bonus d'un OBJECTIF ATTEINT.
+//
+// ⚠️ IDEMPOTENT PAR CLÉ, et c'est obligatoire ici. La séquence qui paie un
+// objectif est « prendre une place dans l'enveloppe → noter le franchissement →
+// verser → noter le versement » : si le processus meurt entre le versement et
+// sa note, la reprise verserait une seconde fois. Un bonus payé deux fois est de
+// l'argent perdu que personne ne réclame.
+//
+// ⚠️ ET IL CRÉDITE LE SOLDE RÉEL (`balance_xof`), pas le promotionnel. C'est de
+// l'argent gagné en travaillant ou en commandant, pas une remise à consommer
+// chez nous : un livreur doit pouvoir le retirer. `CreditPromo`, qui aurait l'air
+// voisin, aurait enfermé le bonus dans la plateforme.
+func (s *Service) CreditBonus(ctx context.Context, userID string, amountXOF int, challengeID, key string) error {
+	if amountXOF <= 0 {
+		return apperr.Validation("amount must be positive")
+	}
+	// ⚠️ LE PORTEFEUILLE EST CRÉÉ S'IL MANQUE. Un client qui n'a jamais rechargé
+	// n'en a pas ; refuser son bonus pour cette raison serait lui reprocher de
+	// ne pas avoir déjà donné de l'argent à la plateforme.
+	if _, err := s.ensureClientWallet(ctx, userID); err != nil {
+		return err
+	}
+	return s.moveMoney(ctx, userID, "balance_xof", amountXOF, KindPurchase, ReasonBonus, RefChallenge, challengeID, key, nil)
+}
+
 // --- la COMMISSION et la DETTE ---
 //
 // En mode `commission`, la plateforme se paie sur ce qu'elle verse : un gain
