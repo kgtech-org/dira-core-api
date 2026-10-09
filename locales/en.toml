@@ -498,3 +498,11 @@ other = "Partner access cannot be opened on this server"
 
 [errors.phone_belongs_to_another_role]
 other = "This phone already belongs to a Dira account that is not a partner: use another number"
+
+# --- GOALS: the two refusals that OFFER A WAY OUT ---
+
+[errors.challenge_target_unsafe]
+other = "This target asks for more work per day than anyone should do: lower it, or lengthen the window"
+
+[errors.challenge_budget_too_small]
+other = "The budget cannot pay a single winner: raise the budget, or lower the reward"

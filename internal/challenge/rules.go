@@ -4,6 +4,7 @@ package challenge
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/kgtech-org/dira-core-api/pkg/apperr"
 )
@@ -29,11 +30,28 @@ var (
 		fmt.Sprintf("window is longer than %d days: that is a loyalty programme, not an objective", MaxDays)).
 		WithMeta(map[string]any{"fields": []string{"window"}, "max_days": MaxDays})
 	// ⚠️ LE REFUS LE PLUS IMPORTANT DE CE FICHIER — voir `CheckTarget`.
-	errTargetUnsafe = apperr.Validation(
-		"target asks for more work per day than anyone should do: lower it, or lengthen the window").
+	// ⚠️⚠️ CES DEUX REFUS PORTENT UN CODE, et les autres de ce fichier non. La
+	// différence n'est pas cosmétique : la TRADUCTION SE FAIT PAR CODE
+	// (`httpx.Message` → `errors.<code>`), et `apperr.Validation` produit le
+	// code générique `validation_failed`. Toute phrase écrite là est donc
+	// remplacée par « Requête invalide ».
+	//
+	// Pour la plupart des validations, ça suffit : le champ nommé dans `meta`
+	// dit ce qui n'allait pas, et l'écran connaît le contexte. Mais ces deux-ci
+	// PROPOSENT UNE SORTIE — « allongez la fenêtre », « dotez l'enveloppe » —, et
+	// une sortie que personne ne lit n'existe pas. C'est la seule raison
+	// d'écrire une phrase dans un refus : qu'elle évite un appel au support.
+	//
+	// Relevé le 9 octobre en essayant une route voisine pour de vrai : le
+	// serveur répondait « Requête invalide » sur un refus dont le texte avait
+	// été pesé mot à mot.
+	errTargetUnsafe = apperr.New("challenge_target_unsafe",
+		"target asks for more work per day than anyone should do: lower it, or lengthen the window",
+		http.StatusUnprocessableEntity).
 		WithMeta(map[string]any{"fields": []string{"target", "window"}})
-	errBudgetTooSmall = apperr.Validation(
-		"budget_xof cannot pay a single winner: raise the budget or lower the reward").
+	errBudgetTooSmall = apperr.New("challenge_budget_too_small",
+		"budget_xof cannot pay a single winner: raise the budget or lower the reward",
+		http.StatusUnprocessableEntity).
 		WithMeta(map[string]any{"fields": []string{"budget_xof", "reward_xof"}})
 )
 
