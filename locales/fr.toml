@@ -561,3 +561,16 @@ other = "Ce compte fait déjà partie du personnel de cette flotte"
 
 [errors.fleet_member_not_found]
 other = "Ce compte ne fait pas partie du personnel de cette flotte"
+
+# --- LA CONSOLE PARTENAIRE, vue du SOCLE (internal/equipment/fleet.go) ---
+#
+# ⚠️ CES DEUX CODES EXISTENT AUSSI DANS LA VERTICALE DES COURSES, avec les mêmes
+# phrases : le partenaire les rencontre des deux côtés (le matériel est au
+# socle, son parc est aux courses), et deux formulations différentes pour le
+# même refus auraient fait croire à deux problèmes.
+
+[errors.partner_read_only]
+other = "Votre rôle sur cette flotte est en lecture seule : demandez un accès « gérant » à son propriétaire"
+
+[errors.partner_unavailable]
+other = "La console partenaire n'est pas disponible sur ce serveur"

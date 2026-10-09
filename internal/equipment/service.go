@@ -85,12 +85,19 @@ type Store interface {
 	ContractByCode(ctx context.Context, kind, code string) (*Contract, error)
 	ListContracts(ctx context.Context, f ContractFilter, limit int, cursor string) ([]Contract, string, error)
 	ContractsOfUser(ctx context.Context, userID primitive.ObjectID, onlyActive bool) ([]Contract, error)
+	// ContractsOfFleet : le matériel d'une SOCIÉTÉ — voir fleet.go. Borné par
+	// `fleet_id`, la seule borne d'un contrat sans porteur-personne.
+	ContractsOfFleet(ctx context.Context, fleetID primitive.ObjectID) ([]Contract, error)
 	ActiveContracts(ctx context.Context) ([]Contract, error)
 	Settings(ctx context.Context, code string) (*Settings, error)
 	SaveSettings(ctx context.Context, s *Settings) error
 }
 
 type Service struct {
+	// fleets résout la flotte du compte appelant — le matériel d'une SOCIÉTÉ,
+	// voir fleet.go. Facultatif : sans lui, la surface partenaire n'est pas
+	// montée.
+	fleets   Fleets
 	repo     Store
 	purse    Purse
 	notifier Notifier

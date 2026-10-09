@@ -174,6 +174,24 @@ func (m *memStore) ContractsOfUser(_ context.Context, userID primitive.ObjectID,
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
 	return out, nil
 }
+
+// ⚠️ LA DOUBLURE FILTRE PAR `FleetID`, comme la base — et surtout : elle rend
+// les contrats dont le `UserID` est VIDE. C'est le point du modèle : un contrat
+// de société n'a pas de porteur-personne, donc aucune lecture par utilisateur
+// ne le trouve. Une doublure qui l'aurait rangé sous un utilisateur aurait fait
+// passer au vert un prélèvement sur les gains d'un chauffeur.
+func (m *memStore) ContractsOfFleet(_ context.Context, fleetID primitive.ObjectID) ([]Contract, error) {
+	var out []Contract
+	for _, c := range m.contracts {
+		if c.FleetID == nil || *c.FleetID != fleetID {
+			continue
+		}
+		out = append(out, *c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out, nil
+}
+
 func (m *memStore) ActiveContracts(_ context.Context) ([]Contract, error) {
 	var out []Contract
 	for _, c := range m.contracts {

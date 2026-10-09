@@ -302,6 +302,29 @@ func (r *Repository) ListContracts(ctx context.Context, f ContractFilter, limit 
 // ContractsOfUser : tous les contrats d'une personne, du plus ancien au
 // plus récent — l'ordre dans lequel les retenues s'appliquent. SANS borne
 // pays : l'agent lit les siens d'où qu'il appelle.
+// ContractsOfFleet rend le matériel détenu par une SOCIÉTÉ.
+//
+// ⚠️ BORNÉE PAR `fleet_id`, et c'est la seule borne : un contrat de flotte n'a
+// pas de porteur-personne, donc aucune des lectures par utilisateur ne le
+// trouve — ni celle de l'agent, ni la purge d'un compte effacé.
+//
+// ⚠️ ET PAS DE BORNE PAYS : c'est le matériel d'une société NOMMÉE. Une flotte
+// dont le contrat est enregistré à Lomé peut avoir pris des casques à Dakar, et
+// elle doit les voir tous les deux.
+func (r *Repository) ContractsOfFleet(ctx context.Context, fleetID primitive.ObjectID) ([]Contract, error) {
+	cur, err := r.contracts.Find(ctx, bson.M{"fleet_id": fleetID},
+		options.Find().SetSort(bson.D{{Key: "_id", Value: -1}}).SetLimit(200))
+	if err != nil {
+		return nil, fmt.Errorf("equipment: contracts of fleet: %w", err)
+	}
+	defer cur.Close(ctx)
+	var out []Contract
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, fmt.Errorf("equipment: decode contracts of fleet: %w", err)
+	}
+	return out, nil
+}
+
 func (r *Repository) ContractsOfUser(ctx context.Context, userID primitive.ObjectID, onlyActive bool) ([]Contract, error) {
 	filter := bson.M{"user_id": userID}
 	if onlyActive {

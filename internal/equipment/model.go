@@ -213,11 +213,25 @@ type Payment struct {
 
 // Contract binds an agent to an item under a plan.
 type Contract struct {
-	ID       primitive.ObjectID `bson:"_id,omitempty"`
-	Country  string             `bson:"country"`
-	UserID   primitive.ObjectID `bson:"user_id"`
-	Vertical string             `bson:"vertical"` // food | vtc
-	ItemID   primitive.ObjectID `bson:"item_id"`
+	ID      primitive.ObjectID `bson:"_id,omitempty"`
+	Country string             `bson:"country"`
+	// UserID est le PORTEUR — une personne. ⚠️ VIDE sur un contrat de SOCIÉTÉ
+	// (voir `FleetID` et fleet.go) : c'est ce qui fait que les chemins de
+	// l'agent — retenue sur gains, blocage de la mise en ligne, purge d'un
+	// compte effacé — ne trouvent jamais un contrat de flotte.
+	UserID primitive.ObjectID `bson:"user_id"`
+	// FleetID et FleetName : la SOCIÉTÉ qui détient le matériel, quand ce n'est
+	// pas une personne. Le nom est figé à la création, comme celui de
+	// l'article : le contrat reste lisible si la société est renommée.
+	//
+	// ⚠️ AUCUN PRÉLÈVEMENT AUTOMATIQUE sur un contrat de flotte : il n'existe
+	// aucun grand livre de flotte. Le règlement se fait sur facture, hors de la
+	// plateforme — `fleetPlan` ferme les canaux pour que le plan ne décrive pas
+	// un prélèvement que rien n'exécute.
+	FleetID   *primitive.ObjectID `bson:"fleet_id,omitempty"`
+	FleetName string              `bson:"fleet_name,omitempty"`
+	Vertical  string              `bson:"vertical"` // food | vtc
+	ItemID    primitive.ObjectID  `bson:"item_id"`
 	// Figé à la création : le contrat reste lisible si l'article change.
 	ItemName string `bson:"item_name"`
 	ItemKind string `bson:"item_kind"`
