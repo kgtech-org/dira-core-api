@@ -39,7 +39,20 @@ const (
 	CategoryAccount   = "account"
 	CategoryLostItem  = "lost_item"
 	CategoryBehaviour = "behaviour"
-	CategoryOther     = "other"
+	// CategoryVehicle : LE VÉHICULE lui-même — immobilisé, papiers refusés,
+	// plaque erronée, repris par erreur.
+	//
+	// ⚠️ ELLE EXISTE PARCE QUE LES PROPRIÉTAIRES DE FLOTTE ONT UNE CONSOLE
+	// DEPUIS LE 9 OCTOBRE 2026, et que leurs demandes parlent presque toutes
+	// d'une voiture. Rangées dans `account`, elles arrivaient chez qui regarde
+	// les problèmes de connexion et de profil — et la file de l'exploitation
+	// cessait de dire de quoi elle parle.
+	//
+	// ⚠️ ET ELLE SERT AUX DEUX MÉTIERS : un livreur dont la moto est
+	// immobilisée a la même demande. Ce n'est pas une catégorie « partenaire »,
+	// c'est une catégorie « véhicule ».
+	CategoryVehicle = "vehicle"
+	CategoryOther   = "other"
 )
 
 // Priorities.

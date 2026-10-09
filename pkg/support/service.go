@@ -148,7 +148,8 @@ func (s *Service) tripCategory() string {
 // Categories rend celles que ce guichet accepte, dans l'ordre où une
 // application les propose.
 func (s *Service) Categories() []string {
-	return []string{s.tripCategory(), CategoryLostItem, CategoryPayment, CategoryTokens, CategoryAccount, CategoryBehaviour, CategoryOther}
+	return []string{s.tripCategory(), CategoryLostItem, CategoryPayment, CategoryTokens,
+		CategoryAccount, CategoryVehicle, CategoryBehaviour, CategoryOther}
 }
 
 func (s *Service) categoryAllowed(c string) bool {
@@ -563,6 +564,8 @@ func CategoryLabel(c string) string {
 		return "Objet perdu"
 	case CategoryBehaviour:
 		return "Comportement"
+	case CategoryVehicle:
+		return "Véhicule"
 	default:
 		return "Autre"
 	}
