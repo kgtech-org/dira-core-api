@@ -2,6 +2,7 @@ package country
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,11 +62,14 @@ func TestTheConsoleGetsTheCountrySNumbersFromTheCatalogue(t *testing.T) {
 // ⚠️ LE RÉGLAGE DE L'EXPLOITATION REMPLACE LE CATALOGUE, IL NE S'AJOUTE PAS.
 // Deux « police » sur l'écran d'un opérateur, c'est une hésitation d'une seconde
 // au moment où il n'en a pas.
-func TestAConfirmedNumberReplacesTheCatalogueOne(t *testing.T) {
+func TestASavedNumberReplacesTheCatalogueOne(t *testing.T) {
 	out := sosAdminResponse("SN", SOS{Numbers: []EmergencyNumber{
 		{Kind: EmergencyPolice, Label: "Police — Dakar", Number: "800112233"},
 	}})
-	assert.True(t, out.Confirmed, "l'exploitation a tranché")
+	// ⚠️ ET ENREGISTRER NE CONFIRME PAS : voir
+	// `TestSavingNumbersIsNotHavingDialledThem`. Ce test ne porte que sur le
+	// remplacement.
+	assert.False(t, out.Confirmed)
 	police := 0
 	for _, n := range out.Numbers {
 		if n.Kind == EmergencyPolice {
@@ -183,4 +187,54 @@ func TestThePlatformIsOneOfTheNumbersOneCanCall(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "Astreinte Dira", out[0].Label)
+}
+
+// --- « CONFIRMÉ » VEUT DIRE QUE QUELQU'UN A COMPOSÉ ---------------------
+
+// ⚠️⚠️ LE DÉFAUT QUE CE TEST FIGE : `confirmed` VALAIT « LA LISTE N'EST PAS
+// VIDE ». Un simple enregistrement — ou un jeu de données rejoué — se présentait
+// donc à l'opérateur comme une vérification humaine. Or ce drapeau ne sert qu'à
+// une chose : lui dire s'il est le PREMIER à composer. Mentir dessus le rendait
+// inutile, et c'est un écran de secours.
+func TestSavingNumbersIsNotHavingDialledThem(t *testing.T) {
+	saved := sosAdminResponse("SN", SOS{Numbers: []EmergencyNumber{
+		{Kind: EmergencyPolice, Number: "17"},
+	}})
+	assert.NotEmpty(t, saved.Numbers)
+	assert.False(t, saved.Confirmed,
+		"des numéros enregistrés ne sont pas des numéros appelés")
+	assert.Nil(t, saved.VerifiedAt)
+
+	now := time.Now().UTC()
+	verified := sosAdminResponse("SN", SOS{
+		Numbers:    []EmergencyNumber{{Kind: EmergencyPolice, Number: "17"}},
+		VerifiedAt: &now,
+	})
+	assert.True(t, verified.Confirmed)
+	// ⚠️ LA DATE EST SERVIE AVEC : « vérifié il y a trois ans » et « vérifié
+	// hier » ne valent pas la même chose — un numéro d'urgence change sans
+	// prévenir, et une confirmation vieillit.
+	require.NotNil(t, verified.VerifiedAt)
+}
+
+// ⚠️ CHANGER UN NUMÉRO RETIRE LA CONFIRMATION. Elle portait sur la liste qu'on
+// avait appelée ; la garder après une modification présenterait un numéro jamais
+// composé comme vérifié.
+func TestChangingANumberDropsTheConfirmation(t *testing.T) {
+	before := []EmergencyNumber{{Kind: EmergencyPolice, Number: "17"}}
+	assert.False(t, sameNumbers(before, []EmergencyNumber{
+		{Kind: EmergencyPolice, Number: "117"},
+	}), "le numéro a changé")
+	assert.False(t, sameNumbers(before, []EmergencyNumber{
+		{Kind: EmergencyPolice, Number: "17"},
+		{Kind: EmergencyFire, Number: "18"},
+	}), "un numéro de plus est une liste différente")
+
+	// ⚠️ MAIS PAS POUR UN LIBELLÉ. Renommer « Police » en « Police secours » ne
+	// change pas ce qu'on compose : retirer la confirmation pour une correction
+	// d'orthographe aurait appris à l'exploitation que ce drapeau ne veut rien
+	// dire.
+	assert.True(t, sameNumbers(before, []EmergencyNumber{
+		{Kind: EmergencyPolice, Label: "Police secours", Number: "17"},
+	}))
 }

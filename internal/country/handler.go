@@ -45,6 +45,11 @@ func (h *Handler) Mount(r chi.Router, authMW func(http.Handler) http.Handler) {
 		// celle qui règle les verrous d'application.
 		g.With(admin).Get("/admin/countries/{code}/sos", h.sos)
 		g.With(admin).Put("/admin/countries/{code}/sos", h.updateSOS)
+		// ⚠️ « J'AI COMPOSÉ CES NUMÉROS » — un geste À PART de l'enregistrement.
+		// Saisir une liste et l'avoir appelée sont deux choses : la première se
+		// fait depuis un bureau, la seconde demande un téléphone. Les fondre
+		// aurait fait de « confirmé » un synonyme de « enregistré ».
+		g.With(admin).Post("/admin/countries/{code}/sos/verify", h.verifySOS)
 		// QUI VOIT QUOI DE QUI entre un client et l'agent qui le sert, métier
 		// par métier. Voir `privacy.go`.
 		g.With(admin).Get("/admin/countries/{code}/privacy", h.privacy)
@@ -187,6 +192,22 @@ func (h *Handler) updateSOS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := h.svc.UpdateSOS(r.Context(), chi.URLParam(r, "code"), req)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, out)
+}
+
+// POST /admin/countries/{code}/sos/verify — quelqu'un a composé les numéros.
+//
+// ⚠️ C'EST UN FAIT HUMAIN, ET AUCUN CODE NE PEUT LE PRODUIRE. Vérifier un
+// numéro de secours, c'est le composer et entendre quelqu'un répondre ; cette
+// route ne fait que l'enregistrer, avec le nom de qui l'engage. Elle n'existe
+// pas pour être appelée par un script.
+func (h *Handler) verifySOS(w http.ResponseWriter, r *http.Request) {
+	actorID, _ := auth.UserFromContext(r.Context())
+	out, err := h.svc.VerifyNumbers(r.Context(), chi.URLParam(r, "code"), actorID)
 	if err != nil {
 		httpx.Error(w, r, err)
 		return
