@@ -482,6 +482,10 @@ func run(logger *slog.Logger) error {
 	equipmentSvc.SetNotifier(notifySvc)
 	equipmentSvc.SetStaffAlerter(staffAlerts{staff: staffSvc, notify: notifySvc})
 	equipmentSvc.SetAuditor(auditRec)
+	// LE MATÉRIEL D'UNE SOCIÉTÉ : le module du matériel demande au module des
+	// flottes qui est le compte connecté — et avec quel rôle, parce que
+	// commander dix casques engage la société.
+	equipmentSvc.SetFleets(equipFleets{svc: fleetSvc})
 	// La base des liens profonds du QR de remise — vide = lien relatif.
 	equipmentSvc.SetHandoverLinkBase(cfg.AppLinkBase)
 	go func() {
@@ -659,7 +663,17 @@ func run(logger *slog.Logger) error {
 		// ailleurs : les verticales y écrivent par la surface de service.
 		auditlog.NewHandler(auditRec).Mount(r, authMW)
 		faults.NewHandler(faultRepo).Mount(r, authMW)
-		equipment.NewHandler(equipmentSvc).Mount(r, authMW)
+		equipHandler := equipment.NewHandler(equipmentSvc)
+		equipHandler.Mount(r, authMW)
+		// LE MATÉRIEL D'UNE SOCIÉTÉ — gilets, casques, supports : pris par la
+		// FLOTTE et non par le chauffeur.
+		//
+		// ⚠️ `vtc` EN DUR, et c'est exact aujourd'hui : les sociétés
+		// propriétaires de véhicules n'ont que des voitures de COURSE (voir la
+		// réponse de la livraison, qui rend « aucune flotte »). Le jour où une
+		// société possédera des motos de livraison, cette ligne devra lire la
+		// verticale de la flotte — et c'est ici qu'on le verra.
+		equipHandler.MountPartner(r, authMW, "vtc")
 		// LE BOUTON D'ALERTE : `POST /sos` pour qui est en danger,
 		// `/admin/sos` pour l'exploitation qui doit le voir dans la seconde.
 		sos.NewHandler(sosSvc).Mount(r, authMW)
@@ -869,6 +883,23 @@ func (a userAccounts) AccountsByIDs(ctx context.Context, ids []string) ([]staff.
 		out = append(out, staffRow(r))
 	}
 	return out, nil
+}
+
+// equipFleets répond au module du MATÉRIEL : quelle flotte, et quel rôle.
+//
+// ⚠️ LA TRADUCTION VIT AU CÂBLAGE : `internal/equipment` ignore ce qu'est une
+// flotte, `internal/fleet` ignore qu'un casque existe. Les faire se connaître
+// aurait soudé deux modules que rien n'oblige à vivre ensemble.
+type equipFleets struct{ svc *fleet.Service }
+
+func (f equipFleets) MemberFleet(ctx context.Context, userID string) (string, string, string, error) {
+	fl, role, err := f.svc.MemberOf(ctx, userID)
+	if err != nil {
+		// ⚠️ LES REFUS DU SOCLE PASSENT TELS QUELS (`partner_no_fleet`,
+		// `partner_fleet_suspended`) : leur phrase dit quoi faire.
+		return "", "", "", err
+	}
+	return fl.ID.Hex(), fl.Name, role, nil
 }
 
 // fleetIdentities nomme le personnel d'une flotte.

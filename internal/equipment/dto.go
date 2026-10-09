@@ -177,19 +177,25 @@ type PaymentResponse struct {
 }
 
 type ContractResponse struct {
-	ID       string `json:"id"`
-	Country  string `json:"country"`
-	UserID   string `json:"user_id"`
-	UserName string `json:"user_name,omitempty"`
-	Vertical string `json:"vertical"`
-	ItemID   string `json:"item_id"`
-	ItemName string `json:"item_name"`
-	ItemKind string `json:"item_kind"`
-	Quantity int    `json:"quantity"`
-	Serial   string `json:"serial,omitempty"`
-	Mode     string `json:"mode"`
-	Plan     Plan   `json:"plan"`
-	Status   string `json:"status"`
+	// FleetID et FleetName : la SOCIÉTÉ qui détient ce matériel, quand ce n'est
+	// pas une personne. ⚠️ Servis, parce que sans eux la file d'exploitation
+	// affiche un contrat SANS PORTEUR — un opérateur qui prépare dix casques
+	// doit savoir pour qui.
+	FleetID   string `json:"fleet_id,omitempty"`
+	FleetName string `json:"fleet_name,omitempty"`
+	ID        string `json:"id"`
+	Country   string `json:"country"`
+	UserID    string `json:"user_id"`
+	UserName  string `json:"user_name,omitempty"`
+	Vertical  string `json:"vertical"`
+	ItemID    string `json:"item_id"`
+	ItemName  string `json:"item_name"`
+	ItemKind  string `json:"item_kind"`
+	Quantity  int    `json:"quantity"`
+	Serial    string `json:"serial,omitempty"`
+	Mode      string `json:"mode"`
+	Plan      Plan   `json:"plan"`
+	Status    string `json:"status"`
 
 	PriceXOF   int `json:"price_xof"`
 	DepositXOF int `json:"deposit_xof"`
@@ -253,6 +259,16 @@ func toContract(c *Contract, now time.Time) ContractResponse {
 		HandedVia:  c.HandedVia,
 		ReturnedAt: c.ReturnedAt, ReturnedVia: c.ReturnedVia, ClosedAt: c.ClosedAt,
 		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+		FleetName: c.FleetName,
+	}
+	// ⚠️ UN CONTRAT DE SOCIÉTÉ N'A PAS DE PORTEUR-PERSONNE : `user_id` serait
+	// alors l'identifiant nul rendu en hexadécimal — vingt-quatre zéros, que la
+	// console afficherait comme un compte. On le laisse ABSENT.
+	if c.UserID.IsZero() {
+		resp.UserID = ""
+	}
+	if c.FleetID != nil {
+		resp.FleetID = c.FleetID.Hex()
 	}
 	if since := c.OverdueSince(now); !since.IsZero() {
 		resp.OverdueSince = &since

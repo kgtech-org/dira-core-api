@@ -523,3 +523,11 @@ other = "This account is already part of this fleet's staff"
 
 [errors.fleet_member_not_found]
 other = "This account is not part of this fleet's staff"
+
+# --- THE PARTNER CONSOLE, from the CORE (internal/equipment/fleet.go) ---
+
+[errors.partner_read_only]
+other = "Your role on this fleet is read-only: ask its owner for manager access"
+
+[errors.partner_unavailable]
+other = "The partner console is not available on this server"

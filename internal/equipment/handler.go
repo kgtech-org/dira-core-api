@@ -437,3 +437,74 @@ func (h *Handler) scanHandover(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, out)
 }
+
+// ---------------------------------------------------------------------------
+// LE MATÉRIEL D'UNE SOCIÉTÉ — voir fleet.go.
+// ---------------------------------------------------------------------------
+
+// MountPartner expose le matériel de la flotte à son personnel.
+//
+// ⚠️ MONTÉE SEULEMENT QUAND LA FLOTTE PEUT ÊTRE RÉSOLUE, et sans aucun
+// identifiant de société dans le chemin : elle vient du jeton. C'est la règle
+// de toute la surface partenaire.
+func (h *Handler) MountPartner(r chi.Router, authMW func(http.Handler) http.Handler, vertical string) {
+	if h.svc.fleets == nil {
+		return
+	}
+	r.Group(func(g chi.Router) {
+		g.Use(authMW, middleware.RequireRole(auth.RolePartner))
+		// ⚠️ LE CATALOGUE EST LE MÊME QUE CELUI DE L'AGENT : une société et un
+		// chauffeur prennent les mêmes casques. Un second catalogue « société »
+		// aurait divergé au premier article ajouté.
+		g.Get("/partner/equipment/catalogue", h.partnerCatalogue(vertical))
+		g.Get("/partner/equipment", h.partnerContracts)
+		g.Post("/partner/equipment/requests", h.partnerRequest(vertical))
+	})
+}
+
+// GET /partner/equipment/catalogue — ce que la société peut prendre.
+func (h *Handler) partnerCatalogue(vertical string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		items, err := h.svc.Catalogue(r.Context(), vertical)
+		if err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		httpx.JSON(w, http.StatusOK, map[string]any{"items": items})
+	}
+}
+
+// GET /partner/equipment — ce qu'elle détient, et ce qu'elle doit.
+//
+// ⚠️ LISIBLE PAR TOUT LE PERSONNEL, lecteur compris : savoir ce que la société
+// détient et ce qu'elle doit est précisément le travail d'un comptable.
+func (h *Handler) partnerContracts(w http.ResponseWriter, r *http.Request) {
+	userID, _ := auth.UserFromContext(r.Context())
+	items, err := h.svc.FleetContracts(r.Context(), userID)
+	if err != nil {
+		httpx.Error(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// POST /partner/equipment/requests {item_id, mode, quantity, note}
+//
+// ⚠️ UN LECTEUR NE COMMANDE PAS : demander du matériel engage la société pour
+// une caution et des loyers. C'est une écriture, pas une lecture.
+func (h *Handler) partnerRequest(vertical string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, _ := auth.UserFromContext(r.Context())
+		var req RequestInput
+		if err := httpx.Decode(r, &req); err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		out, err := h.svc.RequestForFleet(r.Context(), userID, vertical, req)
+		if err != nil {
+			httpx.Error(w, r, err)
+			return
+		}
+		httpx.JSON(w, http.StatusCreated, out)
+	}
+}
