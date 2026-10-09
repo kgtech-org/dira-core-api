@@ -1,6 +1,6 @@
 # Specs frontend — par rôle
 
-> **Version 4.60.0** · 9 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
+> **Version 4.61.0** · 9 octobre 2026 · APIs `dira-core-api` + `dira-food-api` + `dira-vtc-api` + `dira-analytics`
 
 **Cinq** documents, un par application. Chacun est **autonome** : tout ce qu'un frontend doit savoir pour son rôle, sans avoir à ouvrir les vingt specs de modules.
 
@@ -263,6 +263,7 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] 🆘 **BOUTON D'ALERTE** (v4.56.0, **toutes** les applications) : `POST /sos` appelé avec **ce qu'on a**, sans attendre un point GPS — aucun champ n'est obligatoire, pas même la position ; **réessai en boucle jusqu'à un `2xx`**, en tête de la file hors-ligne et sans attendre la fenêtre de synchronisation ; **aucune validation côté application** (pas de motif, pas de formulaire, pas de position exigée) ; bouton **laissé actif** après le premier appui (le double appui enrichit la même alerte) ; `GET /sos/me` appelé **au démarrage** (`200` + `alert: null` est le cas normal, pas un `404`) ; position poussée **toutes les 5–10 s** tant que l'alerte vit ; ⚠️ **AUCUN BOUTON D'APPEL (v4.58.0)** — ni vers les secours, ni vers nous : la route ne sert **aucun** numéro, et il ne faut en inventer aucun (ni 112, ni codé en dur). L'écran affiche `calls_back` : « le service client a été prévenu et va vous appeler » ; détections (`shake`/`crash`/`voice`) qui **proposent** via un compte à rebours de `countdown_seconds` avec **un seul** bouton « Annuler », GPS et batterie **préparés pendant** le rebours ; `confirmed: false` traité comme **plus** grave, jamais comme « envoyé par erreur » ; annulation **en un appui, sans seconde confirmation**, et dite comme « l'exploitation a été prévenue » — pas comme « effacé » ; **pas de verrou d'application** sur cet écran ; `vertical` + `ride_id`/`delivery_id` envoyés quand il y a une opération
 - [ ] 🏷️ **Motif d'annulation** (v4.55.0, applications de CLIENT **et** de CHAUFFEUR) : liste **demandée** à `GET /rides/cancel-reasons`, jamais écrite en dur — elle dépend du rôle du jeton, et un code de l'autre rôle est refusé (`422`, `fields: ["reason_code"]`) ; codes **traduits chez vous** (la route sert des codes, pas des phrases) ; `reason_code` **s'ajoute** à `reason`, il ne le remplace pas ; `grave` lu dans la réponse plutôt que testé sur `code === "accident"` ; côté chauffeur, un motif grave ouvre un ticket critique → confirmation à part, « le support a été alerté », et **l'annulation aboutit même si le ticket échoue** (pas de réessai) ; `cancelled_reason_code` **absent** sur les courses d'avant la 4.55.0 → affichez `cancelled_reason` telle quelle, ne traduisez pas l'absence par `other`
 - [ ] 📞 **Taux d'acceptation** (v4.55.0, application de CHAUFFEUR) : `rate` **absent** quand `called` vaut 0 → « — » ou « aucun appel reçu », **jamais 0 %** (qui se lit « il refuse tout ») ; `acceptance` **tout entier** peut manquer quand le suivi ne répond pas → masquez ou dites « indisponible », jamais zéro ; `declined` et `missed` **jamais additionnés** (un geste et une panne) ; ne recalculez pas le taux vous-même
+- [ ] 📄 **PAPIERS D'UNE VOITURE DE SOCIÉTÉ** (v4.61.0, application de CHAUFFEUR) : `missing` et `missing_fleet` **jamais concaténés** — les concaténer referait le défaut qu'on vient de corriger (réclamer une carte grise à quelqu'un qui ne l'a pas) ; `missing_fleet` présenté comme une **information**, sans bouton « envoyer » ; `compliant: false` sur un manque de société **attribué à la société**, pas au chauffeur ; `by_fleet: true` **affiché** (sinon la pièce est redéposée et arbitrée deux fois) et **non remplaçable** ; `POST /driver/documents` sur une voiture de société reste **accessible** — les papiers sont souvent dans la boîte à gants
 - [ ] 🏢 **VOITURE DE SOCIÉTÉ** (v4.60.0, application de CHAUFFEUR) : `offline_reason: "fleet"` traité (**quatrième valeur** — « Dira vous a mis hors ligne » devient faux une fois sur deux, une cause inconnue s'affiche **sans coupable**) ; véhicule `withdrawn` **grisé et non sélectionnable** (`PATCH /drivers/me/active-vehicle` serait refusé), et **jamais confondu avec `maintenance`** — le propriétaire reprend son bien, l'exploitation immobilise une voiture, l'interlocuteur n'est pas le même ; `vehicle_assigned` et `vehicle_taken_back` **routées vers l'écran des véhicules** et montrées **comme une notification à lire** (le rattachement ne demande pas son accord : c'est son seul contre-pouvoir) ; le message de reprise dit **« votre compte chauffeur reste actif »** — un propriétaire n'a **aucun** pouvoir sur un compte, et perdre sa voiture en passant hors ligne se lit sinon comme une exclusion de Dira
 - [ ] 🧱 **Plafond de dette** (v4.55.0, application de CHAUFFEUR) : `max_debt_xof` **affiché depuis le relevé**, aucune valeur en dur — il est réglé **par pays** ; `max_debt_source` (`country` | `partner`) nommé dans le message de blocage, parce que l'interlocuteur change (l'exploitation, ou le propriétaire du véhicule) ; `max_debt_by` affiché quand il est là ; source absente traitée comme `country`
 - [ ] 🔒 **Confidentialité** (v4.49.0) : **aucune** règle d'affichage en dur — ni par pays, ni par métier. `show_phone` lu **avant** d'écrire un numéro à l'écran ; `direct_call` sans `show_phone` = un bouton qui appelle et le numéro **nulle part** ; `in_app_alert` lu pour **cacher** (et non désactiver) le bouton du klaxon ; nom affiché **tel que servi**, jamais reconstruit depuis `first_name` + `last_name` ; un champ absent traité comme fermé, **sans réessai** ; véhicule et argent à encaisser toujours montrés ; tout fermé → l'écran mène à la **conversation**
@@ -335,6 +336,47 @@ Chaque document porte la même version en en-tête, et son propre journal des ch
 - [ ] ⚠️ **`TRACKING_JWT_SECRET` renseigné dans chaque environnement déployé.** Vide, l'authentification du service de suivi est **désactivée** : n'importe qui connaissant un `delivery_id` suit la course. Le secret doit valoir **exactement** le `JWT_SECRET` de `dira-food-api`.
 
 ## Journal
+
+### 4.61.0 — 9 octobre 2026
+
+📄 **LES PAPIERS D'UNE VOITURE DE SOCIÉTÉ SE DÉPOSENT PAR SON PROPRIÉTAIRE.**
+On les réclamait à son conducteur — qui ne les a pas — et la relance
+`documents_missing` le lui redisait tous les trois jours.
+
+**Pour les applications mobiles, un seul document change encore :
+`VTC-DRIVER.md`.** `GET /driver/documents` porte un champ de plus :
+
+```
+{ documents: [ { …, by_fleet: true } ], missing: [ … ], missing_fleet: [ … ], compliant }
+```
+
+> ⚠️⚠️ **`missing` A MAIGRI.** Carte grise, assurance, contrôle technique et
+> photos d'un véhicule de société sont passés dans **`missing_fleet`**. Une
+> application qui affiche `missing` comme une liste de choses à faire est
+> désormais JUSTE — c'est tout l'objet du changement. Une application qui
+> concaténerait les deux listes referait le défaut qu'on vient de corriger.
+
+> ⚠️ **`missing_fleet` N'EST PAS UNE LISTE DE GESTES.** C'est une information :
+> « votre société n'a pas encore envoyé l'assurance ». Pas de bouton
+> « envoyer » à côté.
+
+> ⚠️ **`compliant` RESTE `false`** quand il ne manque que ces pièces : la
+> voiture roule sans papiers. Ne le présentez pas comme le défaut du
+> chauffeur — dites qui doit agir.
+
+> ⚠️ **`by_fleet: true`** marque une pièce déposée par le propriétaire. À
+> AFFICHER (sinon on la redépose, et un opérateur regarde deux fois la même
+> image), mais **sans** proposer de la remplacer.
+
+> ⚠️ **ET LE DÉPÔT PAR LE CHAUFFEUR RESTE ACCEPTÉ**, délibérément : les papiers
+> sont souvent dans la boîte à gants, et il ne doit pas être empêché de
+> régulariser parce que son patron ne répond pas. `POST /driver/documents` ne
+> change pas.
+
+**LA LIVRAISON NE CHANGE PAS.** Il n'existe pas de flotte privée de motos :
+`missing_fleet` y est toujours absent, et aucun livreur ne verra `by_fleet`.
+
+---
 
 ### 4.60.0 — 9 octobre 2026
 

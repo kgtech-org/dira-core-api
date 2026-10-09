@@ -1,6 +1,6 @@
 # App CHAUFFEUR — COURSES (VTC) — contrat d'API
 
-> **Version 4.60.0** · 9 octobre 2026
+> **Version 4.61.0** · 9 octobre 2026
 > Socle : `https://api-staging.dira.llc/api/v1` · Courses : `https://api-staging.dira.llc/api/v1/vtc` · Suivi : `wss://tracking-staging.dira.llc` · SIG : `https://maps.dira.llc/api`
 
 ---
@@ -596,7 +596,38 @@ et si c'était votre véhicule actif vous passez **hors ligne** avec
 > son propriétaire qui la récupère. L'interlocuteur n'est pas le même, et c'est
 > toute la différence pour celui qui lit l'écran.
 
-**3. Votre limite de dette change.** Le propriétaire peut la poser lui-même
+**3. Les papiers de la voiture ne vous sont plus demandés** (v4.61.0). Carte
+grise, assurance, contrôle technique et photos d'un véhicule de société sont
+déposés par **son propriétaire**, depuis sa console.
+
+```
+GET /driver/documents → { documents: [ … ], missing: [ … ], missing_fleet: [ … ], compliant }
+```
+
+> ⚠️⚠️ **`missing` NE CONTIENT PLUS CES PIÈCES — ELLES SONT DANS
+> `missing_fleet`.** On vous réclamait la carte grise d'une voiture qui n'est
+> pas la vôtre, et la relance `documents_missing` vous le redisait tous les
+> trois jours pour un papier que vous n'avez pas. **N'affichez PAS
+> `missing_fleet` comme une chose à faire** : c'est une information — « votre
+> société n'a pas encore envoyé l'assurance » —, et le bouton « envoyer » n'a
+> rien à faire à côté.
+>
+> ⚠️ **`compliant` RESTE `false` POUR AUTANT**, et c'est voulu : la voiture
+> roule sans papiers. Ne le présentez pas comme votre défaut — dites qui doit
+> agir.
+>
+> ⚠️ **ET `by_fleet: true` MARQUE LES PIÈCES DÉPOSÉES PAR LE PROPRIÉTAIRE.**
+> Elles apparaissent dans `documents` comme les autres. Affichez-les — sinon on
+> les redépose, et un opérateur regarde deux fois la même image — mais ne
+> proposez pas de les **remplacer** : ce n'est pas à vous de les renouveler.
+>
+> ⚠️ **VOUS POUVEZ ENCORE LES DÉPOSER VOUS-MÊME, et la route ne change pas.**
+> Les papiers sont souvent dans la boîte à gants : `POST /driver/documents`
+> avec le `vehicle_id` de la voiture de société est **accepté**, délibérément —
+> un chauffeur qui peut régulariser ne doit pas en être empêché parce que son
+> patron ne répond pas. Gardez-le accessible, sans en faire l'écran principal.
+
+**4. Votre limite de dette change.** Le propriétaire peut la poser lui-même
 depuis sa console. Rien de nouveau dans le contrat : `max_debt_source` vaut
 `partner` et `max_debt_by` porte **le nom de la société** (v4.55.0) — mais
 attendez-vous à la voir bouger plus souvent, et **nommez toujours l'auteur**
